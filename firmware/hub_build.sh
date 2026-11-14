@@ -5,26 +5,26 @@
 #   firmware/hub_build.sh [VERSION]        build VERSION's two packages: the version from the argument, else from the
 #                                          tag (vX.Y.Z[-beta.N]), else (a run from the Actions tab) the run's input
 #   firmware/hub_build.sh --version [V]    print version=V and prerelease=true|false (release.yml's outputs)
-#   firmware/hub_build.sh --check DIR [V]  check the five files in DIR (release names, fizz-V.fwsc, ..., or the plain
-#                                          ones, fizz-ble.fwsc, ...) against site/firmware/releases.json and the
-#                                          committed site/firmware/V/, no build
-# The build is firmware/release.py V --rebuild: the very builds firmware/release.py V made for the install page (the
-# same APP_VERSION, identity and stamp checks), its five files and SHA256SUMS into firmware/app/build/hub-V/. Each
+#   firmware/hub_build.sh --check DIR [V]  check the three files in DIR (release names, evilgenius-V.fwsc, ..., or the
+#                                          plain ones, evilgenius.fwsc, ...) against site/firmware/releases.json and
+#                                          the committed site/firmware/V/, no build
+# The build is firmware/release.py V --rebuild: the very build firmware/release.py V made for the install page (the
+# same APP_VERSION, identity and stamp checks), its three files and SHA256SUMS into firmware/app/build/hub-V/. Each
 # sha256 is then checked against releases.json and the committed files when the version is listed (on a tag it must
 # be), and on GitHub's runner the files are copied to the repository root under the release's names (ASSETS:
-# fizz-V.fwsc is the Bluetooth package, the one The Firmware Hub installs, as its pattern fizz-\d[\w.-]*\.fwsc takes
-# it; fizz-usb-V.fwsc the USB one; fizz-xdata-V.bin, fizz-ble-xdata-V.bin, fizz-ble-xdata2-V.bin; each package carries
-# its blobs since 0.12.0-beta.13, so the .bin files are for fizz_xdata.py and the Manager only): the shared workflow
-# attests those (its "packages": fizz-*), keeps them as the run's artifact and, on a tag, uploads them with its
-# SHA256SUMS to the draft release. A file whose sha256 is not the listed one stops here, before anything is signed.
+# evilgenius-V.fwsc is the package, the one The Firmware Hub installs: it carries its data; evilgenius-xdata-V.bin and
+# evilgenius-xdata2-V.bin are the data on its own, for fizz_xdata.py): the shared workflow attests those (its
+# "packages": evilgenius-*), keeps them as the run's artifact and, on a tag, uploads them with its SHA256SUMS to the
+# draft release. A file whose sha256 is not the listed one stops here, before anything is signed.
 # Pillow is pinned to the release builds' (fm1-base's font generator draws the UI fonts with it) and must have Raqm.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 PILLOW_VERSION=11.1.0           # the release builds' (another version may draw the fonts otherwise)
-# FIZZ's own names (site/firmware/V/, firmware/release.py) and the release's, @ the version
-NAMES=(fizz.fwsc fizz-xdata.bin fizz-ble.fwsc fizz-ble-xdata.bin fizz-ble-xdata2.bin)
-ASSETS=(fizz-usb-@.fwsc fizz-xdata-@.bin fizz-@.fwsc fizz-ble-xdata-@.bin fizz-ble-xdata2-@.bin)
+# EvilGenius's own names (site/firmware/V/, firmware/release.py) and the release's, @ the version: one package (the
+# Bluetooth build, the only one) and its two data blobs
+NAMES=(evilgenius.fwsc evilgenius-xdata.bin evilgenius-xdata2.bin)
+ASSETS=(evilgenius-@.fwsc evilgenius-xdata-@.bin evilgenius-xdata2-@.bin)
 
 mode=build
 case "${1:-}" in
@@ -68,7 +68,7 @@ from pathlib import Path
 v, d, n = sys.argv[1], Path(sys.argv[2]), int(sys.argv[3])
 names = sys.argv[4:4 + n]
 assets = dict(zip(names, (a.replace("@", v) for a in sys.argv[4 + n:])))
-asset = lambda n: assets[n]                     # fizz-ble.fwsc -> fizz-V.fwsc (ASSETS)
+asset = lambda n: assets[n]                     # evilgenius.fwsc -> evilgenius-V.fwsc (ASSETS)
 def file(n):
     for p in (d / asset(n), d / n):
         if p.is_file():
@@ -90,7 +90,7 @@ for p in entry["packages"]:
         if key in p:
             want[p[key]["path"].split("/", 1)[1]] = p[key]["sha256"]
 if sorted(want) != sorted(names):
-    sys.exit(f"::error::releases.json's {v} lists {sorted(want)}, not the five files {sorted(names)}")
+    sys.exit(f"::error::releases.json's {v} lists {sorted(want)}, not the files {sorted(names)}")
 site = Path("site/firmware") / v
 bad = [n for n in names if got[n] != want[n]]
 bad += [f"{n} (site/firmware/{v}/)" for n in names
@@ -100,7 +100,7 @@ if bad:
              "(or missing): this build is not the release the install page serves")
 for n in names:
     print(f"  {got[n]}  {asset(n)}")
-print(f"site/firmware/releases.json and site/firmware/{v}/: {v}'s five sha256s match")
+print(f"site/firmware/releases.json and site/firmware/{v}/: {v}'s sha256s match")
 PY
 }
 if [ "$mode" = check ]; then
@@ -155,16 +155,16 @@ fi
 (cd "$out" && sha256sum -c SHA256SUMS)
 check "$out"
 
-# what the shared workflow signs and releases (its "packages": fizz-*), in the root under the release's names; on
+# what the shared workflow signs and releases (its "packages": evilgenius-*), in the root under the release's names; on
 # GitHub's runner only (on the Mac $out/ has them)
 if [ "${GITHUB_ACTIONS:-}" = true ]; then
-    rm -f fizz-*
+    rm -f evilgenius-*.fwsc evilgenius-*.bin
     for i in "${!NAMES[@]}"; do cp "$out/${NAMES[$i]}" "./${ASSETS[$i]//@/$v}"; done
     shopt -s nullglob
-    got=(fizz-*)
+    got=(evilgenius-*.fwsc evilgenius-*.bin)
     if [ "${#got[@]}" != "${#NAMES[@]}" ]; then
-        echo "::error::the root has ${#got[@]} files fizz-*, not the ${#NAMES[@]} packages and data blobs"
+        echo "::error::the root has ${#got[@]} files evilgenius-*, not the package and its ${#NAMES[@]} files in all"
         exit 1
     fi
-    ls -l fizz-*
+    ls -l evilgenius-*.fwsc evilgenius-*.bin
 fi

@@ -1,40 +1,34 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MPL-2.0
-"""Cut a FIZZ release for testers: build it, put it on the site's install page, and print the git commands that
-publish it (it runs none of them: nothing is pushed, tagged or released from here).
+"""Cut an EvilGenius release: build it, put it on the site's install page, and print the git commands that
+publish it (it runs none of them: nothing is pushed, tagged or released from here). FIZZ's release.py, for one
+package: EvilGenius has only the Bluetooth build.
 
   firmware/release.py VERSION [--date YYYY-MM-DD]       the release, into this tree (site/firmware/, CHANGELOG.md)
   firmware/release.py VERSION --dry-run [--out DIR]     the same checks and builds, its files into DIR (default
                                                         firmware/app/build/release-dry-run/): the tree is not touched
-  firmware/release.py VERSION --rebuild DIR             the same builds of a released (or any) VERSION, its five files
+  firmware/release.py VERSION --rebuild DIR             the same build of a released (or any) VERSION, its three files
                                                         and SHA256SUMS straight into DIR, nothing else written: the
                                                         version may be listed or tagged, CHANGELOG.md is not read
                                                         (firmware/hub_build.sh: the signed build on GitHub, BUILDING.md)
-  firmware/release.py --notes VERSION                   CHANGELOG.md's section for VERSION, with the install page and
-                                                        Discord (the GitHub release's text: .github/workflows/release.yml)
+  firmware/release.py --notes VERSION                   CHANGELOG.md's section for VERSION, with the install page
+                                                        (the GitHub release's text: .github/workflows/release.yml)
 
-VERSION is X.Y.Z-beta.N for a tester beta (0.11.0-beta.1), or X.Y.Z; a dry run may add a suffix
-(0.11.0-beta.0-dryrun). What it does:
+VERSION is X.Y.Z-beta.N for a tester beta (0.1.0-beta.1), or X.Y.Z; a dry run may add a suffix
+(0.1.0-beta.0-dryrun). What it does:
   1. checks: the tree clean (nothing changed or untracked, fm1-base and felucca-bsp as committed), the version new
      (not in releases.json, no tag vVERSION), CHANGELOG.md's "## Unreleased" section written (the notes for testers),
      site/install/fm1lib.js what fm1-base makes (firmware/tools/sync_installer.py --check);
-  2. builds each package in PACKAGES (the USB one, then the Bluetooth one: firmware/build.py --ble) with
-     firmware/build.py --release X.Y.Z (fm1-base: the identity FM-1_46XXYYZZ, the same for both)
-     and APP_VERSION set to the whole VERSION, so the unit reports "FIZZ 0.11.0-beta.1" (FIZZ's SysEx IDENTITY,
-     app.c fz_init(APP_NAME " " APP_VERSION); fm1-base defines APP_VERSION from its build's VERSION, which this sets
-     on fm1-base's build module before the app is compiled: firmware/build.py and firmware/app are not changed);
-     each checked: the identity, the update loader, the version string in the image, the data blobs' stamps
-     ("FZXDSTMP"; the Bluetooth package's second blob "FZX2STMP": length and CRC-32 after them), and the blobs the
-     package carries (flash.bin to 0xFC000: each blob and its trailer at its flash address, the separate .bin's);
-  3. site/firmware/VERSION/: fizz.fwsc, fizz-xdata.bin (FIZZ's data: the page writes it after the install),
-     fizz-ble.fwsc, fizz-ble-xdata.bin, fizz-ble-xdata2.bin (the Bluetooth package's two blobs), SHA256SUMS;
+  2. builds the package (firmware/build.py --release X.Y.Z: the identity FM-1_45XXYYZZ) with APP_VERSION set to the
+     whole VERSION, so the unit reports "EVILGENIUS 0.1.0-beta.1"; checked: the identity, the update loader, the
+     version string in the image, the two data blobs' stamps ("FZXDSTMP", "FZX2STMP": length and CRC-32 after them),
+     and the blobs the package carries (flash.bin to 0xFC000: each blob and its trailer at its flash address);
+  3. site/firmware/VERSION/: evilgenius.fwsc (the package: it carries its data), evilgenius-xdata.bin and
+     evilgenius-xdata2.bin (the two data blobs on their own, for firmware/tools/fizz_xdata.py push), SHA256SUMS;
   4. site/firmware/releases.json: the release first (the page offers it by default), its notes from CHANGELOG.md;
-     its packages: the USB one first, as older install pages read it ({name, label, fwsc, data}: packages[0]), then
-     the Bluetooth one ({name, kind: "ble", label, projects, presets, fwsc, data, data2}; data and data2 with "at",
-     the flash address the page writes each to);
   5. CHANGELOG.md: "## Unreleased" becomes "## VERSION (DATE)", a new empty Unreleased above it;
-  6. prints the git commands: commit, tag vVERSION, push master (Pages deploys the page), push the tag (the
-     release workflow makes the GitHub pre-release with every .fwsc and .bin attached, the version in their names).
+  6. prints the git commands: commit, tag vVERSION, push main (Pages deploys the page), push the tag (the release
+     workflow makes the GitHub release with the .fwsc and the .bin files attached, the version in their names).
 The build needs what firmware/build.py needs (the JieLi toolchain, the AC79 SDK)."""
 import argparse
 import datetime
@@ -57,17 +51,14 @@ BUILD = APP / "build"
 SITE_FW = Path("site") / "firmware"           # (relative to the tree, or to --out)
 INDEX = SITE_FW / "releases.json"
 CHANGELOG = Path("CHANGELOG.md")
-PREFIX = "FM-1_46"                            # firmware/app/fm1.toml id_prefix
-INSTALL_URL = "https://quixotic7.github.io/FIZZ/install/"
-DISCORD = "https://discord.gg/emf6DmZ9V"
-REPO_URL = "https://github.com/Quixotic7/FIZZ"
-# the packages a release carries: (file name, firmware/build.py's arguments, what it is, for the page, its kind)
-# (P2.14: the dual build, fm1.toml cpu2 = true with cpu2_fallback; "--single-core" makes fizz-1core, core 1 off)
-# (2026-10-27: the Bluetooth package, firmware/BUDGET.md "The Bluetooth package": the same identity, its own name, two
-# data blobs; 4 projects and 128 MY presets)
-PACKAGES = [("fizz", [], "8 voices across both cores, USB MIDI and USB audio", "usb"),
-            ("fizz-ble", ["--ble"], "8 voices across both cores, USB and Bluetooth MIDI, USB audio; 4 projects, 128 MY presets",
-             "ble")]
+PREFIX = "FM-1_45"                            # firmware/app/fm1.toml id_prefix
+INSTALL_URL = "https://quixotic7.github.io/evilgenius/install/"
+FEEDBACK = "https://github.com/Quixotic7/evilgenius/issues"
+REPO_URL = "https://github.com/Quixotic7/evilgenius"
+# the package a release carries: (the published name, firmware/build.py's arguments, what it is, for the page, its
+# kind, the build's own file stem). EvilGenius has one: the Bluetooth build (firmware/build.py makes it without --ble)
+PACKAGES = [("evilgenius", [], "8 voices across both cores, USB and Bluetooth MIDI, USB audio; 4 projects, 128 MY presets",
+             "ble", "evilgenius-ble")]
 # the Bluetooth package's blobs' flash addresses (firmware/build.py BLE_XDATA_LO, BLE_X2_LO; fizz_xdata.py BLE_BLOBS)
 BLE_XDATA_AT, BLE_XDATA2_AT = 0xE7000, 0x97000
 USB_XDATA_AT = 0xE5000                        # (firmware/build.py XDATA_LO)
@@ -133,34 +124,19 @@ def changelog_released(text, version, date):
 
 
 def release_body(version, notes):
-    ble = (REPO / SITE_FW / version / "fizz-ble.fwsc").exists()     # (a release from before the Bluetooth package: USB only)
-    two = (f"Two packages: **USB** (`fizz`, the default) and **Bluetooth** (`fizz-ble`: Bluetooth MIDI too; 4 projects, "
-           f"128 presets). Switching packages erases the FM-1's projects and presets: back up in the Manager first, "
-           f"restore after. ") if ble else ""
-    files = (f"`firmware/tools/fizz_xdata.py push --blob fizz-xdata-{version}.bin` (USB), or `firmware/tools/fizz_xdata.py "
-             f"push --ble --blob fizz-ble-xdata-{version}.bin --blob2 fizz-ble-xdata2-{version}.bin` (Bluetooth)") if ble else \
-        f"`firmware/tools/fizz_xdata.py push --blob {PACKAGES[0][0]}-xdata-{version}.bin`"
-    usb = REPO / SITE_FW / version / "fizz.fwsc"
-    if ble and usb.exists() and len(flash_bin(usb.read_bytes())[0]) == FLASH_TOP:   # (from 0.12.0-beta.13: the packages
-        return (f"{notes}\n\n---\n\n**Install it from the browser** (Chrome or Edge, USB): {INSTALL_URL}?v={version}"
-                f"\n\nEach `.fwsc` carries FIZZ's data, so it installs completely from FIZZ's page, from The Firmware "
-                f"Hub or from a terminal (`fm1_install.py`). Two packages: **Bluetooth** (`fizz-{version}.fwsc`: "
-                f"Bluetooth MIDI too; 4 projects, 128 presets) and **USB** (`fizz-usb-{version}.fwsc`). The Bluetooth "
-                f"package uses the flash at 0x97000..0xAEFFF, where other firmwares keep their data: back up first. "
-                f"Switching packages erases the FM-1's projects and presets: back up in the Manager first, restore "
-                f"after. The `.bin` files are FIZZ's data on its own (`firmware/tools/fizz_xdata.py push`); an install "
-                f"no longer needs them.\n\n**Feedback:** FIZZ's Discord, {DISCORD}\n")   # carry their blobs)
-    return (f"{notes}\n\n---\n\n**Install it from the browser** (Chrome or Edge, USB): {INSTALL_URL}?v={version}\n\n"
-            f"The page installs FIZZ and then writes FIZZ's data. {two}With the files below instead (a terminal), install "
-            f"the `.fwsc`, then write its data: {files}.\n\n"
-            f"**Feedback:** FIZZ's Discord, {DISCORD}\n")
+    return (f"{notes}\n\n---\n\n**Install it from the browser** (Chrome or Edge, USB): {INSTALL_URL}?v={version}"
+            f"\n\n`evilgenius-{version}.fwsc` carries EvilGenius's data, so it installs completely from EvilGenius's "
+            f"page, from The Firmware Hub or from a terminal (`fm1_install.py`). It uses the flash at "
+            f"0x97000..0xAEFFF, where other firmwares keep their projects and samples: back those up first. The "
+            f"`.bin` files are the data on its own (`firmware/tools/fizz_xdata.py push`); an install does not need "
+            f"them.\n\n**Feedback:** {FEEDBACK}\n")
 
 
 # ---- the build (in a child process: fm1-base's build module with the version string set)
 def child_build(version, args):
     """firmware/build.py ARGS, its fm1-base module's VERSION (APP_VERSION) set to VERSION before the app is built"""
     sys.argv = [str(HERE / "build.py"), *args]
-    g = runpy.run_path(str(HERE / "build.py"), run_name="fizz_build")   # (its __main__ block is not run)
+    g = runpy.run_path(str(HERE / "build.py"), run_name="eg_build")   # (its __main__ block is not run)
     fb = g["fb"]
     build_app = fb.build_app
 
@@ -211,16 +187,16 @@ def check_bundled(fwsc, blobs, ats):
         die(f"{fwsc.name}: flash.bin's data region (0x93000..0xFC000) is not the separate blobs with their trailers")
 
 
-def build(version, xyz, name, args):
-    """the package built and checked -> (fwsc, [(blob, crc)], identity): the USB package one blob, the Bluetooth two"""
+def build(version, xyz, name, args, stem):
+    """the package built and checked -> (fwsc, [(blob, crc)], identity); stem: the build's own file name"""
     env = dict(os.environ)
     r = subprocess.run([sys.executable, str(Path(__file__).resolve()), "--_build", version, *args, "--release", xyz],
                        cwd=REPO, env=env)
     if r.returncode:
         die(f"{name}: the build failed")
-    ble = "--ble" in args
-    fwsc = BUILD / f"{name}-{xyz}.fwsc"
-    image = BUILD / f"{name}.bin"
+    ble = True                                  # (EvilGenius: the Bluetooth build, always)
+    fwsc = BUILD / f"{stem}-{xyz}.fwsc"
+    image = BUILD / f"{stem}.bin"
     # (firmware/build.py: fizz-xdata.bin for the USB package and the single-core one; fizz-ble-xdata.bin and
     # fizz-ble-xdata2.bin for the Bluetooth one)
     xdata = [BUILD / "fizz-ble-xdata.bin", BUILD / "fizz-ble-xdata2.bin"] if ble else [BUILD / "fizz-xdata.bin"]
@@ -233,8 +209,8 @@ def build(version, xyz, name, args):
         die(f"{fwsc.name}: identity {product_of(raw)!r}, not {want}")
     if b"FELUCCA-LOADER-1" not in raw:
         die(f"{fwsc.name}: no update loader in it")
-    if f"FIZZ {version}".encode() not in img:
-        die(f"{image.name}: the version string 'FIZZ {version}' is not in the image")
+    if f"EVILGENIUS {version}".encode() not in img:
+        die(f"{image.name}: the version string 'EVILGENIUS {version}' is not in the image")
     blobs = []
     for path, tag in zip(xdata, (STAMP1, STAMP2)):
         blob = path.read_bytes()
@@ -316,11 +292,11 @@ def main():
 
     # 2. the builds
     built = []
-    for name, args, label, kind in PACKAGES:
-        raw, blobs, identity = build(v, xyz, name, args)
+    for name, args, label, kind, stem in PACKAGES:
+        raw, blobs, identity = build(v, xyz, name, args, stem)
         built.append((name, label, kind, raw, blobs, identity))
         print(f"  {name}: {len(raw)} B, identity {identity}, data " +
-              ", ".join(f"{len(b)} B (CRC-32 {c:08x})" for b, c in blobs) + f", 'FIZZ {v}' in the image")
+              ", ".join(f"{len(b)} B (CRC-32 {c:08x})" for b, c in blobs) + f", 'EVILGENIUS {v}' in the image")
     if len({b[5] for b in built}) != 1:
         die("the packages' identities differ")
 
@@ -347,7 +323,7 @@ def main():
     # 4. releases.json, the newest first
     rel = {"version": v, "date": date, "channel": "beta" if m[4] else "stable", "identity": built[0][5],
            "source": source, "fm1base": base, "notes": notes, "packages": packages}
-    index = {"name": "FIZZ", "latest": v, "releases": [rel] + [r for r in index.get("releases", []) if r.get("version") != v]}
+    index = {"name": "EVILGENIUS", "latest": v, "releases": [rel] + [r for r in index.get("releases", []) if r.get("version") != v]}
     (out / INDEX).parent.mkdir(parents=True, exist_ok=True)
     (out / INDEX).write_text(json.dumps(index, indent=2) + "\n", encoding="utf-8")
 
@@ -365,10 +341,10 @@ Nothing is published yet. Look at the diff (git diff --stat; the page: node site
 then publish:
 
   git add {SITE_FW / v} {INDEX} {CHANGELOG}
-  git commit -m "Release FIZZ {v}"
-  git tag -a v{v} -m "FIZZ {v}"
-  git push origin master          # Pages deploys the install page with {v}
-  git push origin v{v}       # the release workflow makes the GitHub pre-release, both packages attached
+  git commit -m "Release EVILGENIUS {v}"
+  git tag -a v{v} -m "EVILGENIUS {v}"
+  git push origin main            # Pages deploys the install page with {v}
+  git push origin v{v}       # the release workflow builds, signs and publishes the GitHub release
 """)
     return 0
 

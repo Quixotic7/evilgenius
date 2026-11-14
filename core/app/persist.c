@@ -609,8 +609,9 @@ static uint32_t ser_set(const qd_app_t *a, uint8_t *b)
                                                         /* (EvilGenius: bit 3 THE VOICE off, bit 2 always; neither:
                                                          * only while stopped) */
 #endif
-    b[o++] = (uint8_t)(a->ui.view != QD_VIEW_OVERVIEW ? a->ui.view : a->ui.ov_back >= 0 ? a->ui.ov_back : QD_VIEW_EDIT),
-    b[o++] = (uint8_t)a->ui.follow;   /* (2026-11-11: OVERVIEW is SEL's, never saved as the Home view) */   /* (2026-10-26: b[5]'s top bit BOOST; its low bits
+    b[o++] = (uint8_t)qd_ctl_home_view(a),
+    b[o++] = (uint8_t)a->ui.follow;   /* (2026-11-11: OVERVIEW is SEL's, never saved as the Home view; 2026-11-13: nor
+                                         * SEQ's PIANO ROLL) */   /* (2026-10-26: b[5]'s top bit BOOST; its low bits
                                                          * were the knob layout (0..3); FIZZ MIDI (c): bit 6 CLOCK OUT
                                                          * off, bit 5 CC OUT off: an older record's 0, on) */
     b[o++] = QD_NFXP;
@@ -639,10 +640,12 @@ static int de_set(const uint8_t *b, uint32_t len, int *proj, int *pat, int *sel,
     /* b[5]: BOOST (bit 7), CLOCK OUT off (6), CC OUT off (5); its low bits were the knob layout A..D (ignored since
      * 2026-10-25) */
     a->ui.view = len == 11u + 2u * nf ? b[6] % QD_NVIEW : QD_VIEW_EDIT;
-    if (a->ui.view == QD_VIEW_OVERVIEW)                 /* (2026-11-11, owner: a record from 1ad69a7: OVERVIEW was a Home
-                                                         * view then; SEL's only now) */
+    if (!QD_VIEW_HOME(a->ui.view))                      /* (2026-11-11, owner: a record from 1ad69a7: OVERVIEW was a Home
+                                                         * view then; SEL's only now. 2026-11-13: the PIANO ROLL is
+                                                         * SEQ's: EDIT) */
         a->ui.view = QD_VIEW_EDIT;   /* (P1.5s: a record from before EDIT was
                                                          * the default view: EDIT) */
+    a->ui.hview = (uint8_t)a->ui.view;
     a->ui.follow = b[7] != 0;
     a->ui.boost = (b[5] & 0x80u) != 0;
     a->ui.clk_out = !(b[5] & 0x40u), a->ui.cc_out = !(b[5] & 0x20u);
@@ -1260,6 +1263,18 @@ void qd_persist_ms(qd_app_t *a)
         else
             look(a, QD_PI_LIB + (ps->scan * 4 + j) % QD_NLIB);   /* (P1.5t: 256: four new ones a look) */
     }
+    if (ps->save_req > QD_PI_N) {                       /* (saved by hand: done when what changed before is written) */
+        for (it = 0; it < QD_PI_N && (ps->seen[it] == ps->saved[it] || ps->changed[it] > ps->save_t ||
+                                      !item_here(a, it)); it++)
+            ;
+        if (it == QD_PI_N && ps->job < 0)
+            ps->save_req = 0;
+    } else if (ps->save_req) {                          /* (.. every item looked at, one a ms) */
+        it = ps->save_req++ - 1;
+        look(a, it);
+        if (ps->seen[it] != ps->saved[it])
+            ps->changed[it] = ps->save_t;
+    }
     if (ps->job < 0 && ps->urgent) {                    /* P2.4: the one a prefetch waits on: now, no debounce */
         it = ps->urgent - 1;
         if (!item_here(a, it))
@@ -1275,7 +1290,7 @@ void qd_persist_ms(qd_app_t *a)
         for (it = 0; it < QD_PI_N; it++)
             if (ps->seen[it] != ps->saved[it]) {
                 dirty = 1;
-                if (a->ms - ps->changed[it] >= QD_SAVE_DEBOUNCE_MS && item_here(a, it)) {   /* (P2.6c: in RAM: a
+                if ((ps->save_req || a->ms - ps->changed[it] >= QD_SAVE_DEBOUNCE_MS) && item_here(a, it)) {   /* (P2.6c: in RAM: a
                                                          * sound's job never reads one in) */
                     job_start(a, it);
                     break;
@@ -1293,6 +1308,17 @@ void qd_persist_soon(qd_app_t *a, int it)
     if (!a->per.urgent)
         a->per.urgent = it + 1;
 }
+
+void qd_persist_save_project(qd_app_t *a)
+{
+    qd_persist_t *ps = &a->per;
+    ps->save_req = 0;
+    if (!a->seq.playing && qd_persist_flush(a))
+        return;
+    ps->save_req = 1;
+    ps->save_t = a->ms;
+}
+int qd_persist_save_busy(const qd_app_t *a) { return a->per.on && a->per.save_req; }
 
 void qd_persist_own_step(qd_app_t *a, int on) { a->per.own_step = on != 0; }
 
@@ -1444,7 +1470,7 @@ int qd_proj_new(qd_app_t *a, int p)
     if (p < 0 || p >= QD_NPROJ || !ps->on)
         return 0;
     qd_undo_reset(a);
-    a->ui.view = QD_VIEW_EDIT;                          /* P1.5s: a new project starts in EDIT */
+    a->ui.view = a->ui.hview = QD_VIEW_EDIT;            /* P1.5s: a new project starts in EDIT */
     proj_switch_prep(a);
     if (ps->pexists[p])
         proj_erase_records(a, p);
@@ -3024,11 +3050,13 @@ void qd_persist_snd_work(qd_app_t *a)
 void qd_persist_prefetch(qd_app_t *a)
 {
     const qd_seq_t *s = &a->seq;
-    int need[4], n = 0, i, wait = 0;
+    int need[5], n = 0, i, wait = 0;
     a->proj.pat_fb = (int8_t)s->cur;                    /* (the playing one first: it may take a pinned slot) */
     need[n++] = s->cur;
     if (a->ui.pat_wait >= 0)
         need[n++] = a->ui.pat_wait;                     /* (2026-10-26: stopped, the one chosen: read in first) */
+    if (a->ui.pc_job >= 0)
+        need[n++] = a->ui.pc_job;                       /* (2026-11-13: PATTERNS' F1 / F2 on it) */
     if (s->sw_pat >= 0)
         need[n++] = s->sw_pat;
     if (s->nchain > 1)

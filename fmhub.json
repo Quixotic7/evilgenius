@@ -1,7 +1,7 @@
 {
-  "what": "EVILGENIUS is a SID Chip Groovebox for the MVave FM-1. 6 tracks, SID Chips, Speech Synthesis, Advanced Sequencing. Full P-Lock sound locks",
+  "what": "A SID chip groovebox that talks. Six tracks of C64 SID voices and SAM speech, per-step sound locks, conditions, ratchets and MIDI FX, and a tower of eight retro effects with a send per track. Bluetooth MIDI and USB audio. A C64 game for a screen.",
   "author": "Quixotic7",
   "kinds": ["groove"],
-  "play": "",
-  "editor": ""
+  "play": "https://quixotic7.github.io/evilgenius/try/",
+  "editor": "https://quixotic7.github.io/evilgenius/manager/"
 }

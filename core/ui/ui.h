@@ -420,8 +420,8 @@ void ui_keymap(const ui_kkey_t k[11], float y, float h);
  * outlines and the page's dashes (the loop, each page's start..end); in the columns:
  *   NOTE   the piano roll (P1.3's s2)        VEL   bars up from the floor      LEN   bars over the steps
  *   MICRO  each step's start off its grid   RATCH the hits in the step        CHNC  a column of dots, lit by chance
- *   COND   the conditions' short names      TRIG  NOTE / LOCK / TIE icons      SOUND the pool number (a dot: none)
  *   LOCKS  the step's lock count
+ * (2026-11-13: COND, TRIG, FUNC, SLIDE and SOUND a 4 x 4 grid of boxes instead, a row a beat: ui_lane.c's grid)
  * a step that overrides the mode in the mode's colour, a step on the track's default grey; the default itself as a
  * dashed line (VEL, LEN, MICRO, RATCH, CHNC, NOTE: the default chord's notes) or a grey label (COND, TRIG, SOUND)
  * across the page. Steps outside the page's start..end dark. The mode's name and the track small in the top line */
@@ -442,6 +442,7 @@ typedef struct {
     uint8_t chance;                     /* 0..100 */
     char cond[6];                       /* "3:4", "FILL", "!1ST"; "" ALWAYS */
     uint8_t sound;                      /* the pool number of its sound lock, 0 none */
+    const char *sname;                  /* .. its name (2026-11-13: SOUND's grid; 0 none) */
     uint8_t nlock;                      /* p-locks */
     uint8_t nplock;                     /* EvilGenius: .. those on the sound (not the mix's): THE ROOM's robots */
     uint8_t strum;
@@ -502,6 +503,8 @@ enum { UI_C_ON = 1, UI_C_LOCK = 2, UI_C_TIE = 4, UI_C_OVR = 8, UI_C_RANGE = 16, 
 qd_rgb ui_steps_fill(uint8_t cell);     /* a cell's fill: UI_STEP_OWN / UI_STEP_TRACK, QD_NONE (a ghost, off, out of range) */
 qd_rgb ui_steps_ink(uint8_t cell);      /* the notes' colour on that fill (a dark shade of it) */
 void ui_lane_draw(const ui_lane_t *v);
+int ui_lane_jump_to(const ui_lane_t *v, int i);   /* 2026-11-13: the box step i's JUMP / LEAP lands in (-1: none, or
+                                                   * off the page) */
 void ui_steps_row(const ui_lane_t *v, float y, float open);   /* P1.3r: the page edited's row alone (EDIT) */
 void ui_room_draw(const ui_lane_t *v);  /* EvilGenius: THE ROOM (ui_room.c): the page as a room of platforms, y 0..88 */
 
@@ -670,6 +673,10 @@ typedef struct {
     int blink;
     int launch;                         /* the launch mode (seq.h QD_LAUNCH_*: END BAR BEAT NOW), ALGORITHM's */
     const char *launch_name;
+    /* 2026-11-13, PATTERNS + F1 / F2 (as the steps' pictures): the layer held (1 F1, 2 F2; 0 none); F1's copy (ringed
+     * green; -1); F2's last W (ringed: CUT orange, PASTE green; -1) and the hand: a card with its pattern's name (-1:
+     * another's copy; empty: dashed), the next W's icon */
+    int layer, src, last, last_act, hand, loaded, next_paste;
 } ui_patterns_t;
 void ui_patterns_draw(const ui_patterns_t *v);
 
@@ -739,7 +746,7 @@ typedef struct {
     int set_page;                       /* SETTINGS: the page (2026-11-10: 1 HOME; the Bluetooth package: 2 BLUETOOTH) */
     int voice, voice_lvl;               /* EvilGenius: .. HOME's KNOB 3: THE VOICE (0 only while stopped, 1 always,
                                          * 2 off), KNOB 4 its level, 0..100 % */
-    int home_view, home_lock;           /* .. HOME: the Home view (0 PIANO ROLL, 1 STEPS, 2 EDIT, 3 GEEK OUT, 4 OVERVIEW),
+    int home_view, home_lock;           /* .. HOME: the Home view (2026-11-13: 0 STEPS, 1 EDIT, 2 GEEK OUT),
                                          * LOCK */
 #if QD_PKG_BLE
     int ble_on, ble_st;                 /* .. BLUETOOTH ON / OFF, its state: 0 OFF, 1 WAITING, 2 CONNECTED */
@@ -840,6 +847,7 @@ enum { UI_SC_WORD,                      /* the villain says it */
        UI_SC_DROP };                    /* pasted, recalled, doubled: he puts it down */
 int ui_scene_kind(const char *big, const char *small);
 void ui_confirm_draw(const char *big, const char *small, qd_rgb col, float t);
+void ui_saved_draw(const char *big, float t);   /* 2026-11-13: PROJECT SAVED: the word green under a big tick */
 /* P1.5c: SHIFT + F1 / F2: UNDO / REDO big, under it what it was as a glyph (undo.h QD_UK_*; -1: nothing there, dim) */
 void ui_undo_draw(int redo, int kind, float t);
 void ui_import_draw(const char *name, int pool, int slot, float t);   /* P1.5r (ui_lib.c): a sound imported */

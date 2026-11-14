@@ -2,7 +2,7 @@
  * This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0. If a copy of the MPL was not
  * distributed with this file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 /* EvilGenius: OVERVIEW (FIZZ's, redrawn at 120 x 120; ui.h ui_ov_t): the six tracks as six floors of the tower, each
- * the page's 16 steps as cells, a step's fill as tall as its velocity (a ghost: an outline), the one playing white, the
+ * the page's 16 steps as cells on black (an empty one: its floor), a step's bar as tall as its velocity (a ghost: an outline), the one playing white, the
  * playing column marked red. The selected track's floor framed in its colour; muted floors grey and struck through
  * (a page out of the loop: dashed). The black keys picking the tracks: the icons on lit keys, swept in top to bottom;
  * picking a hold mode: its name on top, and when it changes a band over the head with the ten keys, the mode's lit.
@@ -72,17 +72,21 @@ void ui_ov_draw(const ui_ov_t *v)
             const int cx = ov_cx(i);
             const int vel = v->vel[t][i], lock = (v->lock[t] >> i) & 1, out = (v->out[t] >> i) & 1;
             const qd_rgb sc = out ? UI_G2 : col;        /* outside the page's start..end: grey, half-toned */
-            if (out)
-                px_checker(cx, y, 5, OV_H, UI_G3, i & 1);
+            /* (the owner, 2026-11-14: "some tracks are very hard to read the steps on": a cell is black now, not the
+             * C64's blue the reds and the light blue sank into: an empty step its floor only, a step a solid bar) */
+            if (out)                                    /* outside the page's start..end: a dotted floor */
+                px_pset(cx + 2, y + OV_H - 1, UI_G2);
             else
-                px_rect(cx, y, 5, OV_H, UI_G3);
-            if (vel) {                                  /* a fill as tall as the velocity (a ghost: an outline) */
-                const int h = lock ? OV_H : vel * OV_H / 127 < 2 ? 2 : vel * OV_H / 127;
+                px_hline(cx, y + OV_H - 1, 5, vel ? sc : UI_G3);
+            if (vel) {                                  /* a bar as tall as the velocity (a ghost: an outline) */
+                const int h = lock ? OV_H : vel * OV_H / 127 < 3 ? 3 : vel * OV_H / 127;
                 const int hot = i == v->play[t] && !mute && !lock && !out;
                 if (lock)
                     px_box(cx, y, 5, OV_H, sc);
                 else
                     px_rect(cx, y + OV_H - h, 5, h, hot ? PX_WHITE : sc);
+            } else if (i == v->play[t] && !mute && !out) {   /* the playhead on an empty step: its floor white */
+                px_hline(cx, y + OV_H - 1, 5, PX_WHITE);
             }
             if (t == v->sel && ((v->held >> i) & 1))    /* held / selected: outlined white */
                 px_box(cx - 1, y - 1, 7, OV_H + 2, UI_K3);

@@ -169,7 +169,7 @@ void qd_ctl_init(qd_app_t *a)
     u->fol_g = -1;
     u->ride_from = u->fxr_from = -1;
     u->voice_lvl = QD_VOICE_LVL_MAX;   /* (THE VOICE: only while stopped, at full level) */
-    u->view = QD_VIEW_EDIT;            /* P1.5s (the owner: "this home screen should be the default one") */
+    u->view = u->hview = QD_VIEW_EDIT;   /* P1.5s (the owner: "this home screen should be the default one") */
     u->follow = 1;
     u->clk_out = u->cc_out = 1;        /* (FIZZ MIDI (c)) */
     u->lmode = QD_LMODE_MODES;         /* (the owner, 2026-10-25: MODES the default; a saved setting overrides) */
@@ -190,6 +190,7 @@ void qd_ctl_init(qd_app_t *a)
     u->mkey = -1;
     u->seq_bank = QD_PAT_START / 16;
     u->pat_wait = -1;
+    u->pc_src = u->pc_hand = u->pc_last = u->pc_job = -1;   /* (2026-11-13: PATTERNS' F1 / F2) */
     u->tl.scope = QD_TS_TRACK;                          /* T1: TOOLS starts on ROTATE, the track */
     u->tl.opage = 0xFF;
     for (i = 0; i < QD_PAT_NTRACK; i++)
@@ -386,8 +387,10 @@ static void set_mode(qd_app_t *a, int mode)
     qd_ui_t *u = &a->ui;
     if (mode != QD_MODE_STEP || u->mode == QD_MODE_KEYS) {   /* (2026-11-10: leaving the keyboard: its selection
                                                          * ends) */
-        if (mode != QD_MODE_STEP)
+        if (mode != QD_MODE_STEP) {
             qd_latch_close(a);                          /* (P1.3d: F3's latch ends with it) */
+            u->seq_used &= ~2;                          /* (2026-11-13: SEQ's PATTERNS page too) */
+        }
         if (!u->slatch)                                 /* (2026-11-13, owner: the step lock's selection stays across
                                                          * every mode; only steps held by a finger are let go) */
             qd_step_release_all(a);
@@ -624,6 +627,8 @@ static void k_pattern(qd_app_t *a, int key, int w, int down, int vel)
         u->seq_down &= (uint16_t)~bit;
         return;
     }
+    if (qd_pc_white(a, u->seq_bank * 16 + w))           /* (2026-11-13: PATTERNS + F1 / F2: copy, cut, paste) */
+        return;
     u->seq_down |= bit;
     u->seq_done &= (uint16_t)~bit;
     u->seq_t0[w] = a->ms;
@@ -1397,12 +1402,16 @@ static void b_shift(qd_app_t *a, int down)
  * click (at its release) is the next view. The global settings' LOCK: no cycling, a click the old HOME. Held
  * QD_HOME_HOLD_MS (qd_ctl_ms): the global settings, from anywhere */
 int qd_ctl_view_family(int v) { return v <= QD_VIEW_EDIT ? v : QD_VIEW_GEEK(v) ? 3 : 4; }
+/* 2026-11-13 (owner): STEPS, EDIT, GEEK OUT, round (the PIANO ROLL is SEQ's page; OVERVIEW SEL's) */
 int qd_ctl_next_view(const qd_app_t *a)
 {
     const int v = a->ui.view;
-    return QD_VIEW_GEEK(v) || v == QD_VIEW_OVERVIEW ? QD_VIEW_ROLL   /* (2026-11-11, owner: OVERVIEW is SEL's, not in
-                                                         * HOME's cycle) */
-                                              : v == QD_VIEW_EDIT ? QD_VIEW_METERS + a->ui.geek : v + 1;
+    return v == QD_VIEW_STEPS ? QD_VIEW_EDIT : v == QD_VIEW_EDIT ? QD_VIEW_METERS + a->ui.geek : QD_VIEW_STEPS;
+}
+int qd_ctl_home_view(const qd_app_t *a)
+{
+    const qd_ui_t *u = &a->ui;
+    return QD_VIEW_GEEK(u->hview) ? QD_VIEW_METERS + u->geek % 5 : QD_VIEW_HOME(u->hview) ? u->hview : QD_VIEW_EDIT;
 }
 static void set_view(qd_app_t *a, int v)
 {
@@ -1410,6 +1419,8 @@ static void set_view(qd_app_t *a, int v)
     if (QD_VIEW_GEEK(u->view))
         u->geek = (uint8_t)(u->view - QD_VIEW_METERS);  /* (the page kept, a restored one too) */
     u->view = v;
+    if (QD_VIEW_HOME(v))
+        u->hview = (uint8_t)v;                          /* (2026-11-13: the Home view HOME comes back to) */
     u->sel_down &= 0xFFu;                               /* (OVERVIEW's black keys: none down) */
 }
 void qd_ctl_set_view(qd_app_t *a, int v) { set_view(a, v); }
@@ -1420,7 +1431,8 @@ static int home_away(const qd_app_t *a)
 {
     const qd_ui_t *u = &a->ui;
     return u->mode != QD_MODE_STEP || u->latch || (u->nheld && !u->slatch) || u->wk_down || (u->seq_used & 2) ||
-           u->ov_back >= 0;                             /* (2026-11-13: the step lock's selection is no reason) */
+           u->ov_back >= 0 || !QD_VIEW_HOME(u->view);   /* (2026-11-13: the step lock's selection is no reason; the
+                                                         * PIANO ROLL is SEQ's page) */
 }
 static void home_back(qd_app_t *a)
 {
@@ -1428,6 +1440,8 @@ static void home_back(qd_app_t *a)
     if (u->ov_back >= 0)                                /* (SEL's OVERVIEW: the view it came from) */
         set_view(a, u->ov_back);
     u->ov_back = -1;
+    if (!QD_VIEW_HOME(u->view))                         /* (2026-11-13: SEQ's PIANO ROLL: the Home view) */
+        set_view(a, qd_ctl_home_view(a));
     if (u->latch == QD_LATCH_BROWSE) {                  /* P1.5t: the browser: a cancel (BACK shows), to the view */
         qd_br_home(a);
         if (!u->slatch)                                 /* (2026-11-13, owner: the selection kept) */
@@ -1450,10 +1464,7 @@ static void b_home(qd_app_t *a, int down)
     if (down) {
         u->home_ms = a->ms;
         u->home_used = 0;
-        if (u->home_woke) {                             /* (the press that woke the unit: nothing else) */
-            u->home_woke = 0;
-            u->home_used = 3;
-        } else if (home_away(a)) {                      /* back to the Home view, at once */
+        if (home_away(a)) {                             /* back to the Home view, at once */
             home_back(a);
             u->home_used = 1;
         }
@@ -1733,6 +1744,10 @@ static void b_oct(qd_app_t *a, int d, int down)
             qd_step_b11_reset(a);
         return;
     }
+    if (!down)
+        qd_pc_up(a, d);
+    else if ((u->seq_used & 2) && u->mode != QD_MODE_IDLE)
+        return;                                         /* (2026-11-13: PATTERNS: F1 / F2 its copy, cut, paste) */
     if (qd_mfx_oct(a, d, down))                         /* P1.6c: the MIDI FX screen: F1 / F2 held + B copy / move
                                                          * (P1.6h: no close; STEPS goes on here: the step layers) */
         return;
@@ -1852,41 +1867,49 @@ static void b_octdn(qd_app_t *a, int down) { b_oct(a, -1, down); }
 static void b_octup(qd_app_t *a, int down) { b_oct(a, 1, down); }
 void qd_ctl_set_mode(qd_app_t *a, int mode) { set_mode(a, mode); }
 
-/* P1.5a: SAVE: the sounds page, storing the selected track's sound (SAVE again stores); T1b: SHIFT + SAVE the
- * project page (again: the projects) */
-static void b_save(qd_app_t *a, int down)
-{
-    if (!down || a->ui.mode == QD_MODE_IDLE)
-        return;
-    if (qd_ctl_shift(a)) {
-        a->ui.shift_used = 1;
-        qd_prj_button(a);
-        return;
-    }
-    qd_lib_save(a);
-}
+/* P1.5a: SAVE (2026-11-13, owner): a click the SAVE pages (SAVE PRESET <-> PROJECT), held the project saved; SHIFT +
+ * SAVE the project page (ctl_lib.c) */
+static void b_save(qd_app_t *a, int down) { qd_lib_save(a, down); }
 
-/* P1.5a: SEQ (printed): held, the patterns (their map after QD_TAP_MS, or at once with a key or a knob); the owner,
- * 2026-10-25: a hold latches the map on release (the same keys; SEQ tapped or HOME: closed); T1b: tapped with no map
- * latched, TOOLS (latched; tapped again or HOME: closed). seq_used: bit 0 used while held, bit 1 latched. */
+/* P1.5a: SEQ (printed): held, the patterns (their map after QD_TAP_MS, or at once with a key or a knob). 2026-11-13
+ * (owner): SEQ is a page button as HOME is: a click from anywhere else opens SEQ's page shown last (seq_pg: TOOLS at
+ * power-on), on one of them the next (TOOLS, PATTERNS (the map latched), PIANO ROLL, round); HOME leaves them. Held,
+ * the patterns are a peek: let go, back where it was (it latched before). seq_used: bit 0 used while held, bit 1 the
+ * PATTERNS page */
+int qd_ctl_seq_page(const qd_app_t *a)
+{
+    const qd_ui_t *u = &a->ui;
+    if (u->mode == QD_MODE_IDLE)
+        return -1;
+    if (u->seq_used & 2)
+        return QD_SEQ_PATTERNS;
+    if (qd_tools_open(a))
+        return QD_SEQ_TOOLS;
+    return u->mode == QD_MODE_STEP && !u->latch && u->view == QD_VIEW_ROLL ? QD_SEQ_ROLL : -1;
+}
 static void b_seq(qd_app_t *a, int down)
 {
     qd_ui_t *u = &a->ui;
+    const int used = u->seq_used & 1;
+    int pg;
     if (down) {
         u->seq_ms = a->ms;
         u->seq_used &= 2;
         return;
     }
-    if (u->mode == QD_MODE_IDLE || qd_ctl_shift(a))
+    u->seq_used &= 2;                                   /* (a peek ends: the page under it again) */
+    if (u->mode == QD_MODE_IDLE || qd_ctl_shift(a) || used || a->ms - u->seq_ms >= QD_TAP_MS)
         return;
-    if (!(u->seq_used & 1) && a->ms - u->seq_ms < QD_TAP_MS) {   /* a tap: the latched map closed, else TOOLS */
-        if (u->seq_used & 2)
-            u->seq_used = 0;
-        else
-            qd_tools_open(a) ? qd_latch_close(a) : qd_tools_screen(a);
-        return;
-    }
-    u->seq_used = 2;                                    /* a hold (a key or a knob in it too): the map latched */
+    pg = qd_ctl_seq_page(a);
+    pg = pg < 0 ? u->seq_pg : (pg + 1) % QD_NSEQ;
+    home_back(a);                                       /* (another page, a latch, held steps: closed, as HOME does) */
+    u->seq_pg = (uint8_t)pg;
+    if (pg == QD_SEQ_TOOLS)
+        qd_tools_screen(a);
+    else if (pg == QD_SEQ_PATTERNS)
+        u->seq_used = 2;
+    else
+        set_view(a, QD_VIEW_ROLL);
 }
 int qd_ctl_seq_map(const qd_app_t *a)
 {
@@ -1914,8 +1937,8 @@ static void (*const BUTTONS[QD_NBTN])(qd_app_t *a, int down) = {
     [QD_B_SAVE] = b_save,              /* P1.5a: the sounds page: the track's sound into the LIBRARY; SHIFT: the
                                         * project (T1b) */
     [QD_B_KEYS] = b_fill,              /* ARP: tapped MIDI FX, held or SHIFT + ARP the MIDI FX on / off */
-    [QD_B_MIX] = b_seq,                /* printed SEQ, held: the patterns, latched on release (W: the keys' table);
-                                        * tapped: TOOLS (T1b) */
+    [QD_B_MIX] = b_seq,                /* printed SEQ: clicks TOOLS, PATTERNS, PIANO ROLL (2026-11-13); held: the
+                                        * patterns, a peek (W: the keys' table) */
     [QD_B_PLAY] = b_play,              /* play / stop; REC + PLAY: play, recording armed */
     [QD_B_REC] = b_rec,                /* tap: the keyboard <-> the sequencer; SHIFT: armed */
     [QD_B_OCTDN] = b_octdn,            /* F1 */
@@ -1941,15 +1964,21 @@ static int stick_menu_shown(const qd_app_t *a, int button)
 void qd_ctl_button(qd_app_t *a, int button, int down)
 {
     if (down) {
+        const int woke = a->ui.mode == QD_MODE_IDLE;
         if (button != QD_B_FUNC)
-            a->ui.home_woke = touch(a) && button == QD_B_HOME;
-        else
-            a->ui.touch_ms = a->ms;
+            touch(a);
+        a->ui.touch_ms = a->ms;
         if (button == QD_B_HOME)
             a->ui.home_used = 3;                        /* (b_home's own press clears it: a press the typewriter
                                                          * takes is no click, no hold) */
-        if (a->ui.mode == QD_MODE_IDLE)
+        if (woke) {                                     /* 2026-11-13 (owner): the press that woke the unit does
+                                                         * nothing else: its release eaten; held, no modifier, no hold
+                                                         * (until pressed again) */
             a->ui.mode = QD_MODE_STEP;
+            a->buttons_held &= ~(1u << button);
+            a->ui.shift_eat |= (uint16_t)(1u << button);
+            return;
+        }
     }
     if (qd_type_open(a) && qd_type_button(a, button, down))
         return;                                         /* P1.5u: a name typed: F1, F2, SAVE, HOME, SHIFT + a button */
@@ -2291,7 +2320,8 @@ static int k_menu(qd_app_t *a, int knob, int d)
                                                          * STEPS, EDIT, GEEK OUT, OVERVIEW), KNOB 2 LOCK (HOME clicks no
                                                          * longer cycle: HOME always that view) */
             if (knob == QD_K_1 && d) {                  /* (2026-11-11, owner: OVERVIEW is SEL's, never a Home view) */
-                const int f = clampi(qd_ctl_view_family(u->ov_back >= 0 ? u->ov_back : u->view) + d, 0, 3);
+                const int f = clampi(qd_ctl_view_family(qd_ctl_home_view(a)) + d, 1, 3);   /* (2026-11-13: STEPS ..
+                                                         * GEEK OUT; the PIANO ROLL is SEQ's) */
                 u->ov_back = -1;
                 set_view(a, f < 3 ? f : QD_VIEW_METERS + u->geek % 5);
             } else if (knob == QD_K_2) {
@@ -2523,7 +2553,8 @@ void qd_ctl_knob(qd_app_t *a, int knob, int d)
         u->knob_ms[knob] = a->ms ? a->ms : 1u;
         u->knob_dir[knob] = dir;
     }
-    touch(a);
+    if (touch(a))                                       /* 2026-11-13 (owner): the turn that woke the unit: nothing else */
+        return;
     if (held(a, QD_B_FUNC))
         u->shift_unstick |= 2u;                         /* (2026-11-13: SHIFT + a knob: no stick on its release) */
     if (knob == QD_K_SELECT)
@@ -2636,6 +2667,7 @@ void qd_ctl_ms(qd_app_t *a)
     }
     if (held(a, QD_B_HOME) && !(u->home_used & 2) && a->ms - u->home_ms >= QD_HOME_HOLD_MS && u->mode != QD_MODE_IDLE)
         home_hold(a);                                   /* 2026-11-10 (owner): HOME held: the global settings */
+    qd_lib_save_ms(a);                                  /* 2026-11-13 (owner): SAVE held: the project saved */
     if (held(a, QD_B_REC) && !u->rec_down_used && !u->rec_auto_used && a->ms - u->rec_down_ms >= QD_REC_HOLD_MS &&
         !a->seq.playing && u->mode != QD_MODE_IDLE) {
         u->rec_down_used = 1;                           /* P1.6g: stopped, REC held: armed, latched, in any view (the

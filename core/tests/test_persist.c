@@ -119,7 +119,8 @@ static void pages_test(void)
     memset(FL, 0xFF, sizeof FL);
     boot(G);
     p_run(50);
-    /* the names from the sound: the factory sounds' and the drums' kinds, twelve letters, the same each time */
+    btap(QD_B_HOME);                                    /* (2026-11-13: the press that wakes does nothing else) */
+    /* the names from the sound:the factory sounds' and the drums' kinds, twelve letters, the same each time */
     for (k = 0; k < (int)(sizeof NAMES / sizeof NAMES[0]); k++) {
         int j;
         for (j = 1; j <= G->proj.nsound && strcmp(POOL(&G->proj, j)->name, NAMES[k].name); j++)
@@ -162,19 +163,19 @@ static void pages_test(void)
     }
     CHECK(qd_view_screen(G) == QD_SCR_SAVE && G->ui.ty.spark && G->ui.ty.sel && !strcmp(G->ui.ty.name, nm) &&
               G->ui.sv.replace < 0, "SAVE: SAVE PRESET, a suggested name (%s), no REPLACE (a factory sound)", nm);
-    btap(QD_B_SAVE);
+    btap(QD_B_OCTUP);
     CHECK(!strcmp(LIB(G, 0)->name, nm) && !memcmp(LIB(G, 0)->patch, G->model.t[3].patch, sizeof LIB(G, 0)->patch) &&
               LIB(G, 0)->preset >= QD_PRESET_MINE0 && G->model.t[3].preset == LIB(G, 0)->preset &&
               !G->model.t[3].edited && !G->ui.latch && G->ui.tk == QD_TK_SAVED,
-          "SAVE again: a NEW MY preset (place 1, its own id), the track plays it, not edited; SAVED");
+          "F2: a NEW MY preset (place 1, its own id), the track plays it, not edited; SAVED");
     G->model.t[3].patch[QD_QP_HARM] = 900;              /* edited, then SAVE: REPLACE offered */
     G->model.t[3].edited = 1;
     p_run(20);
     btap(QD_B_SAVE);
     CHECK(G->ui.sv.replace == 0 && !strcmp(G->ui.ty.name, nm), "edited, SAVE: REPLACE offered (its "
           "name kept)");
-    btap(QD_B_OCTUP);                                   /* (P1.5v: F2 chooses REPLACE, SAVE does it) */
-    btap(QD_B_SAVE);
+    knob(QD_K_PRESETS, 1);                              /* (2026-11-13: PRESETS chooses REPLACE, F2 does it) */
+    btap(QD_B_OCTUP);
     CHECK(LIB(G, 0)->patch[QD_QP_HARM] == 900 && LIB(G, 0)->preset == G->model.t[3].preset &&
               !G->model.t[3].edited && !LIB(G, 1)->name[0], "F2: replaced (the same id), nothing new");
     /* the browser on MY presets: load it onto another track */
@@ -215,12 +216,43 @@ static void pages_test(void)
     CHECK(qd_view_screen(G) == QD_SCR_NAME && G->ui.ty.sel && !strcmp(G->ui.ty.name, G->per.pname[2]),
           "B10: the project's name, selected");
     wtap(6), black(0), black(8), wtap(2);               /* R A I N */
-    btap(QD_B_SAVE);
-    CHECK(!strcmp(G->per.pname[2], "RAIN") && qd_view_screen(G) == QD_SCR_PRJ, "R, A, I, N, SAVE: the project named "
+    btap(QD_B_OCTUP);
+    CHECK(!strcmp(G->per.pname[2], "RAIN") && qd_view_screen(G) == QD_SCR_PRJ, "R, A, I, N, F2: the project named "
           "(%s), the project page", G->per.pname[2]);
     btap(QD_B_HOME);
     CHECK(!G->ui.latch, "HOME: back");
     CHECK(G->per.prj_st.c.erases_noisy == 0, "no erase while sounding");
+
+    /* 2026-11-13 (owner): SAVE held: the project written now, PROJECT SAVED; playing: SAVING until it is written */
+    p_run(3000);
+    qd_step_on(qd_proj_pat(&G->proj, G->seq.cur), 5, 3);
+    G->model.t[0].patch[QD_QP_HARM] = 333;
+    G->model.t[0].edited = 1;
+    p_run(60);
+    CHECK(qd_persist_dirty(G), "(an edit, not written yet)");
+    bt(QD_B_SAVE, 1);
+    p_run(QD_SAVE_HOLD_MS + 5);
+    CHECK(!qd_persist_dirty(G) && !qd_persist_save_busy(G) && G->ui.cf_on && !strcmp(G->ui.cf_big, "PROJECT SAVED") &&
+              !G->ui.latch, "stopped, SAVE held: written at once, PROJECT SAVED");
+    bt(QD_B_SAVE, 0);
+    p_run(QD_CONFIRM_MS + 20);
+    qd_app_play(G);
+    p_run(200);
+    qd_step_on(qd_proj_pat(&G->proj, G->seq.cur), 6, 3);
+    G->model.t[0].patch[QD_QP_HARM] = 444;
+    p_run(60);
+    bt(QD_B_SAVE, 1);
+    p_run(QD_SAVE_HOLD_MS + 5);
+    bt(QD_B_SAVE, 0);
+    CHECK(qd_persist_dirty(G) && qd_persist_save_busy(G) && G->ui.pj.saving && !strcmp(G->ui.cf_big, "SAVING"),
+          "playing, SAVE held: SAVING (written by the frame)");
+    for (k = 0; k < 2000 && G->ui.pj.saving; k++)
+        p_run(1);
+    CHECK(!G->ui.pj.saving && !qd_persist_dirty(G) && k < 1400 && !strcmp(G->ui.cf_big, "PROJECT SAVED") &&
+              G->ui.cf_on && G->per.prj_st.c.erases_noisy == 0,
+          "then PROJECT SAVED once written (%d ms, before the autosave's debounce would be done), no erase", k);
+    qd_app_stop(G);
+    p_run(QD_CONFIRM_MS + 20);
 }
 
 /* P1.5t: a 0.6 flash: its library slots become MY presets (ids, kinds), its pool stays as it was (its factory copies
@@ -970,6 +1002,84 @@ static void paging_test(void)
           (unsigned)A.proj.pat_saves);
 }
 
+/* 2026-11-13 (owner): the PATTERNS page's F1 / F2 on the flash (the device's sizes: the patterns out of RAM read in
+ * and written by the store's rules): F1 copies A05 onto A10; F2 cuts the demo's A02 and drops it on A11; playing, F2
+ * cuts A10 (no erase while sounding); after a restart each as left */
+static int pat_ons(const qd_pattern_t *P)             /* its trigs, every track */
+{
+    int t, s, n = 0;
+    for (t = 0; t < QD_PAT_NTRACK; t++)
+        for (s = 0; s < QD_NSTEP; s++)
+            n += qd_step_is_on(qd_step(P, t, s));
+    return n;
+}
+static void pc_patterns(void)                         /* SEQ clicks to PATTERNS */
+{
+    int i;
+    for (i = 0; i < 4 && qd_ctl_seq_page(G) != QD_SEQ_PATTERNS; i++)
+        btap(QD_B_MIX);
+}
+static void pc_hold(int f, int down)
+{
+    bt(f, down);
+    p_run(down ? QD_TAP_MS + 10 : 20);
+}
+static void pat_copy_test(void)
+{
+    static qd_pattern_t demo2;
+    int n2;
+    G = &A;
+    memset(FL, 0xFF, sizeof FL);
+    boot(G);
+    p_run(50);
+    qd_pat_default(&A.proj, 1, &demo2);
+    n2 = pat_ons(&demo2);
+    btap(QD_B_HOME);                                    /* (the press that wakes does nothing else) */
+    bt(QD_B_MIX, 1);                                    /* (SEQ held + W5: A05, a peek) */
+    p_run(30);
+    wtap(4);
+    bt(QD_B_MIX, 0);
+    p_run(100);
+    wtap(0);
+    wtap(3);
+    CHECK(A.seq.cur == 4 && qd_step_is_on(qd_step(qd_proj_cpat(&A.proj, 4), 0, 3)) && n2 > 0,
+          "2026-11-13: A05 with two trigs (the demo's A02: %d)", n2);
+    pc_patterns();
+    pc_hold(QD_B_OCTDN, 1);
+    wtap(4);
+    wtap(9);
+    p_run(300);
+    pc_hold(QD_B_OCTDN, 0);
+    pc_hold(QD_B_OCTUP, 1);                             /* (a tap: F1's copy left F2 holding) */
+    pc_hold(QD_B_OCTUP, 0);
+    pc_hold(QD_B_OCTUP, 1);
+    wtap(1);
+    p_run(300);
+    wtap(10);
+    p_run(300);
+    pc_hold(QD_B_OCTUP, 0);
+    CHECK(A.ui.pc_job < 0 && pat_ons(qd_proj_cpat(&A.proj, 9)) == 2 && !qd_proj_used(&A.proj, 1) &&
+              pat_ons(qd_proj_cpat(&A.proj, 1)) == 0 && pat_ons(qd_proj_cpat(&A.proj, 10)) == n2 && A.seq.cur == 4,
+          "F1: A05 onto A10; F2: the demo's A02 cut, dropped on A11 (A05 still the active one)");
+    qd_app_play(&A);
+    run_audio(&A, 300);
+    pc_hold(QD_B_OCTUP, 1);
+    wtap(9);
+    run_audio(&A, 600);
+    pc_hold(QD_B_OCTUP, 0);
+    run_audio(&A, 2000);
+    CHECK(A.seq.playing && A.seq.cur == 4 && !qd_proj_used(&A.proj, 9) && A.per.prj_st.c.erases_noisy == 0,
+          "playing: F2 cuts A10 (A05 plays on; no erase while sounding)");
+    qd_app_stop(&A);
+    run_audio(&A, 50);
+    qd_persist_flush(&A);
+    boot(&B);
+    CHECK(pat_ons(qd_proj_cpat(&B.proj, 4)) == 2 && !qd_proj_used(&B.proj, 9) && !qd_proj_used(&B.proj, 1) &&
+              pat_ons(qd_proj_cpat(&B.proj, 1)) == 0 && pat_ons(qd_proj_cpat(&B.proj, 10)) == n2 &&
+              qd_proj_used(&B.proj, 10),
+          "a restart: A05 as it was, A10 cut, A02 empty (not the demo again), A11 the demo's A02");
+}
+
 /* P2.1: the pool's and MY presets' sounds paged (at the device's sizes QD_SND_RAM of them in RAM, the rest in the
  * store): 200 presets stored, 100 pool slots referencing them, tags set, one replaced (its references follow), one
  * deleted with its references; read back in another order: each as it was; a restart from the flash: the same */
@@ -1543,6 +1653,7 @@ static void pool_browse_test(void)
     qd_persist_flush(&A);
     run(&A, 50);
     n0 = locks_to(&A, snare);                           /* (the demos' own too) */
+    btap(QD_B_HOME);                                    /* (2026-11-13: the press that wakes does nothing else) */
     knob(QD_K_PRESETS, 1);
     black(8), black(8);                                 /* B9 twice: the POOL */
     knob(QD_K_PRESETS, -200);
@@ -1829,7 +1940,7 @@ int main(void)
         qd_app_sysex(&A, f, n);
         CHECK(!strcmp(LIB(&A, 99)->name, "SX KEEP"), "a SysEx import into LIBRARY 100");
     }
-    A.ui.view = QD_VIEW_STEPS;                          /* (P1.5s: the user's view kept) */
+    qd_ctl_set_view(&A, QD_VIEW_STEPS);                 /* (P1.5s: the user's view kept) */
     qd_persist_flush(&A);
     boot(&B);
     CHECK(B.ui.view == QD_VIEW_STEPS, "a restart: the view kept (STEPS; P1.5s)");
@@ -1842,17 +1953,30 @@ int main(void)
         static uint8_t b[QDS_MAXREC];
         int len;
         B.ui.home_lock = 1;
-        B.ui.view = QD_VIEW_ROLL;                       /* (2026-11-11: OVERVIEW is SEL's, never saved as the view) */
+        qd_ctl_set_view(&B, QD_VIEW_EDIT);
+        qd_ctl_set_view(&B, QD_VIEW_ROLL);              /* (2026-11-11: OVERVIEW is SEL's, never saved as the view;
+                                                         * 2026-11-13: nor SEQ's PIANO ROLL: the Home view under it) */
         qd_persist_flush(&B);
         boot(&A);
         len = qd_store_get(&A.per.prj_st, QD_RKEY(QD_RK_SET, 0, 0), b, sizeof b);
-        CHECK(A.ui.home_lock && A.ui.view == QD_VIEW_ROLL && len > 0 && b[len - 1] == 3,
-              "a restart: the Home view (PIANO ROLL) and its LOCK kept (the last byte %d)", len > 0 ? b[len - 1] : -1);
+        CHECK(A.ui.home_lock && A.ui.view == QD_VIEW_EDIT && A.ui.hview == QD_VIEW_EDIT && len > 0 &&
+                  b[6] == QD_VIEW_EDIT && b[len - 1] == 3,
+              "a restart on the roll: the Home view (EDIT) and its LOCK kept (the last byte %d)", len > 0 ? b[len - 1] : -1);
         b[len - 1] = 1;
         qd_store_put(&A.per.prj_st, QD_RKEY(QD_RK_SET, 0, 0), b, (uint32_t)len);
         qd_store_flush(&A.per.prj_st);
         boot(&B);
-        CHECK(!B.ui.home_lock && B.ui.view == QD_VIEW_ROLL, "a record from before the LOCK: unlocked, the view kept");
+        CHECK(!B.ui.home_lock && B.ui.view == QD_VIEW_EDIT, "a record from before the LOCK: unlocked, the view kept");
+        b[6] = QD_VIEW_ROLL;                            /* (a record from before 2026-11-13 with the PIANO ROLL: EDIT) */
+        qd_store_put(&B.per.prj_st, QD_RKEY(QD_RK_SET, 0, 0), b, (uint32_t)len);
+        qd_store_flush(&B.per.prj_st);
+        boot(&A);
+        CHECK(A.ui.view == QD_VIEW_EDIT && A.ui.hview == QD_VIEW_EDIT, "2026-11-13: a saved PIANO ROLL comes back as EDIT");
+        b[6] = QD_VIEW_STEPS;
+        qd_store_put(&A.per.prj_st, QD_RKEY(QD_RK_SET, 0, 0), b, (uint32_t)len);
+        qd_store_flush(&A.per.prj_st);
+        boot(&B);
+        CHECK(B.ui.view == QD_VIEW_STEPS && B.ui.hview == QD_VIEW_STEPS, ".. a saved STEPS as STEPS");
         b[6] = QD_VIEW_OVERVIEW;                        /* (a record from 1ad69a7 with OVERVIEW as its view: EDIT) */
         qd_store_put(&B.per.prj_st, QD_RKEY(QD_RK_SET, 0, 0), b, (uint32_t)len);
         qd_store_flush(&B.per.prj_st);
@@ -1863,6 +1987,7 @@ int main(void)
     pool_browse_test();
     pages_test();
     paging_test();
+    pat_copy_test();
     sound_paging_test();
     isr_paging_test();
     foreign_test();

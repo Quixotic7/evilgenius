@@ -15,8 +15,8 @@ scale; everything else is drawing, colour and the LEDs. The gestures are in this
 | OCT− and OCT+ together | **F3** (it stays open; OCT− closes it) |
 | GLO | **SHIFT** |
 | SEL (printed) | **SEL**: hold it for the tracks; tap it for the track settings |
-| SEQ (printed) | **SEQ**: hold it for the patterns (they stay open on release; SEQ tapped or HOME closes them); tap it for TOOLS |
-| SAVE (printed) | **SAVE**: SAVE PRESET, the selected track's sound into MY PRESETS |
+| SEQ (printed) | **SEQ**: its pages TOOLS, PATTERNS and the PIANO ROLL (clicks go round; HOME leaves them); hold it to peek at the patterns |
+| SAVE (printed) | **SAVE**: clicks turn SAVE PRESET / PROJECT (the one used last first); held, the project saved |
 | LFO (printed) | **LATCH**: the step latch, on / off |
 | FX (printed) | **FX**: tap it for the effects; hold it to choose the track |
 | ENV (printed) | **MIX**: the mixer |
@@ -118,19 +118,29 @@ LP+BP, BP+HP, ALL; hold B4 for the eight as a menu on B1..B8.
 - **HOME** (2026-11-10, the owner): **from any other page** (the sound editor, the effects, the mixer, MIDI FX,
   TOOLS, the keyboard page, F3, a settings menu, the step latch, OVERVIEW opened by SEL ..) **the first click brings
   you back to the Home view you were on**, in one press. **On the Home view, a click goes to the next Home view**:
-  PIANO ROLL, STEPS, EDIT, GEEK OUT, OVERVIEW, then the PIANO ROLL again (SHIFT + HOME is no longer needed). **Hold
+  STEPS, EDIT, GEEK OUT, then STEPS again (SHIFT + HOME is no longer needed; 2026-11-13: the PIANO ROLL is SEQ's
+  page now, below). **Hold
   HOME** (half a second) for **the global settings**, from anywhere (below). With the global settings' **LOCK** on,
   HOME clicks never cycle: HOME always brings you to the Home view you chose there.
+- **SEQ** (2026-11-13, the owner) is a page button too, with **three pages: TOOLS, PATTERNS and the PIANO ROLL**.
+  **From any other page** (a Home view, the sound editor, the mixer ..) **a SEQ click opens the SEQ page you used
+  last** (TOOLS after power-on); **on a SEQ page a click goes to the next**: TOOLS, PATTERNS, PIANO ROLL, then TOOLS
+  again. **HOME** leaves any of them for the Home view, so HOME / SEQ flips between your Home view and your SEQ page.
+  SEQ is lit on its pages. **Hold SEQ** (or press a key or turn a knob with it) **to peek at the patterns** from
+  anywhere: they work as on PATTERNS, and when you let go you are back where you were (it no longer latches them).
+  The PIANO ROLL works exactly as before (the hold modes, the steps, B11, F1 / F2, the latch, page follow); pages
+  opened over it (EDIT, ENV, FX, ARP) go back to it with their own key, and to the Home view with HOME.
 - **The white keys' steps / keys** (a B11 click, below) is **one switch for every page**: changing pages, Home views,
   HOME clicks and opening the editors all leave it as it is; only a B11 click turns it (not kept across power-off).
-- **Main pages and pop-ups (0.9.6).** The main pages are the step view (PIANO ROLL, STEPS, EDIT), the **mixer**
+- **Main pages and pop-ups (0.9.6).** The main pages are the step view (STEPS, EDIT; SEQ's PIANO ROLL), the **mixer**
   (ENV, both pages), the **effects** (FX), the **sound editor** (EDIT) and the **MIDI FX** screen (ARP). **F1 never
   leaves them**: they close with **HOME** or their own key (EDIT, ARP; ENV and FX turn their pages), or by opening
   another page. **LFO** keeps them open too. The **pop-ups** keep F1 = back: F3, the track settings (SHIFT + SEL),
-  the record settings (SHIFT + REC), the global settings (HOME held), the project pages (SHIFT + SAVE), the browser
-  (F1 cancels) and the questions; SAVE PRESET and the name editor are the typewriter (F1 deletes, HOME cancels).
+  the record settings (SHIFT + REC), the global settings (HOME held), the project pages (SAVE), the browser
+  (F1 cancels) and the questions; SAVE PRESET and the name editor are the typewriter (F1 deletes, F2 saves / keeps,
+  HOME cancels).
   (2026-11-10: the track settings are SHIFT + SEL, the global settings HOME held.)
-- **HOME clicks** cycle **PIANO ROLL** (the mode's lane), **STEPS**, **EDIT**, **GEEK OUT** (SELECT turns its pages: METERS, NUMBERS, VOICES, SCOPE, TRACKS) and **OVERVIEW** (below). Whatever page you come back from, the step view is the one you were on, and GEEK OUT returns on its last page. STEPS shows all eight
+- **HOME clicks** cycle **STEPS**, **EDIT** and **GEEK OUT** (SELECT turns its pages: METERS, NUMBERS, VOICES, SCOPE, TRACKS); **OVERVIEW** is SEL's (below) and the **PIANO ROLL** (the mode's lane) SEQ's (2026-11-13). Whatever page you come back from, the step view is the one you were on, and GEEK OUT returns on its last page. STEPS shows all eight
   pages as rows of 16 steps in groups of four; the page you edit is unfolded into taller cells with each step's notes
   drawn inside at their pitch, the other pages are rows above and below. Pages in the loop are bright, the others
   dim. A step's colour says what it plays: **warm white** its own notes, **cyan** the track's notes (a plain trig),
@@ -212,8 +222,22 @@ LP+BP, BP+HP, ALL; hold B4 for the eight as a menu on B1..B8.
 - Pop-ups (the held-step and default pictures, the knob takeovers, the octave and sound pickers) no longer show the
   track's box and name: only what is being edited.
 - In the PIANO ROLL the small dots over the columns mark the beats (steps 1, 5, 9, 13; the first a little brighter).
+- **The PIANO ROLL as a grid** (2026-11-13): in **COND, TRIG, FUNC, SLIDE and SOUND** the page is a 4 x 4 grid of
+  boxes, a row a beat (NOTE, VEL, LEN, MICRO, RATCH and CHNC keep their lanes). An empty step is a dark outline, a
+  trig on the track's value a grey box, a step with its own value a box in the mode's colour with the value big. The
+  playing step's box flashes with a red bar along its foot; the cursor, held and selected steps are outlined white.
+  - **COND**: an A:B is a ring cut into B passes with the A-th lit and "A:B" inside; FILL, PRE, !1ST and the other
+    names big; ALWAYS a grey ring (chance stays in CHNC).
+  - **TRIG**: NOTE a disc, LOCK a violet padlock, TIE a ring with its slur from the step before (STEPS' colours).
+  - **SLIDE**: the box is the pitch over the step: the note's dot rising to an arrow; the longer the TIME, the further
+    across the climb; LEGATO adds a slur under it; an OFF lock is a crossed ring.
+  - **SOUND**: a sound lock's pool number big with its name under it, each sound in its own colour (the same sound
+    the same colour on every step); the track's sound a grey ring, named at the foot.
 - **FX held + ALGORITHM** chooses the track: the track's number big in its colour with its name, the six below.
-- After two minutes untouched with nothing playing, it goes back to the FIZZ screen.
+- After two minutes untouched with nothing playing, it goes back to the FIZZ screen. **The press or turn that wakes
+  it does nothing else** (2026-11-13, the owner): any key, button (PLAY too) or knob only wakes it; a button held
+  while it wakes is no modifier and no hold (no SHIFT, no HOME settings, no SEQ map, no REC arm) until it is let go
+  and pressed again.
 - **PLAY** tapped plays and stops (on the release: about a tenth of a second after the press). **Hold PLAY** (or
   **SHIFT + PLAY**) to open the **F3** menu (the same as both OCT keys), from the keyboard page too (2026-11-10).
 
@@ -306,9 +330,10 @@ and chance; a LOCK step's runs too).
   not held; it works with the step latch too). **SELECT** while holding turns the page to target a step on another
   page. KNOB 1 (or ALGORITHM, with a finger on the step) walks the nine kinds.
 - The FUNC keys light like the other modes': the step's function's key lit.
-- **B11** removes the step's function. The PIANO ROLL's FUNC lane shows each step's function as an icon (an arrow, a
-  circular arrow, a die, a jump with its target's number, two hops with LEAP's amount); STEPS marks a step with a
-  function with a small blue dot.
+- **B11** removes the step's function. The PIANO ROLL in FUNC shows the page as a 4 x 4 grid of boxes, each step's
+  function as a big icon (an arrow, a circular arrow, a die, a jump with its target's number, two hops with LEAP's
+  amount), and a dashed arrow from each JUMP / LEAP to the box it lands in (white while its step plays; a target on
+  another page: no arrow); STEPS marks a step with a function with a small blue dot.
 
 ## How do I hear a step while I edit it?
 
@@ -510,6 +535,9 @@ Steps:
 - **A copy is the whole step**: its notes and values, its locks (sound, LEVEL, PAN and the sends), its sound and its
   MIDI FX.
 
+Patterns: on SEQ's **PATTERNS** page F1 + W and F2 + W copy, cut and paste whole patterns the same way (How do I
+change patterns?).
+
 Pages and tracks (hold **F1**):
 
 - **F1 + B9**: clear the page. **F2 + B9 twice** (the first press arms it, B9 blinking; the second within 2 s clears):
@@ -563,7 +591,7 @@ Undo and redo of everything (P1.5c):
   **KNOB 3 PAGE FOLLOW**, **KNOB 4 MIDI FX**.
 - Page 3 (0.9.1): **KNOB 1 KIND**: BASS, KEYS, PLUCK, PAD, LEAD, DRUMS, FX (the presets' seven tags), each with its
   icon; choosing one **renames the track to the kind** unless you typed a name of your own. **KNOB 2 NAME**: a turn
-  opens the name keyboard (TRACK NAME; PRESETS or KNOB 2 rolls names from the kind and namesizer: DUSTY BASS, PAD 3 ..); SAVE
+  opens the name keyboard (TRACK NAME; PRESETS or KNOB 2 rolls names from the kind and namesizer: DUSTY BASS, PAD 3 ..); F2
   keeps it (a typed name stays when the kind changes; typing the kind's own name lets it follow again), HOME cancels;
   both come back to page 3. **KNOB 3 ENGINE**: **FM TONE**, **FM+MIDI** or **MIDI** (MIDI: the track plays no voice,
   its notes and its sound's CCs go out on MIDI OUT; FM+MIDI: the FM TONE sound plays and its editor's values go out
@@ -662,12 +690,26 @@ Undo and redo of everything (P1.5c):
 
 ## How do I change patterns?
 
-- Hold **SEQ**: the screen shows one bank's 16 patterns; let go and they stay open (SEQ lit) until a SEQ tap or HOME (the playing one white, the queued one blinking orange).
+- **PATTERNS** is one of SEQ's pages (2026-11-13: SEQ clicks go TOOLS, PATTERNS, PIANO ROLL; HOME leaves it). The
+  screen shows one bank's 16 patterns (the playing one white, the queued one blinking orange). **Hold SEQ** from
+  anywhere for a peek: the same patterns and keys while you hold it, back where you were when you let go.
+- The keys below work on PATTERNS without SEQ, and with SEQ held anywhere.
 - **SEQ + B1..B4**: bank A..D (64 patterns). The current bank's key is lit, banks with patterns in them dim.
 - **SEQ + tap W1..W16**: that pattern of the bank comes in at the next change point. **SEQ + hold W**: it comes in now.
 - **SEQ + ALGORITHM**: when a tapped pattern comes in: **END** (the end of the playing pattern, the default), **BAR**
   (the next bar), **BEAT** (the next beat) or **NOW**.
 - Stopped, a pattern is chosen at once.
+- **Copy, cut and paste patterns on PATTERNS** (2026-11-13), as the steps (below): **F1 + W** copies the first pattern
+  you press and pastes it on every other W you press while F1 is held; **F2 + W** is the pick-up and drop (the first
+  W is cut into your hand and its slot empties; an empty slot gets your hand pasted; a full one alternates paste over,
+  cut). **B1..B4** still change the bank while F1 or F2 is held, so a pattern can go to another bank. The copy is the
+  whole pattern: its steps, locks, track settings, the six tracks' sounds, tempo and swing. The map rings the copied
+  pattern (green) or F2's last one (orange cut, green paste); with F2 held a card shows what's in your hand and an
+  icon what the next W does. Nothing switches patterns meanwhile. F1 / F2 tapped on PATTERNS do nothing (no octave);
+  **SHIFT + F1 / F2** stay undo / redo. **Undo**: a paste on, or a cut of, the pattern you are on is an undo level;
+  on any other pattern it is not (and that pattern's older undo levels are dropped). The hand is the same pattern
+  copy as SHIFT + B4 / B5's. It works while playing; on the unit a pattern that is not in memory is read in first
+  (a moment; another W meanwhile does nothing), and a pattern too big for the copy says PATTERN too big.
 
 ## How do I change speed, tempo and swing?
 
@@ -802,7 +844,7 @@ Where OCT− / OCT+ change an octave (NOTE with a step held or tapped with nothi
   - **PLAY while recording** stops the transport and the recording (REPLACE, OVERDUB); in a CAPTURE take it ends the
     take and playback goes on (PLAY again stops).
   - The page buttons: one is lit, the page you are on (EDIT, ENV, FX, SEL, SEQ, ARP, SAVE, REC); **HOME** is lit on the
-    step view with no page open.
+    Home view with no page open (SEQ on TOOLS, PATTERNS and the PIANO ROLL).
   - REC's light: **off** (every other page), **lit** (the keyboard page), **blinking**
     (armed), **lit** (recording). While it records the screen is framed in red, a red dot on the band under a knob as
     it writes.
@@ -1045,9 +1087,10 @@ F1 / F2 show the ten before / after; B11 removes the sound lock.
   key is down, then DEC is the release. DEC INF holds for ever. Switching the MODE while a note plays carries on from
   where the envelope is. In AHD, SUS and REL are not used (KNOB 4 is empty).
 
-## TOOLS: change a whole page, track or pattern (SEQ tapped, 0.12.0)
+## TOOLS: change a whole page, track or pattern (SEQ's first page, 0.12.0)
 
-- **Tap SEQ**: TOOLS opens on the selected track (SHIFT + SELECT still changes it). **SEQ** again or **HOME** closes it.
+- **Click SEQ** (until TOOLS, the first of SEQ's pages): TOOLS opens on the selected track (SHIFT + SELECT still
+  changes it). **SEQ** again goes on to PATTERNS (2026-11-13; it closed TOOLS before); **HOME** closes it.
 - **B1..B5**: ROTATE (the steps round the loop), REVERSE, RANDOM (new steps: density, notes, velocity, chance),
   EUCLID (N hits spread evenly), GRIDS (a drum part from a map: X, Y, density, chaos). **B6 HUMANIZE / QUANTIZE**
   (2026-11-10, one key for the two: from another tool HUMANIZE, the timing and velocity jitter; B6 again QUANTIZE, the
@@ -1110,11 +1153,11 @@ F1 / F2 show the ten before / after; B11 removes the sound lock.
   - **The white keys** play the track through the group (its scale, as the sound editor's keyboard).
 - **ARP held** (400 ms alone, anywhere) or **SHIFT + ARP** (at once): the track's **MIDI FX off**, a bypass: the group
   is kept and its page still edits it (OFF in red by the hexagon; a popup says MIDI FX OFF); again: **back on** (MIDI FX
-  ON). Program a chain while the pattern plays dry, then bring it in on the drop. **SEQ tapped** opens **TOOLS** (SEQ
-  again or HOME closes it, SEQ lit while open). **ARP is lit** while the selected track's MIDI FX is on (a group, not
+  ON). Program a chain while the pattern plays dry, then bring it in on the drop. **SEQ tapped** opens SEQ's pages
+  (**TOOLS** first; HOME closes them, SEQ lit while one is open). **ARP is lit** while the selected track's MIDI FX is on (a group, not
   bypassed) and while its page is open; off otherwise.
 - **From a latched F3** (PLAY held, or F1 + F2), the record settings or the settings, the page keys (EDIT, SEL, ENV,
-  FX, ARP, SEQ, SAVE, SHIFT + SAVE) close it and open their page in one press.
+  FX, ARP, SEQ, SAVE) close it and open their page in one press.
 - **The stopped preview** (0.9.3): a step held while stopped plays **through its MIDI FX group** (its own, else the
   track's): you hear the arp, the chord, the harmony; letting go ends every note (a HOLD arp's too).
 - **A step's own group**: hold the step in **TRIG** (B8): **KNOB 2** is its MIDI FX (TRACK: the track's, the default;
@@ -1171,10 +1214,11 @@ SELECT turns the pages (the dots at the top):
 
 - Page 1: **KNOB 1 PAGE FOLLOW** on / off (the same as on the track settings' second page), **KNOB 2 BOOST**,
   **KNOB 3 CLOCK OUT**, **KNOB 4 CC OUT**.
-- Page 2, **HOME**: **KNOB 1 HOME VIEW** chooses the Home view (PIANO ROLL, STEPS, EDIT, GEEK OUT, OVERVIEW; the
-  five drawn small, the chosen one lit), **KNOB 2 LOCK** on / off: locked, HOME clicks no longer cycle the views,
+- Page 2, **HOME**: **KNOB 1 HOME VIEW** chooses the Home view (STEPS, EDIT, GEEK OUT; the three drawn small, the
+  chosen one lit; 2026-11-13: the PIANO ROLL is SEQ's page, a saved PIANO ROLL comes back as EDIT), **KNOB 2 LOCK** on / off: locked, HOME clicks no longer cycle the views,
   HOME always brings you back to that view (a padlock under it). Saved with the other settings. **KNOB 3 VOICE**
-  (EvilGenius): the villain's lines and the sound effects, on / off.
+  (EvilGenius): when the villain and the lift speak, STOPPED (only while nothing plays), ALWAYS or OFF; **KNOB 4 VOICE
+  LEVEL** how loud.
 - Page 3 (the Bluetooth package): **BLUETOOTH** on / off and its state.
 
 ## The maps
@@ -1189,8 +1233,11 @@ SELECT turns the pages (the dots at the top):
 
 ## Saving (P1.5a)
 
-- **Nothing to save by hand**: the project is written by itself, a moment (1.5 s) after your last change, while you
-  play too (never in a way you could hear). Every pattern keeps its six tracks' sounds as you edited them:
+- **The project is written by itself**, a moment (1.5 s) after your last change, while you play too (never in a way
+  you could hear).
+- **Hold SAVE** (half a second, from anywhere but a name being typed), or **F2 on the PROJECT page**: the project is
+  written **now**, and a big green tick says **PROJECT SAVED**. Playing, **SAVING** shows until it is written (about
+  half a second), then PROJECT SAVED (2026-11-13). Every pattern keeps its six tracks' sounds as you edited them:
   switching patterns switches the sounds.
 - Switching the unit off and on (in FM1VST: quitting and starting the Standalone) brings back the project you worked
   on, its pattern and the selected track, the effects and the latch mode.
@@ -1209,14 +1256,19 @@ A back-up of your projects and MY PRESETS: `fizz_xdata.py backup FILE` (and `res
 
 ## How do I keep a sound? (SAVE: SAVE PRESET)
 
-- **SAVE** (from anywhere) opens **SAVE PRESET** for the selected track's sound, with a **suggested name** (a sparkle
-  marks it), **selected** (a shaded band): since P1.5y a pair from the owner's **namesizer** (SPICY WALRUS, RAPID
-  CAR, COSMIC TREE ...), a new one each time. Name it on the keybed (below), or keep it.
-- **SAVE again** saves it as a **NEW** preset in MY PRESETS. When the sound came from one of MY presets, **NEW and
-  REPLACE** both show and **F2 switches which one is chosen** (the chosen bright and filled, the other dim; F2 lit;
-  NEW first): **SAVE does the chosen one** (P1.5v). NEW saves under a new name such as "DARK BASS 2" when the name is
-  taken; REPLACE overwrites that preset. Only NEW possible: only NEW shows, F2 dark. Factory presets are never
-  replaced. **HOME** cancels. The track's **pan and sends are saved with the sound** (P1.5x), NEW and REPLACE alike.
+- **SAVE is a page button with two pages, SAVE PRESET and PROJECT** (2026-11-13). A **click** opens the one you used
+  last (after switching on: SAVE PRESET); **on one, a click goes to the other**; HOME leaves. **In the sound editor
+  with a step selected**, a click always opens SAVE PRESET for **that step's sound** (KNOB 4: TRACK or STEP); a click
+  again goes on to the PROJECT. **Hold SAVE** to save the project (above). SHIFT + SAVE still opens the PROJECT.
+- **SAVE PRESET** is for the selected track's sound, with a **suggested name** (a sparkle marks it), **selected** (a
+  shaded band): since P1.5y a pair from the owner's **namesizer** (SPICY WALRUS, RAPID CAR, COSMIC TREE ...), a new
+  one each time. Name it on the keybed (below), or keep it.
+- **F2** (lit) **saves it** as a **NEW** preset in MY PRESETS (2026-11-13: SAVE no longer saves; it goes on to the
+  PROJECT). When the sound came from one of MY presets, **NEW and REPLACE** both show and **PRESETS turns which one
+  is chosen** (left NEW, right REPLACE; the chosen bright and filled, the other dim; NEW first): **F2 does the chosen
+  one**. NEW saves under a new name such as "DARK BASS 2" when the name is taken; REPLACE overwrites that preset. Only
+  NEW possible: only NEW shows, and PRESETS rolls names as KNOB 4 does. Factory presets are never replaced. **HOME**
+  cancels. The track's **pan and sends are saved with the sound** (P1.5x), NEW and REPLACE alike.
 - Saved: it drops into MY PRESETS ("SAVED"), and the track now plays that preset, no longer edited.
 - **SHIFT + F1** undoes a save.
 - The old sounds page (banks, the LIBRARY / POOL tabs, F1 / F2 / B11 + W) is gone: the browser does all of it.
@@ -1232,11 +1284,12 @@ bright).
   the bottom row). A key types its letter at the cursor and moves the cursor on (it flies up into the name). Upper
   case only; holding a key does not repeat; twelve characters (a key on a full name flashes the row orange and types
   nothing).
-- **The suggested name starts selected**: SAVE right away keeps it; **the first key typed replaces it**.
+- **The suggested name starts selected**: F2 right away keeps it; **the first key typed replaces it**.
 - **SHIFT held**: the black keys are **0..9 and -**, the white keys **. , ' & ! ? # + / ( ) \* : _ ~** and SPACE (the
   screen's keybed changes with it). While a name is typed SHIFT is only this: SHIFT + a button does nothing else (no
   snapshots, undo, settings or views), but **SHIFT + F1 clears** the name.
-- **PRESETS (or KNOB 4, or KNOB 2) right rolls a new name, every detent, for ever** (P1.5z): mostly namesizer pairs, now and
+- **PRESETS (or KNOB 4, or KNOB 2) right rolls a new name, every detent, for ever** (P1.5z; on SAVE PRESET with
+  REPLACE offered PRESETS chooses NEW / REPLACE instead): mostly namesizer pairs, now and
   then a made-up word (phonic nonsense like NIRE, cosmic words like FM-GX) and, about one time in five, one of the
   sound's own names (BRIGHT PLUCK, WARM PING ...). A neon die tumbles in beside each new one and lands. The name
   shown is the name, selected again (the sparkle stays).
@@ -1247,8 +1300,10 @@ bright).
   signs, SPACE; at the end of the name it adds one), to fix one letter without looking for its key.
 - **F1** deletes the character before the cursor (it drops away in orange; a selected name: all of it); **SHIFT +
   F1** clears.
-- **SAVE** confirms (SAVE PRESET: saves NEW; F2 REPLACE where offered; a project: its name kept). **HOME** cancels
-  (SAVE PRESET: closed; a project's name: back to the project page, the old name kept).
+- **F2** confirms (SAVE PRESET: saves the chosen, NEW or REPLACE; a project's or a track's name: kept; 2026-11-13, it
+  was SAVE). **HOME** cancels (SAVE PRESET: closed; a project's name: back to the project page, the old name kept).
+  **SAVE** on SAVE PRESET goes on to the PROJECT (the name typed is dropped); in a project's or a track's name it does
+  nothing.
 
 ### Sounds from a computer (P1.5r)
 
@@ -1269,15 +1324,16 @@ bright).
   destinations each) comes into the eight slots, the first eight that FIZZ has a destination for; how the Digitone
   II stores the depth is still a guess, the note over the screen says so.
 
-## How do I manage projects? (SHIFT + SAVE)
+## How do I manage projects? (SAVE: PROJECT)
 
-- **SHIFT + SAVE** (it was SEQ tapped; SEQ tapped is TOOLS now) shows the **project**: its number and name, its 64 patterns (a
-  bubble for each one written, the playing one bright), the flash in use and the pool's count.
+- **SAVE** clicked (from SAVE PRESET, or when the PROJECT was the SAVE page used last; SHIFT + SAVE always) shows the
+  **project**: its number and name, its 64 patterns (a bubble for each one written, the playing one bright), the
+  flash in use and the pool's count. **F2** (lit) **saves the project** now: PROJECT SAVED (as SAVE held).
 - **SELECT** or **SHIFT + SAVE again**: the **projects**, W1..W8 (the current one champagne). A W chooses one; **F2** loads it
   (an empty one starts a new project). **F1 + W** picks a project, **another W** copies it there (onto a project: that
   W turns orange, the same W again replaces it). **B11 + W** deletes one (the one you work on: a blank project in
-  its place). **B10** names the current project (on the keybed, as above: SAVE keeps it, HOME the old one).
-- **F1** or **HOME** leaves.
+  its place). **B10** names the current project (on the keybed, as above: F2 keeps it, HOME the old one).
+- **F1** or **HOME** leaves; **SAVE** clicked goes to SAVE PRESET.
 
 ## Not built yet
 

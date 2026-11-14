@@ -196,6 +196,8 @@ enum { QD_VOICE_STOPPED, QD_VOICE_ALWAYS, QD_VOICE_OFF };   /* EvilGenius: THE V
 #define QD_PLAY_HOLD_MS 400u           /* P1.3x: PLAY held this long: F3 (a tap plays / stops on its release) */
 #define QD_HOME_HOLD_MS 500u           /* 2026-11-10 (owner): HOME held this long: the global settings (a click: the
                                         * Home view, the next one) */
+#define QD_SAVE_HOLD_MS 500u           /* 2026-11-13 (owner): SAVE held this long: the project saved (a click: the SAVE
+                                        * pages, SAVE PRESET <-> PROJECT) */
 #define QD_REC_HOLD_MS 400u            /* P1.3x: REC held this long: live recording armed (a tap: the keyboard) */
 #define QD_PREVIEW_MS 300u             /* a note turned on a knob sounds this long */
 #define QD_OCT_SLIDE_MS 350u           /* the octave takeover's keyboard slides this long */
@@ -215,6 +217,10 @@ enum { QD_VIEW_ROLL, QD_VIEW_STEPS, QD_VIEW_EDIT,     /* P1.3e: the sequencer's 
                                                         * it as 8 % 8, the PIANO ROLL) */
        QD_NVIEW };
 #define QD_VIEW_GEEK(v) ((v) >= QD_VIEW_METERS && (v) <= QD_VIEW_TRACKS)
+/* 2026-11-13 (owner): the Home views (HOME's cycle: STEPS, EDIT, GEEK OUT); the PIANO ROLL is SEQ's page (its cycle:
+ * TOOLS, PATTERNS, PIANO ROLL), OVERVIEW SEL's. A record or a setting saying PIANO ROLL reads as EDIT */
+#define QD_VIEW_HOME(v) ((v) > QD_VIEW_ROLL && (v) < QD_VIEW_OVERVIEW)
+enum { QD_SEQ_TOOLS, QD_SEQ_PATTERNS, QD_SEQ_ROLL, QD_NSEQ };   /* SEQ's pages, its clicks' cycle */
 #define QD_VIEW_ROWS(v) ((v) == QD_VIEW_STEPS || (v) == QD_VIEW_EDIT)   /* P1.3r: the views drawing the pages' rows */
 #define QD_VIEW_NOPICK(v) (QD_VIEW_ROWS(v) || (v) == QD_VIEW_OVERVIEW)   /* .. and OVERVIEW: SELECT's page, no picker */
 /* 2026-11-10: OVERVIEW on screen's keys: B1..B6 the tracks as the mix's (tap, hold, double tap), B9 mutes and solos
@@ -291,6 +297,8 @@ enum { QD_LATCH_NONE, QD_LATCH_F3,
 enum { QD_KR_NONE, QD_KR_PAGE, QD_KR_CURSOR, QD_KR_PRESET, QD_NKR };
 int qd_ctl_sel_map(const struct qd_app *a);
 int qd_ctl_seq_map(const struct qd_app *a);
+int qd_ctl_seq_page(const struct qd_app *a);   /* 2026-11-13: SEQ's page on screen (QD_SEQ_*), -1 none */
+int qd_ctl_home_view(const struct qd_app *a);  /* .. the Home view HOME goes back to (QD_VIEW_*) */
 int qd_ctl_latch_modes(const struct qd_app *a);
 /* 2026-11-11 (owner): the latch mode as the black keys take it: OVERVIEW always MODES (a finger on a step: the
  * values), elsewhere the setting */
@@ -305,6 +313,14 @@ void qd_shift_undo(struct qd_app *a, int dir);
 void qd_shift_black(struct qd_app *a, int b);
 void qd_shift_leds(const struct qd_app *a, uint8_t *key);
 int qd_shift_metro_knob(struct qd_app *a, int knob, int d);   /* SHIFT + B7 held: the click's level */
+/* 2026-11-13 (owner): the PATTERNS page's F1 / F2 (the steps' design): F1 + W the first pattern copied, the next ones
+ * pasted; F2 + W Form's pick-up / drop (cut, paste). The hand is the pattern clipboard (undo.h, SHIFT + B4 / B5's). A
+ * pattern out of RAM waits for it (pc_job: the prefetch reads it in, qd_pc_ms does it). pc_layer: F1 / F2 held there
+ * (1, 2; 0 none) */
+int qd_pc_layer(const struct qd_app *a);
+int qd_pc_white(struct qd_app *a, int k);      /* pattern k's W pressed: 1 taken */
+void qd_pc_up(struct qd_app *a, int d);        /* F1 (-1) / F2 (+1) let go: its state */
+void qd_pc_ms(struct qd_app *a);               /* (the locked ms) a waiting W done once its pattern is in RAM */
 /* P1.5c: the editor's randomise (ctl_snd.c): B9 the page (after the dice), B10 held the sound (after the bottle) */
 #define QD_RND_DICE_MS 600u                /* (the roll) */
 #define QD_RND_PAGE_HOLD_MS 1000u          /* P1.6d: B9 held this long: the page randomised (the dice shake till then) */
@@ -405,6 +421,10 @@ typedef struct {
     int f1_down, src, armed;           /* F1 + W: copy from src (onto one that exists: armed) */
     int b11_down, b11_used;
     int oct_used;
+    uint32_t save_ms;                  /* 2026-11-13 (owner): SAVE went down (held QD_SAVE_HOLD_MS: the project saved) .. */
+    uint8_t save_used;                 /* .. its release no click (SHIFT + SAVE, the hold, a name typed) */
+    uint8_t last;                      /* the SAVE page used last (0 SAVE PRESET, 1 PROJECT): a SAVE click opens it */
+    uint8_t saving;                    /* SAVING shown until the project is written (then PROJECT SAVED) */
 } qd_prjui_t;
 
 /* T1 (docs/TRACK-TOOLS-PLAN.md; ctl_tools.c): TOOLS' state, packed (only one tool is live at a time: its values are
@@ -440,7 +460,9 @@ typedef struct {
     int mode;                          /* QD_MODE_* */
     int view;                          /* P1.3e: the sequencer's view (QD_VIEW_*): kept for the session */
     uint8_t geek;                      /* the Geek Out page last shown (0: METERS ..): SHIFT + HOME from EDIT goes there */
-    int home_woke;                     /* (the HOME press that woke the unit: it switches nothing) */
+    uint8_t hview;                     /* 2026-11-13: the Home view last shown (QD_VIEW_HOME: HOME and the PIANO ROLL's
+                                        * way back; saved as the view) .. */
+    uint8_t seq_pg;                    /* .. SEQ's page last shown (QD_SEQ_*: a SEQ click from elsewhere; RAM only) */
     uint32_t home_ms;                  /* 2026-11-10 (owner): HOME went down (held QD_HOME_HOLD_MS: the global settings) .. */
     uint8_t home_used;                 /* .. its press did its job already (a page left, a hold): no click at the release */
     uint8_t home_lock;                 /* .. the global settings' LOCK: HOME always the Home view (no cycling), saved */
@@ -682,6 +704,11 @@ typedef struct {
     qd_sound_t tk_snd, tk_snd2;        /* .. the takeovers' sounds (LOADED: the preset; BACK: the own, the one left) */
     qd_nameui_t nm;                    /* P1.5a: the name editor (a project's) */
     qd_prjui_t pj;                     /* .. the project pages */
+    int8_t pc_src, pc_hand;            /* 2026-11-13, PATTERNS + F1 / F2: F1's copy this hold (-1); the pattern the hand
+                                        * (the pattern clipboard) came from .. */
+    uint8_t pc_hold;                   /* .. F2 holding (Form's) */
+    int8_t pc_last, pc_act;            /* .. F2's last W (pattern) and what it did (1 CUT, 2 PASTE) */
+    int8_t pc_job, pc_op;              /* .. a W whose pattern is out of RAM (-1 none), its operation */
     uint32_t seq_ms;                   /* P1.5a: SEQ went down (its map after QD_TAP_MS, or once used) .. */
     int seq_used;                      /* .. a key or a knob used it (its release is no tap) */
     uint32_t sel_ms;                   /* P1.3y: SEL went down (its map after QD_TAP_MS, or once a key is used) .. */
@@ -713,7 +740,8 @@ typedef struct {
                                         * press and release, ends it; a hold never sticks) .. */
     uint8_t shift_unstick;             /* .. this press began stuck: its release ends it */
     uint16_t shift_eat;                /* .. 2026-11-13 (owner): stuck, a menu button already shown: its press and
-                                        * release only end SHIFT (bit: the button) */
+                                        * release only end SHIFT; a button that woke the unit: its release (bit: the
+                                        * button) */
     uint32_t shift_ms;                 /* .. the press's time */
     /* the keyboard (ctl_rec.c) */
     int rec;                           /* recording armed in the keyboard (step recording stopped, live playing) */
@@ -780,6 +808,7 @@ void qd_ctl_imported(struct qd_app *a, const char *name, int pool, int slot);   
 int qd_preset_walk(const struct qd_app *a, int lib, int k, int d, int *lib_out);   /* P1.5s: the pool, then the library */
 void qd_ctl_confirm_col(struct qd_app *a, const char *big, const char *small, uint32_t col);   /* P1.5o: in a colour */
 #define QD_CF_BAND 1u                  /* 2026-11-12: (as its colour) the word as a band over the top, a knob's value's */
+#define QD_CF_TICK 2u                  /* 2026-11-13: (as its colour) the word green under a big tick (PROJECT SAVED) */
 int qd_ctl_rate_index(int rate);       /* a rate's place in the picker (slowest first) */
 int qd_ctl_rate_at(int i);             /* .. and back */
 
@@ -1006,7 +1035,8 @@ void qd_panel_leds(const struct qd_app *a, uint8_t *black);
 /* ---- ctl_lib.c (P1.5a, built through ctl_latch.c): the pages over the step view: the library browser and SAVE
  * PRESET (P1.5t, ctl_presets.c), the name editor, the project pages; their keys, knobs, OCT keys and clock */
 int qd_lib_open(const struct qd_app *a);         /* one of them open */
-void qd_lib_save(struct qd_app *a);              /* SAVE */
+void qd_lib_save(struct qd_app *a, int down);    /* SAVE: a click the SAVE pages, held the project saved */
+void qd_lib_save_ms(struct qd_app *a);           /* .. each ms: the hold, SAVING's end */
 void qd_prj_button(struct qd_app *a);            /* SHIFT + SAVE (T1b) */
 void qd_lib_back(struct qd_app *a);
 void qd_name_open(struct qd_app *a, int target, int proj);
@@ -1029,7 +1059,7 @@ int qd_br_knob(struct qd_app *a, int knob, int d);
 void qd_br_leds(const struct qd_app *a, uint8_t *key);
 int qd_br_pool_k(const struct qd_app *a);        /* P1.5v: the pool number the chosen is (or its copy's), 0 none */
 void qd_sv_start(struct qd_app *a);   /* 2026-11-13: SAVE PRESET's name and REPLACE for the sound chosen */
-void qd_sv_open(struct qd_app *a);               /* SAVE: SAVE PRESET (again: saved as NEW) */
+void qd_sv_open(struct qd_app *a);               /* SAVE: SAVE PRESET (F2 saves) */
 void qd_sv_new(struct qd_app *a);
 void qd_sv_replace(struct qd_app *a);
 void qd_sv_leds(const struct qd_app *a, uint8_t *key);

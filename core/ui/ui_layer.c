@@ -199,57 +199,10 @@ static void f3(const ui_layer_t *v)
     ui_keymap(k, KM_Y, KM_H);
 }
 
-/* ---------------------------------------------------------------- SEL: the tracks */
-static void speaker(int x, int y, qd_rgb c, int on, int mute)
-{
-    px_rect(x - 6, y - 2, 3, 5, c);
-    px_line(x - 3, y - 2, x + 1, y - 6, c);
-    px_line(x - 3, y + 2, x + 1, y + 6, c);
-    px_vline(x + 1, y - 6, 13, c);
-    if (mute) {
-        px_line(x + 4, y - 3, x + 9, y + 3, UI_K4);
-        px_line(x + 9, y - 3, x + 4, y + 3, UI_K4);
-        return;
-    }
-    px_vline(x + 4, y - 2, 5, on ? c : UI_G3);
-    px_vline(x + 7, y - 4, 9, on ? c : UI_G3);
-}
-
-static void tracks(const ui_layer_t *v)
-{
-    ui_kkey_t k[11];
-    int i;
-    for (i = 0; i < UI_NTRACK; i++) {
-        const int x = 20 + (i % 3) * 40, y = 30 + (i / 3) * 36;
-        const int mute = (v->mute >> i) & 1, solo = (v->solo >> i) & 1, sel = i == v->sel;
-        const qd_rgb tc = mute ? UI_G2 : UI_TRACK_PAL[i & 7];
-        if (sel)
-            px_box(x - 18, y - 12, 36, 34, UI_K3);
-        speaker(x - 2, y, mute ? UI_G2 : UI_K3, v->flash[i] != 0, mute);
-        px_rect(x - 16, y + 9, 7, 7, tc);
-        px_ctext(x - 12, y + 10, NUM[i], UI_BG, PX_FS, 1);
-        px_text(x - 7, y + 10, v->tname[i] ? v->tname[i] : "", mute ? UI_G2 : sel ? UI_K3 : UI_G1, PX_FS, 1);
-        if (solo) {
-            px_rect(x + 9, y - 10, 7, 7, v->blink ? UI_KSEL : UI_BG);
-            px_box(x + 9, y - 10, 7, 7, UI_KSEL);
-            px_ctext(x + 13, y - 9, "S", v->blink ? UI_BG : UI_KSEL, PX_FS, 1);
-        }
-    }
-    keys_clear(k);
-    for (i = 0; i < UI_NTRACK; i++) {
-        k[i].num = i + 1;
-        k[i].lit = i == v->sel;
-        k[i].col = (v->mute >> i) & 1 ? UI_G2 : UI_K3;
-    }
-    k[10].icon = UI_IC_CLEAR, k[10].col = UI_K4, k[10].dim = !(v->mute || v->solo);
-    ui_keymap(k, KM_Y, KM_H);
-}
-
 void ui_layer_draw(const ui_layer_t *v)
 {
-    static const char *const T[4] = {"F1 \xc2\xb7 PAGES", "F2 \xc2\xb7 CUT+PASTE", "F3 \xc2\xb7 RANGE+RATE",
-                                     "SEL \xc2\xb7 TRACKS"};
-    const int l = v->layer < 1 ? 1 : v->layer > 4 ? 4 : v->layer;
+    static const char *const T[3] = {"F1 \xc2\xb7 PAGES", "F2 \xc2\xb7 CUT+PASTE", "F3 \xc2\xb7 RANGE+RATE"};
+    const int l = v->layer < 1 ? 1 : v->layer > 3 ? 3 : v->layer;   /* (SEL's track map: gone, as FIZZ's) */
     if (l == 3 && v->latched) {                         /* a latched menu: the back arrow (OCT-) */
         map_head(T[l - 1], v->track, "");
         px_box(88, 1, 12, 9, UI_K3);
@@ -261,10 +214,8 @@ void ui_layer_draw(const ui_layer_t *v)
         f1(v);
     else if (l == 2)
         f2(v);
-    else if (l == 3)
-        f3(v);
     else
-        tracks(v);
+        f3(v);
 }
 
 /* ---------------------------------------------------------------- SEQ: the patterns, the pocket computer's keypad */
@@ -303,7 +254,20 @@ void ui_patterns_draw(const ui_patterns_t *v)
             px_rect(x, y, 9, 9, PX_GREY);
         else
             px_box(x, y, 9, 9, UI_G2);
+        if (v->layer && k == (v->layer == 1 ? v->src : v->last))   /* (F1's copy, F2's last W: framed) */
+            px_box(x - 1, y - 1, 11, 11, v->layer == 2 && v->last_act == 1 ? UI_K4 : UI_K2);
     }
+    if (v->layer == 2) {                                /* F2: the hand, a card with its pattern (dim: empty) */
+        px_box(4, 56, 24, 13, v->loaded ? UI_K3 : UI_G2);
+        if (v->loaded && v->hand >= 0) {
+            n[0] = BANK[(v->hand >> 4) & 3][0], n[1] = (char)('0' + ((v->hand & 15) + 1) / 10);
+            n[2] = (char)('0' + ((v->hand & 15) + 1) % 10), n[3] = 0;
+            px_ctext(16, 60, n, UI_K3, PX_FS, 1);
+        }
+    }
+    if (v->layer)                                       /* what the next W does */
+        ui_icon(v->layer == 1 ? (v->src < 0 ? UI_IC_COPY : UI_IC_PASTE) : v->next_paste ? UI_IC_PASTE : UI_IC_CUT,
+                84.f, 126.f, 1.f, v->layer == 2 && !v->next_paste ? UI_K4 : UI_K2);
     for (i = 0; i < 4; i++) {                           /* the banks: the one shown boxed */
         const int x = 70 + i * 11, y = 66, on = i == bank, has = (v->bank_used >> i) & 1u;
         if (on)
@@ -568,8 +532,8 @@ static __attribute__((noinline)) void menu_set2(const ui_menu_t *v)
 
 static __attribute__((noinline)) void menu_home(const ui_menu_t *v)
 {
-    static const char *const VN[4] = {"PIANO ROLL", "STEPS", "EDIT", "GEEK OUT"};
-    const int hv = v->home_view < 0 || v->home_view > 3 ? 0 : v->home_view;
+    static const char *const VN[3] = {"STEPS", "EDIT", "GEEK OUT"};   /* (FIZZ 2026-11-13: the PIANO ROLL is SEQ's) */
+    const int hv = v->home_view < 0 || v->home_view > 2 ? 1 : v->home_view;
     int k;
     row(0, "HOME VIEW", VN[hv]);
     row(1, "LOCK", v->home_lock ? "ON" : "OFF");

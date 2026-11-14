@@ -139,10 +139,26 @@ Releases before 0.12.0-beta.13 need that push after an install from the hub.
 
 ## EvilGenius: the unit's package
 
-EvilGenius has one package for the FM-1, the Bluetooth one. Build it with `firmware/devbuild.sh`, not
-`firmware/build.py` directly: the script's head says why (FIZZ's build needs fm1-base at FIZZ's pin, this checkout's
-is newer for the RemoteFM1 package) and how to set its copy up once. The package is
-`evilgenius-ble.fwsc`; `fizz-ble-size.txt` beside it is the size report. Install it with
+EvilGenius has one package for the FM-1, with Bluetooth: `python3 firmware/build.py` builds
+`firmware/app/build/evilgenius-ble.fwsc` (`fizz-ble-size.txt` beside it is the size report); there is no USB-only or
+single-core package. `firmware/fm1-base` is pinned where FIZZ's build needs it (934e40d). Install the package with
 `python3 firmware/fm1-base/tools/fm1_install.py PACKAGE.fwsc --yes`; `python3 firmware/tools/fizz_xdata.py stats`
-reads the running unit's counters. The RemoteFM1 package is still
-`python3 firmware/fm1-base/tools/build.py firmware/app --rfm1`.
+reads the running unit's counters.
+
+The RemoteFM1 package needs a newer fm1-base than the pin: build it with a checkout of fm1-base beside this one,
+`python3 ../fm1-base/tools/build.py firmware/app --rfm1`.
+
+The release carries three files, with the version in their names, and fm1-build's `SHA256SUMS`:
+`evilgenius-V.fwsc` (the package: The Firmware Hub installs this one; `site/firmware/V/evilgenius.fwsc`) and its two
+data blobs, `evilgenius-xdata-V.bin` and `evilgenius-xdata2-V.bin`. Where the sections above say "both packages",
+`fizz-*` or master, read the one package, `evilgenius-*` and main.
+
+## The site
+
+`site/` is static and committed whole; `.github/workflows/pages.yml` publishes it from main after
+`node site/tools/test_site.mjs` and `node site/tools/test_install.mjs`.
+
+- `site/js/pxart.js` (the firmware's fonts and sprites for the pages): `python3 tools/eg/gen_site_art.py`.
+- `site/try/` (the browser emulator): `python3 firmware/build.py --web`, then `python3 tools/eg/make_try.py`.
+- `site/install/fm1lib.js` (fm1-base's installer): `python3 firmware/tools/sync_installer.py`.
+- `site/firmware/` (the released packages and `releases.json`): `firmware/release.py`.

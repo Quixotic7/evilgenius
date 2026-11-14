@@ -96,6 +96,8 @@ static void fresh(void)
     qd_app_init(&A);
     keys_compat = 1;
     A.ui.view = QD_VIEW_ROLL;   /* (P1.5s: EDIT is the power-on view; made on the PIANO ROLL) */
+    A.ui.hview = QD_VIEW_STEPS;   /* (2026-11-13: the roll is SEQ's page; HOME from it to STEPS, as the scenarios had
+                                   * HOME's cycle from the roll) */
     A.ui.lmode = QD_LMODE_VALUES;   /* (the scenarios were written for VALUES, the old default; MODES is the default
                                      * since 2026-10-25: g_knob_layouts checks it) */
     now = 0;
@@ -227,20 +229,24 @@ static void shome(void)                                 /* the next view (P1.3y:
     btap(QD_B_HOME);
     run(10);
 }
-static void shome_wrap(void)                            /* P2.11: from EDIT past the GEEK OUT view: the PIANO ROLL
-                                                         * (2026-11-11: OVERVIEW is SEL's, out of the cycle) */
+static void to_roll(void)                               /* 2026-11-13: SEQ clicks to its PIANO ROLL */
 {
     int i;
-    for (i = 0; i < 2; i++)
-        shome();
+    for (i = 0; i < 4 && qd_ctl_seq_page(&A) != QD_SEQ_ROLL; i++) {
+        btap(QD_B_MIX);
+        run(10);
+    }
 }
-static void empty_pattern(int k)                        /* SEQ held + white key k + 1 (stopped: at once); the map
-                                                         * latched on release (2026-10-25): a SEQ tap closes it */
+static void shome_wrap(void)                            /* P2.11: from EDIT the PIANO ROLL (2026-11-13: SEQ's page) */
+{
+    to_roll();
+}
+static void empty_pattern(int k)                        /* SEQ held + white key k + 1 (stopped: at once); 2026-11-13:
+                                                         * a peek, let go: back where it was */
 {
     bdown(QD_B_MIX);
     wtap(k);
     bup(QD_B_MIX);
-    btap(QD_B_MIX);
     run(10);
 }
 /* track 1's playhead in steps (P2.4: the core gives num / den; the test reads it as a double) */
@@ -318,10 +324,68 @@ static void g_wake(void)
     CHECK(A.ui.mode == QD_MODE_STEP && R(0, 0).on == on0, "a key wakes to the step view and does nothing else");
     run(QD_IDLE_MS + 10);
     CHECK(A.ui.mode == QD_MODE_IDLE, "two minutes untouched, stopped: idle again");
+    wake();                                             /* (2026-11-13: the press that wakes does nothing else) */
     btap(QD_B_PLAY);
     run(QD_IDLE_MS + 10);
     CHECK(A.ui.mode == QD_MODE_STEP, "playing: no idle");
     btap(QD_B_PLAY);
+}
+
+/* 2026-11-13 (owner): "if we are in screensaver mode then any button press should wake the screensaver then be
+ * consumed": every button (its release too; held, no modifier and no hold) and every knob turn that wakes the unit
+ * does nothing else; pressed again, it does its job */
+static void idle_again(void)                            /* (two minutes untouched, without simulating them) */
+{
+    A.ui.touch_ms = A.ms - QD_IDLE_MS - 1u;
+    run(5);
+}
+static void g_wake_eats(void)
+{
+    static const int BT[] = {QD_B_TRACKS, QD_B_PATTERN, QD_B_PAGE, QD_B_MUTE, QD_B_SOUND, QD_B_FUNC, QD_B_HOME,
+                             QD_B_SAVE, QD_B_KEYS, QD_B_MIX, QD_B_PLAY, QD_B_REC, QD_B_OCTDN, QD_B_OCTUP};
+    size_t i;
+    int ok = 1, bad = -1, k;
+    fresh();
+    for (i = 0; i < sizeof BT / sizeof BT[0]; i++) {    /* tapped, and held long (HOME's settings, SEQ's map, REC's
+                                                         * arm, PLAY's F3, ARP's bypass, LFO's screen ..) */
+        for (k = 0; k < 2; k++) {
+            const int view = A.ui.view, mfx = qd_ctl_pat(&A)->trk[0].mfx;
+            idle_again();
+            bdown(BT[i]);
+            run(k ? 1200 : 20);
+            if (BT[i] == QD_B_FUNC)
+                ok &= !qd_ctl_shift(&A);                /* (SHIFT that woke it: no SHIFT layer while held) */
+            bup(BT[i]);
+            run(20);
+            if (!(A.ui.mode == QD_MODE_STEP && !A.ui.latch && A.ui.view == view && !A.seq.playing && !A.ui.rec &&
+                  !qd_ctl_seq_map(&A) && !A.ui.shift_stick && !A.ui.slatch && A.ui.ov_back < 0 && !A.ui.lmode_open &&
+                  qd_ctl_pat(&A)->trk[0].mfx == mfx && A.ui.tk == QD_TK_NONE) &&
+                bad < 0)
+                ok = 0, bad = (int)i * 2 + k;
+        }
+    }
+    CHECK(ok, "every button that wakes the unit (tapped or held) does nothing else (button %d, %s)", bad / 2,
+          bad & 1 ? "held" : "tapped");
+    idle_again();
+    turn(QD_K_ALGO, 1);
+    ok = A.ui.mode == QD_MODE_STEP && !A.ui.slatch;
+    turn(QD_K_ALGO, 1);
+    CHECK(ok && A.ui.slatch, "a knob turn that wakes it: nothing else (ALGORITHM: no cursor); the next turn works");
+    turn(QD_K_ALGO, -16);
+    idle_again();
+    bdown(QD_B_FUNC);                                   /* SHIFT wakes it, still held: another button is a plain one */
+    run(20);
+    btap(QD_B_PATTERN);
+    bup(QD_B_FUNC);
+    run(20);
+    CHECK(A.ui.latch != QD_LATCH_TRK && QD_OV_ON(&A), "SHIFT that woke it is no SHIFT: SEL is OVERVIEW, not SHIFT + SEL");
+    btap(QD_B_HOME);
+    idle_again();
+    btap(QD_B_SOUND);
+    ok = !A.ui.latch;
+    btap(QD_B_SOUND);
+    CHECK(ok && qd_snd_open(&A), "EDIT: the first press wakes, the second opens the editor");
+    btap(QD_B_HOME);
 }
 
 static void g_tap(void)
@@ -2580,6 +2644,7 @@ static void g_plock_track(void)
     turn(QD_K_PRESETS, 1);
     CHECK(A.ui.latch == QD_LATCH_BROWSE && !A.ui.tk_lock, "PRESETS: the library browser (P1.5t)");
     btap(QD_B_HOME);
+    to_roll();                                          /* (2026-11-13: HOME leaves the roll; SEQ's page) */
     run(QD_TK_MS + QD_TK_FADE_MS + 10);
     turn(QD_K_SELECT, 1);
     CHECK(A.ui.page[0] == 1 && A.ui.tk == UI_TK_PAGE, "SELECT: the page");
@@ -2606,8 +2671,7 @@ static void g_banks(void)
           "SEQ + W3 in bank B, stopped: B03 at once (lit)");
     black(B5);
     CHECK(A.ui.seq_bank == 1, "SEQ + B5: nothing");
-    bup(QD_B_MIX);
-    btap(QD_B_MIX);                                     /* (2026-10-25: the latched map closed) */
+    bup(QD_B_MIX);                                      /* (2026-11-13: a peek: closed on release) */
     run(10);
     wtap(0);
     CHECK(R(0, 0).on && A.seq.cur == 18, "B03 is edited (W1 a trig on it)");
@@ -2625,6 +2689,130 @@ static void g_banks(void)
     CHECK(qd_seq_queued(&A.seq) == 0, "bank A, W1 tapped: A01 queued");
     bup(QD_B_MIX);
     btap(QD_B_PLAY);
+}
+
+/* 2026-11-13 (owner): the PATTERNS page's F1 / F2, as the steps': F1 + W copies the first pattern and pastes it on
+ * every other W; F2 + W Form's pick-up / drop (cut, paste); B1..B4 change the bank meanwhile; the active pattern's cut
+ * or paste is one undo level, playing too; SHIFT + F1 stays undo; F1 / F2 tapped there: no octave */
+static qd_pattern_t pc_tmp;
+static int pat_same(int x, int y)                       /* (a copy first: the unit's two slots) */
+{
+    pc_tmp = *qd_proj_cpat(&A.proj, x);
+    return !memcmp(&pc_tmp, qd_proj_cpat(&A.proj, y), sizeof pc_tmp);
+}
+static int pat_on(int k, int t, int s) { return qd_step_is_on(qd_step(qd_proj_cpat(&A.proj, k), t, s)); }
+static void to_patterns(void)
+{
+    int i;
+    for (i = 0; i < 4 && qd_ctl_seq_page(&A) != QD_SEQ_PATTERNS; i++) {
+        btap(QD_B_MIX);
+        run(10);
+    }
+}
+static void fhold(int f)                                /* F1 / F2 down past a tap */
+{
+    bdown(f);
+    run(QD_TAP_MS + 10);
+}
+static void undo1(void)                                 /* SHIFT + F1 */
+{
+    bdown(SHIFT);
+    btap(F1);
+    bup(SHIFT);
+    run(20);
+}
+static void g_pat_copy(void)
+{
+    int oct, eo;
+#if QD_PAT_RAM < QD_NPAT
+    printf("    (the device's sizes: a pattern out of RAM waits for the flash's writes; none here: test_persist's)\n");
+    return;
+#endif
+    start();                                            /* (A05, empty) */
+    wtap(0);
+    wtap(5);
+    CHECK(A.seq.cur == 4 && pat_on(4, 0, 0) && pat_on(4, 0, 5), "A05: two trigs");
+    to_patterns();
+    oct = A.oct, eo = A.ui.entry_oct;
+    btap(F1);
+    btap(F2);
+    CHECK(qd_ctl_seq_page(&A) == QD_SEQ_PATTERNS && A.oct == oct && A.ui.entry_oct == eo && !A.ui.latch,
+          "PATTERNS: F1, F2 tapped: no octave, no F3, PATTERNS stays");
+    fhold(F1);
+    CHECK(qd_view_screen(&A) == QD_SCR_SEQ && qd_pc_layer(&A) == 1, "F1 held: the patterns still, F1's layer");
+    ktap(WK(4), 30);
+    CHECK(A.undo.pclip_ok && A.ui.pc_src == 4 && A.ui.pc_hand == 4 && A.seq.cur == 4 && qd_seq_queued(&A.seq) < 0,
+          "F1 + W5: A05 copied (ringed, in the hand), no pattern change");
+    ktap(WK(6), 30);
+    ktap(WK(7), 30);
+    run(20);
+    CHECK(pat_same(4, 6) && pat_same(4, 7) && A.seq.cur == 4 && qd_seq_queued(&A.seq) < 0, "W7, W8: A07, A08 pasted");
+    black(B2);
+    ktap(WK(0), 30);
+    run(20);
+    CHECK(A.ui.seq_bank == 1 && pat_same(4, 16), "F1 + B2: bank B; W1: B01 pasted (across banks)");
+    bup(F1);
+    run(10);
+    CHECK(A.ui.pc_src < 0 && A.undo.pclip_ok, "F1 let go: the copy stays in the hand");
+    fhold(F2);
+    CHECK(qd_pc_layer(&A) == 2, "F2 held: its layer");
+    ktap(WK(1), 30);
+    run(20);
+    CHECK(pat_same(4, 17) && A.ui.pc_act == 2, "F2 + W2 (B02 empty): F1's copy pasted");
+    ktap(WK(0), 30);
+    run(20);
+    CHECK(!qd_proj_used(&A.proj, 16) && !pat_on(16, 0, 0) && A.ui.pc_hand == 16 && A.ui.pc_act == 1 && A.ui.pc_hold,
+          "W1 (B01 full, empty-handed): cut into the hand, B01 empty");
+    ktap(WK(4), 30);
+    run(20);
+    CHECK(pat_same(4, 20) && A.ui.pc_act == 2 && !A.ui.pc_hold, "W5 (B05 empty): pasted");
+    ktap(WK(1), 30);
+    run(20);
+    CHECK(!qd_proj_used(&A.proj, 17) && A.ui.pc_hold, "W2 (B02 full, empty-handed): cut");
+    ktap(WK(4), 30);
+    run(20);
+    CHECK(pat_same(4, 20) && A.ui.pc_act == 2, "W5 (B05 full, holding): pasted over");
+    black(B1);
+    bup(F2);
+    run(10);
+    fhold(F2);
+    ktap(WK(4), 30);
+    run(20);
+    CHECK(A.seq.cur == 4 && !qd_proj_used(&A.proj, 4) && !R(0, 0).on && !R(0, 5).on,
+          "F2 again, W5 (the active A05, full): cut, the pattern blank");
+    bup(F2);
+    run(10);
+    undo1();
+    CHECK(R(0, 0).on && R(0, 5).on && qd_proj_used(&A.proj, 4), "SHIFT + F1: the cut undone (A05 back)");
+    CHECK(A.ui.pc_src < 0 && qd_ctl_seq_page(&A) == QD_SEQ_PATTERNS && pat_same(4, 20),
+          "SHIFT + F1 on PATTERNS: undo, no copy; A05 as before");
+    fhold(F1);
+    ktap(WK(8), 30);
+    ktap(WK(4), 30);
+    run(20);
+    bup(F1);
+    run(10);
+    CHECK(!R(0, 0).on && pat_same(8, 4), "F1: the empty A09 copied, pasted onto the active A05 (blank)");
+    undo1();
+    CHECK(R(0, 0).on && R(0, 5).on, "SHIFT + F1: the paste undone");
+    btap(F2);                                           /* (F1's copy left F2 holding: a tap lets go) */
+    btap(QD_B_PLAY);
+    run(300);
+    fhold(F2);
+    ktap(WK(6), 30);
+    ktap(WK(9), 30);
+    run(20);
+    CHECK(A.seq.playing && A.seq.cur == 4 && !qd_proj_used(&A.proj, 6) && pat_same(4, 9),
+          "playing: F2 + W7 cut, W10 pasted (A05 plays on)");
+    ktap(WK(4), 30);
+    run(200);
+    CHECK(A.seq.playing && A.seq.cur == 4 && !R(0, 0).on, "W5: the playing pattern cut (it plays on, blank)");
+    ktap(WK(4), 30);
+    run(200);
+    CHECK(A.seq.playing && R(0, 0).on && R(0, 5).on, "W5 again (empty, the hand loaded): pasted back");
+    bup(F2);
+    btap(QD_B_PLAY);
+    btap(QD_B_HOME);
 }
 
 /* the stopped preview: a held step sounds (notes, velocity, sound, locks, mix, the track's limit), re-struck by an
@@ -3081,7 +3269,9 @@ static void g_home(void)
     run(10);
     CHECK(!A.ui.latch && A.ui.view == QD_VIEW_NUMBERS, "HOME from the effects: back, the Geek Out page kept (no cycle)");
     btap(QD_B_HOME);
-    CHECK(A.ui.view == QD_VIEW_ROLL, "HOME again (2026-11-11: past the Geek Out pages, OVERVIEW is SEL's): the PIANO ROLL");
+    CHECK(A.ui.view == QD_VIEW_STEPS, "HOME again (2026-11-11: past the Geek Out pages, OVERVIEW is SEL's; 2026-11-13: the "
+          "PIANO ROLL SEQ's): STEPS");
+    to_roll();
     turn(QD_K_SELECT, 1);
     CHECK(A.ui.page[0] == 1 && A.ui.tk == UI_TK_PAGE, "the PIANO ROLL, SELECT: page 2 with its picker");
     turn(QD_K_SELECT, -1);
@@ -3151,6 +3341,28 @@ static void g_steps_kinds(void)
           px(cell_x(2) + 1, 98), px(cell_x(3) + 3, 103));
     CHECK(ui_steps_fill(UI_C_RANGE | UI_C_ON | UI_C_LOCK | UI_C_OWN) == QD_NONE && ui_steps_fill(UI_C_RANGE) == QD_NONE &&
           ui_steps_fill(UI_C_ON | UI_C_OWN) == QD_NONE, "no fill for a ghost, an off step, a step out of range");
+}
+
+/* 2026-11-13: the FUNC grid's arrows: the box a JUMP / LEAP lands in */
+static void g_jump_to(void)
+{
+    static ui_lane_t l;
+    memset(&l, 0, sizeof l);
+    l.page = 1;
+    l.loop = 2;                                          /* page 2 alone in the loop */
+    l.col[3].on = l.col[4].on = l.col[5].on = l.col[6].on = l.col[7].on = 1;
+    l.col[3].func = UI_FN_JUMP + 16 + 9;                /* JUMP 26: box 9 of page 2 */
+    l.col[4].func = UI_FN_JUMP + 2;                     /* JUMP 3: on page 1, no arrow */
+    l.col[5].func = UI_FN_LEAP + 15 + 13;               /* LEAP +13 from box 5: round to box 2 */
+    l.col[6].func = UI_FN_LEAP + 15 - 2;                /* LEAP -2: box 4 */
+    l.col[7].func = 1;                                  /* RESTART: none */
+    l.col[8].func = UI_FN_JUMP + 16;                    /* (not a trig: none) */
+    CHECK(ui_lane_jump_to(&l, 3) == 9 && ui_lane_jump_to(&l, 4) == -1 && ui_lane_jump_to(&l, 5) == 2 &&
+          ui_lane_jump_to(&l, 6) == 4 && ui_lane_jump_to(&l, 7) == -1 && ui_lane_jump_to(&l, 8) == -1,
+          "the jumps' boxes: %d %d %d %d %d %d", ui_lane_jump_to(&l, 3), ui_lane_jump_to(&l, 4),
+          ui_lane_jump_to(&l, 5), ui_lane_jump_to(&l, 6), ui_lane_jump_to(&l, 7), ui_lane_jump_to(&l, 8));
+    l.loop = 3;                                          /* two pages in the loop: a LEAP off the page has no box */
+    CHECK(ui_lane_jump_to(&l, 5) == -1 && ui_lane_jump_to(&l, 6) == 4, "a LEAP past the page, two pages looping");
 }
 
 /* P1.3s: playing, the playhead outlines no cell (only the selection is outlined): STEPS' open row while step 6
@@ -3249,6 +3461,8 @@ static void g_cursor(void)
     turn(QD_K_PRESETS, 1);
     CHECK(!A.ui.slatch && A.ui.latch == QD_LATCH_BROWSE, "the PIANO ROLL: PRESETS is the browser too");
     btap(QD_B_HOME);
+    CHECK(A.ui.view == QD_VIEW_EDIT, "2026-11-13: HOME from the browser over the roll: the Home view (EDIT)");
+    to_roll();
     run(QD_TK_MS + QD_TK_FADE_MS + 10);
     turn(QD_K_ALGO, 1);
     k = A.ui.held[0];
@@ -3751,12 +3965,13 @@ static void g_sel_tap(void)
     CHECK(A.ui.view == QD_VIEW_ROLL, "SEL again: back to the PIANO ROLL");
     btap(QD_B_PATTERN);
     btap(QD_B_HOME);
-    CHECK(A.ui.view == QD_VIEW_ROLL && qd_view_screen(&A) == QD_SCR_LANE, "SEL, HOME: back too (no cycle)");
+    CHECK(A.ui.view == QD_VIEW_STEPS && qd_view_screen(&A) == QD_SCR_LANE,
+          "SEL, HOME: the Home view (2026-11-13: the roll is SEQ's page, HOME leaves it)");
     btap(QD_B_SOUND);
     btap(QD_B_PATTERN);
     CHECK(!qd_snd_open(&A) && A.ui.view == QD_VIEW_OVERVIEW, "from the sound editor: OVERVIEW, the editor closed");
     btap(QD_B_HOME);
-    CHECK(A.ui.view == QD_VIEW_ROLL, "HOME: the view it came from");
+    CHECK(A.ui.view == QD_VIEW_STEPS, "HOME: the view it came from");
 }
 
 /* P1.4a: the sound editor on EDIT: every value of the sound on one page; the groups on B1..B5 (again: the next page);
@@ -5611,8 +5826,10 @@ static void g_p16d_kinds(void)
     wtap(6);                                            /* R */
     wtap(4);                                            /* P */
     btap(QD_B_SAVE);
+    CHECK(qd_view_screen(&A) == QD_SCR_NAME && !strcmp(A.ui.ty.name, "ARP"), "SAVE in a name: nothing (2026-11-13)");
+    btap(F2);
     CHECK(!strcmp(A.model.t[2].name, "ARP") && A.model.t[2].named && A.ui.latch == QD_LATCH_TRK && A.ui.trk_page == 2,
-          "A R P, SAVE: named ARP (typed), back on page 3 (%s)", A.model.t[2].name);
+          "A R P, F2: named ARP (typed), back on page 3 (%s)", A.model.t[2].name);
     turn(QD_K_1, -1);
     CHECK(A.model.t[2].kind == QD_PK_PLUCK && !strcmp(A.model.t[2].name, "ARP"), "a kind chosen: the typed name stays");
     turn(QD_K_2, 1);
@@ -7896,10 +8113,10 @@ static void g_p15t_save(void)
           "two before the end");
     memcpy(nm, A.ui.sv.newname, QD_SOUND_NAME);
     n = qd_undo_count(&A, -1);
-    btap(QD_B_SAVE);
+    btap(F2);
     run(600);
     CHECK(!strcmp(LIB(&A, 0)->name, nm) && A.model.t[0].preset == LIB(&A, 0)->preset && !A.model.t[0].edited &&
-              A.ui.tk == QD_TK_SAVED && !A.ui.latch, "SAVE again: NEW (%s), the track plays it; SAVED", nm);
+              A.ui.tk == QD_TK_SAVED && !A.ui.latch, "F2: NEW (%s), the track plays it; SAVED", nm);
     CHECK(qd_undo_count(&A, -1) == n + 1, "one undo level");
     undo_redo(-1);
     CHECK(!LIB(&A, 0)->name[0], "undo: not saved");
@@ -7917,19 +8134,20 @@ static void g_p15t_save(void)
           "HOME: cancelled, nothing saved");
     btap(QD_B_SAVE);
     CHECK(A.ui.sv.choice == 0 && leds().button[F2] == QD_LED_LIT, "REPLACE offered: NEW chosen first, F2 lit");
+    turn(QD_K_PRESETS, 1);
+    CHECK(A.ui.sv.choice == 1 && A.ui.latch == QD_LATCH_SAVE, "PRESETS right (2026-11-13): REPLACE chosen, nothing saved yet");
+    turn(QD_K_PRESETS, -1);
+    CHECK(A.ui.sv.choice == 0, "PRESETS left: NEW");
+    turn(QD_K_PRESETS, 1);
     btap(F2);
-    CHECK(A.ui.sv.choice == 1 && A.ui.latch == QD_LATCH_SAVE, "F2 (P1.5v): REPLACE chosen, nothing saved yet");
-    btap(F2);
-    btap(F2);
-    btap(QD_B_SAVE);
     run(600);
     CHECK(LIB(&A, 0)->patch[QD_QP_HARM] == 1200 && !LIB(&A, 1)->name[0] && !A.model.t[0].edited &&
-              A.model.t[0].preset == LIB(&A, 0)->preset, "F2 again (NEW), again (REPLACE), SAVE: REPLACED (the same preset), nothing new");
+              A.model.t[0].preset == LIB(&A, 0)->preset, "PRESETS right, F2: REPLACED (the same preset), nothing new");
     A.model.t[0].edited = 1;
     btap(QD_B_SAVE);
-    btap(QD_B_SAVE);
+    btap(F2);
     CHECK(LIB(&A, 1)->name[0] && strstr(LIB(&A, 1)->name, " 2") && A.model.t[0].preset == LIB(&A, 1)->preset,
-          "SAVE, SAVE: NEW as %s", LIB(&A, 1)->name);
+          "SAVE, F2: NEW as %s", LIB(&A, 1)->name);
     run(QD_TK_MS + QD_TK_FADE_MS + 10);
 }
 
@@ -8060,9 +8278,9 @@ static void g_p15u_edit(void)
     CHECK(!A.ui.ty.name[0] && A.ui.ty.cur == 0 && A.ui.latch == QD_LATCH_SAVE, "SHIFT + F1: cleared");
     btap(F1);
     CHECK(!A.ui.ty.name[0] && A.ui.latch == QD_LATCH_SAVE, "F1 on nothing: nothing (still open)");
-    btap(QD_B_SAVE);
+    btap(F2);
     run(600);
-    CHECK(!A.ui.latch && !strcmp(LIB(&A, 0)->name, "SOUND"), "SAVE on an empty name: saved as SOUND (%s)",
+    CHECK(!A.ui.latch && !strcmp(LIB(&A, 0)->name, "SOUND"), "F2 on an empty name: saved as SOUND (%s)",
           LIB(&A, 0)->name);
     btap(QD_B_SAVE);                                    /* a selected name: F1 deletes all of it */
     btap(F1);
@@ -8145,11 +8363,11 @@ static void g_p15u_save(void)
     ty_open();
     ty_type("DUST");
     n = qd_undo_count(&A, -1);
-    btap(QD_B_SAVE);
+    btap(F2);
     run(600);
     CHECK(!A.ui.latch && !strcmp(LIB(&A, 0)->name, "DUST") && A.model.t[0].preset == LIB(&A, 0)->preset &&
               !strcmp(A.model.t[0].sound_name, "DUST") && qd_undo_count(&A, -1) == n + 1,
-          "D U S T, SAVE: NEW as DUST, the track plays it; one undo level");
+          "D U S T, F2: NEW as DUST, the track plays it; one undo level");
     id = LIB(&A, 0)->preset;
     run(QD_TK_MS + QD_TK_FADE_MS + 10);
     A.model.t[0].patch[QD_QP_HARM] = 700;
@@ -8159,12 +8377,12 @@ static void g_p15u_save(void)
     CHECK(A.ui.sv.replace == 0 && A.ui.ty.sel && !strcmp(A.ui.ty.name, "DUST"), "edited, SAVE: DUST selected, REPLACE "
           "offered");
     ty_type("DUSK");
+    turn(QD_K_PRESETS, 1);
     btap(F2);
-    btap(QD_B_SAVE);
     run(600);
     CHECK(!A.ui.latch && !strcmp(LIB(&A, 0)->name, "DUSK") && LIB(&A, 0)->preset == id &&
               LIB(&A, 0)->patch[QD_QP_HARM] == 700 && !LIB(&A, 1)->name[0] && !strcmp(A.model.t[0].sound_name, "DUSK"),
-          "D U S K, F2, SAVE: REPLACED under the typed name, the same preset, nothing new");
+          "D U S K, PRESETS, F2: REPLACED under the typed name, the same preset, nothing new");
     run(QD_TK_MS + QD_TK_FADE_MS + 10);
     A.model.t[0].edited = 1;
     btap(QD_B_SAVE);
@@ -8240,9 +8458,11 @@ static void g_p15u_leds(void)
     CHECK(qd_view_screen(&A) == QD_SCR_NAME && ok && A.ui.ty.sel == !!A.per.pname[A.per.proj][0], "B10 on the project page: the name, the same keys "
           "lit");
     ty_type("NIGHT BUS");
-    btap(QD_B_SAVE);
-    CHECK(!strcmp(A.per.pname[A.per.proj], "NIGHT BUS") && A.ui.latch == QD_LATCH_PRJ, "N I G H T SPACE B U S, SAVE: "
-          "the project named; its page (%s)", A.per.pname[A.per.proj]);
+    CHECK(leds().button[F2] == QD_LED_LIT && leds().button[QD_B_SAVE] == QD_LED_OFF, "a name: F2 lit (keep), SAVE dark");
+    btap(F2);
+    CHECK(!strcmp(A.per.pname[A.per.proj], "NIGHT BUS") && A.ui.latch == QD_LATCH_PRJ && !A.ui.pj.saving &&
+              !A.ui.cf_on, "N I G H T SPACE B U S, F2: the project named; its page, not saved by F2's release (%s)",
+          A.per.pname[A.per.proj]);
     black(B10);
     ty_type("XX");
     btap(QD_B_HOME);
@@ -8381,29 +8601,96 @@ static void g_p15v_save(void)
     start();
     run(600);
     btap(QD_B_SAVE);
-    CHECK(A.ui.sv.replace < 0 && leds().button[F2] == QD_LED_OFF, "a factory sound: NEW only, F2 dark");
+    CHECK(A.ui.sv.replace < 0 && leds().button[F2] == QD_LED_LIT && leds().button[QD_B_SAVE] == QD_LED_LIT,
+          "a factory sound: NEW only; F2 lit (save), SAVE lit (a SAVE page)");
+    turn(QD_K_PRESETS, 1);
+    CHECK(A.ui.sv.choice == 0 && A.ui.latch == QD_LATCH_SAVE, "PRESETS: no REPLACE to choose (a name rolled)");
     btap(F2);
-    CHECK(A.ui.sv.choice == 0 && A.ui.latch == QD_LATCH_SAVE, "F2: nothing");
-    btap(QD_B_SAVE);
     run(600);
-    CHECK(LIB(&A, 0)->name[0] && !A.ui.latch, "SAVE: NEW");
+    CHECK(LIB(&A, 0)->name[0] && !A.ui.latch, "F2: NEW");
     run(QD_TK_MS + QD_TK_FADE_MS + 10);
     A.model.t[0].edited = 1;
     btap(QD_B_SAVE);
     CHECK(A.ui.sv.replace == 0 && A.ui.sv.choice == 0 && leds().button[F2] == QD_LED_LIT, "from one of MY presets: "
           "NEW chosen, F2 lit");
+    turn(QD_K_PRESETS, 1);
     btap(F2);
-    btap(QD_B_SAVE);
     run(600);
-    CHECK(!LIB(&A, 1)->name[0] && !A.ui.latch, "F2, SAVE: REPLACE (nothing new)");
+    CHECK(!LIB(&A, 1)->name[0] && !A.ui.latch, "PRESETS right, F2: REPLACE (nothing new)");
     run(QD_TK_MS + QD_TK_FADE_MS + 10);
     A.model.t[0].edited = 1;
     btap(QD_B_SAVE);
+    turn(QD_K_PRESETS, 1);
+    turn(QD_K_PRESETS, -1);
     btap(F2);
-    btap(F2);
-    btap(QD_B_SAVE);
     run(600);
-    CHECK(LIB(&A, 1)->name[0], "F2, F2, SAVE: NEW (%s)", LIB(&A, 1)->name);
+    CHECK(LIB(&A, 1)->name[0], "PRESETS right, left, F2: NEW (%s)", LIB(&A, 1)->name);
+}
+
+/* 2026-11-13 (owner): SAVE is a page button: clicks cycle SAVE PRESET <-> PROJECT, the one used last first (the editor
+ * with a step selected: SAVE PRESET for the step); held, the project saved (PROJECT SAVED); F2 saves on the PROJECT */
+static void g_save_cycle(void)
+{
+    static uint16_t lcd[QD_W * QD_H];
+    start();
+    run(600);
+    btap(QD_B_SAVE);
+    CHECK(A.ui.latch == QD_LATCH_SAVE, "power-on: a click opens SAVE PRESET");
+    btap(QD_B_SAVE);
+    CHECK(A.ui.latch == QD_LATCH_PRJ && A.ui.pj.page == 0 && !LIB(&A, 0)->name[0] && leds().button[F2] == QD_LED_LIT &&
+              leds().button[QD_B_SAVE] == QD_LED_LIT, "SAVE PRESET, a click: the PROJECT, nothing saved; F2, SAVE lit");
+    btap(QD_B_SAVE);
+    CHECK(A.ui.latch == QD_LATCH_SAVE && !LIB(&A, 0)->name[0], "the PROJECT, a click: SAVE PRESET");
+    btap(QD_B_SAVE);
+    turn(QD_K_SELECT, 1);
+    btap(QD_B_SAVE);
+    CHECK(A.ui.latch == QD_LATCH_SAVE, "the projects, a click: SAVE PRESET");
+    btap(QD_B_SAVE);
+    btap(QD_B_HOME);
+    CHECK(!A.ui.latch, "HOME leaves");
+    btap(QD_B_SAVE);
+    CHECK(A.ui.latch == QD_LATCH_PRJ && A.ui.pj.page == 0, "a click again: the PROJECT (the one used last)");
+    btap(QD_B_HOME);
+    btap(QD_B_SOUND);                                   /* the editor, a step selected: SAVE PRESET for the step */
+    turn(QD_K_ALGO, 3);
+    btap(QD_B_SAVE);
+    CHECK(A.ui.latch == QD_LATCH_SAVE && A.ui.sv.step == 2 && A.ui.sv.src, "the editor, step 3 selected: SAVE PRESET "
+          "for the step (the PROJECT used last)");
+    btap(QD_B_SAVE);
+    CHECK(A.ui.latch == QD_LATCH_PRJ, ".. a click: the PROJECT");
+    btap(QD_B_HOME);
+    turn(QD_K_ALGO, -20);
+    bdown(QD_B_SAVE);                                   /* held: the project saved, no page */
+    run(QD_SAVE_HOLD_MS - 30);
+    CHECK(!A.ui.latch && !A.ui.cf_on, "SAVE held under half a second: nothing yet");
+    run(40);
+    CHECK(A.ui.cf_on && A.ui.cf_col == QD_CF_TICK && !strcmp(A.ui.cf_big, "PROJECT SAVED") && !A.ui.latch,
+          "held: PROJECT SAVED, no page");
+    qd_app_frame(&A, lcd);
+    bup(QD_B_SAVE);
+    run(20);
+    CHECK(!A.ui.latch, "its release: no click");
+    btap(QD_B_SAVE);
+    CHECK(A.ui.latch == QD_LATCH_PRJ, "a click: the PROJECT");
+    run(QD_CONFIRM_MS);
+    btap(F2);
+    CHECK(A.ui.cf_on && A.ui.cf_col == QD_CF_TICK && A.ui.latch == QD_LATCH_PRJ, "F2 on the PROJECT: PROJECT SAVED, "
+          "the page stays");
+    btap(QD_B_SAVE);
+    run(QD_CONFIRM_MS);
+    bdown(QD_B_SAVE);                                   /* SAVE PRESET (a name typed): a hold nothing */
+    run(QD_SAVE_HOLD_MS + 100);
+    bup(QD_B_SAVE);
+    run(20);
+    CHECK(A.ui.latch == QD_LATCH_SAVE && !A.ui.cf_on && !LIB(&A, 0)->name[0], "SAVE PRESET, SAVE held: nothing (no "
+          "save, no page)");
+    btap(QD_B_PLAY);                                    /* playing: saved too (no flash here: at once) */
+    btap(QD_B_HOME);
+    bdown(QD_B_SAVE);
+    run(QD_SAVE_HOLD_MS + 10);
+    bup(QD_B_SAVE);
+    CHECK(A.seq.playing && A.ui.cf_on && A.ui.cf_col == QD_CF_TICK && !A.ui.latch, "playing, held: PROJECT SAVED");
+    btap(QD_B_PLAY);
 }
 
 static void g_p15v_picker(void)
@@ -8466,8 +8753,8 @@ static void g_p15w_refs(void)
     A.model.t[1].edited = 1;
     run(20);
     btap(QD_B_SAVE);
+    turn(QD_K_PRESETS, 1);
     btap(F2);
-    btap(QD_B_SAVE);
     run(600);
     CHECK(LIB(&A, 0)->patch[QD_QP_HARM] == 1500 && POOL(&A.proj, k)->patch[QD_QP_HARM] == 1500 &&
               R(1, 2).sound == k, "REPLACE: the pool's reference (and the step locking it) play the new REF ME");
@@ -8566,7 +8853,7 @@ static void g_p15x_mix(void)
     A.model.t[0].mix.pan = 12, A.model.t[0].mix.chorus = 1, A.model.t[0].mix.delay = 2, A.model.t[0].mix.reverb = 3;
     A.model.t[0].edited = 1;
     btap(QD_B_SAVE);
-    btap(QD_B_SAVE);
+    btap(F2);
     run(600);
     CHECK(LIB(&A, 0)->pan == 12 && LIB(&A, 0)->chorus == 1 && LIB(&A, 0)->delay == 2 && LIB(&A, 0)->reverb == 3,
           "SAVE (NEW): the track's pan and sends saved with it");
@@ -8574,8 +8861,8 @@ static void g_p15x_mix(void)
     A.model.t[0].mix.reverb = 99;
     A.model.t[0].edited = 1;
     btap(QD_B_SAVE);
+    turn(QD_K_PRESETS, 1);
     btap(F2);
-    btap(QD_B_SAVE);
     run(600);
     CHECK(LIB(&A, 0)->reverb == 99 && !LIB(&A, 1)->name[0], "REPLACE: its mix too (reverb 99)");
     k = qd_pool_add_sound(&A, LIB(&A, 0));           /* a step's sound lock: the sound only */
@@ -8862,8 +9149,7 @@ static void g_page_leds(void)
     int i, ok = 1;
     start();
     for (i = 0; i < 9; i++) {
-        if (W[i] != QD_B_HOME || i)
-            btap(W[i]);
+        btap(W[i]);                                     /* (2026-11-13: the roll is SEQ's: HOME first) */
         run(20);
         ok &= page_lit(W[i]);
         if (!ok) {
@@ -8871,19 +9157,30 @@ static void g_page_leds(void)
             break;
         }
     }
+    btap(QD_B_HOME);
+    to_roll();
+    ok &= page_lit(QD_B_MIX);
+    btap(QD_B_MIX);
+    run(20);
+    ok &= page_lit(QD_B_MIX);
+    btap(QD_B_MIX);
+    run(20);
+    ok &= page_lit(QD_B_MIX);
     btap(QD_B_REC);
     run(20);
-    CHECK(ok && page_lit(QD_B_REC), "the page LEDs: HOME, EDIT, HOME, ENV, HOME, SEQ, HOME, ARP, HOME, REC: one lit, the page's");
+    CHECK(ok && page_lit(QD_B_REC), "the page LEDs: HOME, EDIT, HOME, ENV, HOME, SEQ, HOME, ARP, HOME, REC: one lit, the page's (2026-11-13: SEQ's three pages SEQ's)");
 }
 
-/* the owner, 2026-10-25: HOME keeps the view (ROLL, STEPS, EDIT, a GEEK OUT page) from EDIT and ENV; SEQ held latches
- * the patterns map (W3 queues, SEQ tapped or HOME closes; a tap with no map: TOOLS) */
+/* the owner, 2026-10-25: HOME keeps the view (STEPS, EDIT, a GEEK OUT page) from EDIT and ENV. 2026-11-13 (owner): SEQ
+ * a page button: its clicks TOOLS -> PATTERNS -> PIANO ROLL -> TOOLS, from elsewhere the one shown last (TOOLS at
+ * power-on), HOME leaves them (HOME / SEQ flip); SEQ held the patterns, a peek (back on release); SEQ lit on its pages;
+ * the editor over the roll back to it with EDIT, to the Home view with HOME */
 static void g_home_keeps_seq_latch(void)
 {
-    static const int V[6] = {QD_VIEW_ROLL, QD_VIEW_STEPS, QD_VIEW_EDIT, QD_VIEW_VOICES, QD_VIEW_SCOPE, QD_VIEW_OVERVIEW};
+    static const int V[4] = {QD_VIEW_STEPS, QD_VIEW_EDIT, QD_VIEW_VOICES, QD_VIEW_SCOPE};
     int i, ok = 1;
     start();
-    for (i = 0; i < 6; i++) {
+    for (i = 0; i < 4; i++) {
         A.ui.view = V[i];
         btap(QD_B_SOUND);
         btap(QD_B_HOME);
@@ -8892,37 +9189,91 @@ static void g_home_keeps_seq_latch(void)
         btap(QD_B_HOME);
         ok &= A.ui.view == V[i] && !A.ui.latch;
     }
-    CHECK(ok, "EDIT -> HOME, ENV -> HOME: the view kept (ROLL, STEPS, EDIT, VOICES, SCOPE, OVERVIEW)");
+    CHECK(ok, "EDIT -> HOME, ENV -> HOME: the view kept (STEPS, EDIT, VOICES, SCOPE)");
     A.ui.view = QD_VIEW_EDIT;
     shome();
     turn(QD_K_SELECT, 1);
     turn(QD_K_SELECT, 1);
     shome();
     shome();
-    shome();
-    shome();                                            /* (2026-11-11: no OVERVIEW in HOME's cycle) */
+    shome();                                            /* (2026-11-11: no OVERVIEW in HOME's cycle; 2026-11-13: nor
+                                                         * the PIANO ROLL) */
     CHECK(A.ui.view == QD_VIEW_VOICES, "GEEK OUT comes back on its page (VOICES)");
+    A.ui.seq_pg = QD_SEQ_TOOLS;                         /* (as at power-on) */
+    CHECK(qd_ctl_seq_page(&A) < 0 && leds().button[QD_B_MIX] == QD_LED_OFF, "a Home view: no SEQ page, SEQ dark");
+    btap(QD_B_MIX);
+    CHECK(qd_tools_open(&A) && qd_ctl_seq_page(&A) == QD_SEQ_TOOLS && leds().button[QD_B_MIX] == QD_LED_LIT &&
+              leds().button[QD_B_HOME] == QD_LED_OFF, "SEQ: TOOLS (the power-on one), SEQ lit, HOME dark");
+    btap(QD_B_MIX);
+    CHECK(!qd_tools_open(&A) && qd_ctl_seq_page(&A) == QD_SEQ_PATTERNS && qd_view_screen(&A) == QD_SCR_SEQ &&
+              leds().button[QD_B_MIX] == QD_LED_LIT && leds().button[QD_B_HOME] == QD_LED_OFF,
+          "SEQ again: PATTERNS (the map latched), SEQ lit");
     btap(QD_B_PLAY);
     run(300);
+    ktap(WK(2), 30);
+    CHECK(qd_seq_queued(&A.seq) == 2 && qd_ctl_seq_page(&A) == QD_SEQ_PATTERNS, "W3: A03 queued, PATTERNS stays");
+    btap(QD_B_MIX);
+    CHECK(!qd_ctl_seq_map(&A) && A.ui.view == QD_VIEW_ROLL && qd_view_screen(&A) == QD_SCR_LANE &&
+              qd_ctl_seq_page(&A) == QD_SEQ_ROLL && leds().button[QD_B_MIX] == QD_LED_LIT &&
+              leds().button[QD_B_HOME] == QD_LED_OFF, "SEQ again: the PIANO ROLL, SEQ lit, HOME dark");
+    btap(QD_B_MIX);
+    CHECK(qd_tools_open(&A) && A.ui.view == QD_VIEW_VOICES, "SEQ again: TOOLS (round; over the Home view)");
+    btap(QD_B_MIX);
+    btap(QD_B_HOME);
+    CHECK(qd_ctl_seq_page(&A) < 0 && A.ui.view == QD_VIEW_VOICES && leds().button[QD_B_MIX] == QD_LED_OFF &&
+              leds().button[QD_B_HOME] == QD_LED_LIT, "HOME from PATTERNS: the Home view (VOICES), SEQ dark");
+    btap(QD_B_MIX);
+    ok = qd_ctl_seq_page(&A) == QD_SEQ_PATTERNS;
+    btap(QD_B_HOME);
+    ok &= A.ui.view == QD_VIEW_VOICES && qd_ctl_seq_page(&A) < 0;
+    btap(QD_B_MIX);
+    CHECK(ok && qd_ctl_seq_page(&A) == QD_SEQ_PATTERNS, "SEQ / HOME / SEQ: PATTERNS, VOICES, PATTERNS (the one shown last)");
+    btap(QD_B_MIX);
+    btap(QD_B_HOME);
+    btap(QD_B_MIX);
+    CHECK(qd_ctl_seq_page(&A) == QD_SEQ_ROLL && A.ui.view == QD_VIEW_ROLL, "HOME / SEQ: the PIANO ROLL remembered");
+    btap(QD_B_SOUND);
+    CHECK(qd_snd_open(&A) && qd_ctl_seq_page(&A) < 0 && leds().button[QD_B_MIX] == QD_LED_OFF,
+          "EDIT over the roll: the sound editor, no SEQ page");
+    btap(QD_B_SOUND);
+    CHECK(!qd_snd_open(&A) && qd_ctl_seq_page(&A) == QD_SEQ_ROLL, "EDIT again: back on the roll");
+    btap(QD_B_SOUND);
+    btap(QD_B_HOME);
+    CHECK(!qd_snd_open(&A) && A.ui.view == QD_VIEW_VOICES, "the editor over the roll, HOME: the Home view");
+    btap(QD_B_PAGE);
+    btap(QD_B_MIX);
+    CHECK(!A.ui.latch && qd_ctl_seq_page(&A) == QD_SEQ_ROLL, "the mix, SEQ: the mix closed, the roll (the one shown last)");
     bdown(QD_B_MIX);
-    run(QD_TAP_MS + 20);
+    run(30);
+    CHECK(qd_view_screen(&A) == QD_SCR_LANE, "SEQ down 30 ms: no map yet");
+    run(QD_TAP_MS);
+    CHECK(qd_view_screen(&A) == QD_SCR_SEQ, "SEQ held: the patterns (a peek)");
     bup(QD_B_MIX);
     run(10);
-    CHECK(qd_ctl_seq_map(&A) && qd_view_screen(&A) == QD_SCR_SEQ && leds().button[QD_B_MIX] == QD_LED_LIT,
-          "SEQ held, let go: the map latched, SEQ lit");
-    ktap(WK(2), 30);
-    CHECK(qd_seq_queued(&A.seq) == 2 && qd_ctl_seq_map(&A), "W3: A03 queued, the map stays");
-    btap(QD_B_MIX);
-    CHECK(!qd_ctl_seq_map(&A) && !qd_tools_open(&A), "SEQ tapped: closed (no TOOLS)");
+    CHECK(!qd_ctl_seq_map(&A) && qd_ctl_seq_page(&A) == QD_SEQ_ROLL, "let go: back on the roll (no latch)");
+    btap(QD_B_HOME);
     bdown(QD_B_MIX);
     ktap(WK(3), 30);
+    CHECK(qd_ctl_seq_map(&A) && qd_seq_queued(&A.seq) == 3, "a Home view, SEQ held + W4 at once: A04 queued");
     bup(QD_B_MIX);
     run(10);
-    CHECK(qd_ctl_seq_map(&A), "SEQ held with a key: latched too");
-    btap(QD_B_HOME);
-    CHECK(!qd_ctl_seq_map(&A) && leds().button[QD_B_MIX] == QD_LED_OFF, "HOME: closed");
+    CHECK(!qd_ctl_seq_map(&A) && qd_ctl_seq_page(&A) < 0 && A.ui.view == QD_VIEW_VOICES,
+          "let go: back on the Home view (no latch, no TOOLS)");
     btap(QD_B_MIX);
-    CHECK(qd_tools_open(&A) && !qd_ctl_seq_map(&A), "SEQ tapped, no map: TOOLS");
+    btap(QD_B_MIX);
+    CHECK(qd_tools_open(&A), "SEQ, SEQ: the roll, TOOLS");
+    bdown(QD_B_MIX);
+    ktap(WK(4), 30);
+    bup(QD_B_MIX);
+    run(10);
+    CHECK(qd_tools_open(&A) && !qd_ctl_seq_map(&A) && qd_seq_queued(&A.seq) == 4,
+          "over TOOLS, SEQ held + W5: A05 queued; let go: TOOLS still");
+    btap(QD_B_MIX);
+    bdown(QD_B_MIX);
+    ktap(WK(5), 30);
+    bup(QD_B_MIX);
+    run(10);
+    CHECK(qd_ctl_seq_page(&A) == QD_SEQ_PATTERNS, "on PATTERNS, SEQ held + a W: PATTERNS still (no next page)");
     btap(QD_B_HOME);
     btap(QD_B_PLAY);
 }
@@ -9020,7 +9371,7 @@ static void g_p211_geek(void)
         turn(QD_K_SELECT, 1);
     }
     shome();
-    CHECK(ok && A.ui.view == QD_VIEW_ROLL, "HOME: EDIT -> GEEK OUT (SELECT: METERS, NUMBERS, VOICES, SCOPE, TRACKS, round) -> PIANO ROLL (2026-11-11: OVERVIEW is SEL's)");
+    CHECK(ok && A.ui.view == QD_VIEW_STEPS, "HOME: EDIT -> GEEK OUT (SELECT: METERS, NUMBERS, VOICES, SCOPE, TRACKS, round) -> STEPS (2026-11-11: OVERVIEW is SEL's; 2026-11-13: the PIANO ROLL SEQ's)");
     A.ui.view = QD_VIEW_METERS;
     bpm0 = A.bpm, sel0 = A.sel;
     turn(QD_K_ALGO, 3);
@@ -9674,20 +10025,24 @@ static void g_home_settings(void)
     run(QD_HOME_HOLD_MS - 50);
     CHECK(!A.ui.latch, "HOME down under the hold: nothing yet");
     run(70);
-    CHECK(A.ui.latch == QD_LATCH_SET && !A.ui.set_page && A.ui.view == QD_VIEW_ROLL, "HOME held: the global settings");
+    CHECK(A.ui.latch == QD_LATCH_SET && !A.ui.set_page && A.ui.view == QD_VIEW_STEPS,
+          "HOME held: the global settings (2026-11-13: its press left SEQ's roll for the Home view)");
     bup(QD_B_HOME);
     run(10);
-    CHECK(A.ui.latch == QD_LATCH_SET && A.ui.view == QD_VIEW_ROLL, "its release: no click (the view as it was)");
+    CHECK(A.ui.latch == QD_LATCH_SET && A.ui.view == QD_VIEW_STEPS, "its release: no click (the view as it was)");
     turn(QD_K_SELECT, 1);
     qd_view_menu(&A, &mv);
     qd_ctl_labels(&A, &lb);
     CHECK(A.ui.set_page == 1 && mv.set_page == 1 && mv.home_view == 0 && !mv.home_lock &&
               !strcmp(lb.s[QD_LBL_KNOB0 + QD_K_1], "HOME VIEW") && !strcmp(lb.s[QD_LBL_KNOB0 + QD_K_2], "LOCK"),
-          "SELECT: page 2, HOME: the PIANO ROLL, unlocked (its labels)");
+          "SELECT: page 2, HOME: STEPS, unlocked (its labels)");
     run(60);
-    turn(QD_K_1, 2);
+    turn(QD_K_1, -3);
     qd_view_menu(&A, &mv);
-    CHECK(A.ui.view == QD_VIEW_EDIT && mv.home_view == 2, "KNOB 1: EDIT");
+    CHECK(A.ui.view == QD_VIEW_STEPS && mv.home_view == 0, "KNOB 1 down: STEPS the first (2026-11-13: no PIANO ROLL)");
+    turn(QD_K_1, 1);
+    qd_view_menu(&A, &mv);
+    CHECK(A.ui.view == QD_VIEW_EDIT && mv.home_view == 1, "KNOB 1: EDIT");
     turn(QD_K_1, 1);
     CHECK(QD_VIEW_GEEK(A.ui.view), "KNOB 1: GEEK OUT");
     turn(QD_K_1, 1);
@@ -10434,6 +10789,130 @@ static void g_mfx_b11_global(void)
 }
 
 
+/* 2026-11-13 (owner's report: "switching between the Step Keyboard mode and Step Selection with B11 can often be
+ * switched when switching modes"): B11's steps / keys is ONE switch; only a B11 click turns it. A walk over every
+ * page-to-page transition, from both states (g_b11_walk) */
+static int pk_keys(void)                                /* the W keys as the player has them now: 1 the keys, 0 the
+                                                         * steps, -1 a page without either (a menu, the browser ..) */
+{
+    const qd_ui_t *u = &A.ui;
+    if (qd_type_open(&A) || qd_lib_open(&A))
+        return -1;
+    if (qd_mfx_open(&A))
+        return u->mode == QD_MODE_KEYS;
+    if (qd_tools_open(&A))
+        return 0;
+    if (u->mode == QD_MODE_KEYS)
+        return u->latch ? -1 : !u->ksteps;
+    if (u->mode == QD_MODE_STEP && (!u->latch || u->latch == QD_LATCH_SND || u->latch == QD_LATCH_FX ||
+                                    u->latch == QD_LATCH_MIX))
+        return qd_snd_keys(&A);
+    return -1;
+}
+enum { PK_EDIT, PK_ENV, PK_FX, PK_ARP, PK_SEQ, PK_SEL, PK_REC, PK_SAVE, PK_TRK, PK_PRJ, PK_SET, PK_BROWSE, PK_HOME,
+       PK_RECSET, PK_F3, PK_LFO, PK_ALGO, PK_N };
+static const char *const PK_NAME[PK_N] = {"EDIT", "ENV", "FX", "ARP", "SEQ", "SEL", "REC", "SAVE", "SHIFT+SEL",
+                                          "SHIFT+SAVE", "HOME held", "PRESETS", "HOME", "SHIFT+REC", "PLAY held",
+                                          "LFO", "ALGORITHM"};
+static const int PK_OWN[PK_N] = {QD_B_SOUND, QD_B_PAGE, QD_B_TRACKS, QD_B_KEYS, QD_B_MIX, QD_B_PATTERN, -1, -1, -1,
+                                 -1, -1, -1, -1, -1, -1, QD_B_MUTE, -1};
+static void pk_open(int p)
+{
+    switch (p) {
+    case PK_EDIT: btap(QD_B_SOUND); break;
+    case PK_ENV: btap(QD_B_PAGE); break;
+    case PK_FX: btap(QD_B_TRACKS); break;
+    case PK_ARP: btap(QD_B_KEYS); break;
+    case PK_SEQ: btap(QD_B_MIX); break;
+    case PK_SEL: btap(QD_B_PATTERN); break;
+    case PK_REC: btap(QD_B_REC); break;
+    case PK_SAVE: btap(QD_B_SAVE); break;
+    case PK_TRK: trkset(); break;
+    case PK_PRJ: bdown(SHIFT), btap(QD_B_SAVE), bup(SHIFT), run(10); break;
+    case PK_SET: settings_open(); break;
+    case PK_BROWSE: turn(QD_K_PRESETS, 1), run(10); break;
+    case PK_RECSET: bdown(SHIFT), btap(QD_B_REC), bup(SHIFT), run(10); break;
+    case PK_F3: bdown(QD_B_PLAY), run(QD_PLAY_HOLD_MS + 20), bup(QD_B_PLAY), run(10); break;
+    case PK_LFO: btap(QD_B_MUTE); break;
+    case PK_ALGO: turn(QD_K_ALGO, 1), run(10); break;
+    default: btap(QD_B_HOME); break;
+    }
+}
+static void pk_check(int want, int *ok, const char **where, const char *when)   /* the W keys as wanted, the
+                                                         * keyboard's flag in step, B11's label saying the other */
+{
+    const int k = pk_keys();
+    const char *l = lab(LBK(10));
+    if (!*ok)
+        return;
+    if ((k >= 0 && !qd_tools_open(&A) && k != want) || (A.ui.mode == QD_MODE_KEYS && A.ui.ksteps != !A.ui.ekeys) ||
+        (A.ui.mode == QD_MODE_KEYS && A.ui.latch && !qd_mfx_open(&A)) ||
+        (k >= 0 && !qd_tools_open(&A) && !strncmp(l, "SEL/", 4) && strcmp(l, k ? "SEL/STEPS" : "SEL/KEYS")))
+        *ok = 0, *where = when;
+}
+/* base: 0 the Home view fresh, 1 the keyboard page seen before (its flag left behind), 2 the pages opened over the
+ * keyboard page; then a first page p, a second q, a B11 click (none, on p, on q), the way back (HOME, q's own key, F1).
+ * The whole matrix (about 12 500 walks, five minutes under the sanitizers) with QD_WALK_FULL=1; by default each pair
+ * of pages once, its click and way back turning with the pair (1734 walks) */
+static void g_b11_walk(void)
+{
+    int s, p, q, back, click, base, bad = 0;
+    const int full = getenv("QD_WALK_FULL") != NULL;
+    for (base = 0; base < 3; base++)
+    for (s = 0; s < 2; s++)
+        for (p = 0; p < PK_N; p++)
+            for (click = 0; click < 3; click++)
+                for (q = 0; q < PK_N; q++)
+                    for (back = 0; back < 3; back++) {
+                        int want = s, k, ok = 1, i;
+                        const char *where = "";
+                        if (back == 1 && PK_OWN[q] < 0)
+                            continue;
+                        if (!full && (click != (p + q + s + base) % 3 ||
+                                      back != (PK_OWN[q] < 0 ? (p + base) % 2 * 2 : (p + 2 * q + base) % 3)))
+                            continue;
+                        start();
+                        keys_compat = 0;
+                        if (base)                               /* (the keyboard page seen once before: its ksteps) */
+                            btap(QD_B_REC), btap(QD_B_HOME);
+                        if (s)
+                            black(B11);
+                        if (base == 2)                          /* (the pages opened over the keyboard page) */
+                            btap(QD_B_REC);
+                        pk_open(p);
+                        pk_check(want, &ok, &where, "on the first page");
+                        k = pk_keys();
+                        if (click == 1 && k >= 0) {
+                            black(B11);
+                            want ^= !qd_tools_open(&A);
+                            pk_check(want, &ok, &where, "after its click");
+                        }
+                        pk_open(q);
+                        pk_check(want, &ok, &where, "on the second page");
+                        k = pk_keys();
+                        if (click == 2 && k >= 0) {
+                            black(B11);
+                            want ^= !qd_tools_open(&A);
+                            pk_check(want, &ok, &where, "after the second page's click");
+                        }
+                        if (back)
+                            btap(back == 1 ? PK_OWN[q] : F1);
+                        pk_check(want, &ok, &where, "after the way back");
+                        for (i = 0; i < 4 && (A.ui.mode != QD_MODE_STEP || A.ui.latch || A.ui.ov_back >= 0); i++)
+                            btap(QD_B_HOME);
+                        pk_check(want, &ok, &where, "back on the Home view");
+                        if (ok && (pk_keys() != want || A.ui.ekeys != want))
+                            ok = 0, where = "back on the Home view";
+                        if (!ok && bad++ < 40)
+                            printf("    flip: base %d, from %s, %s%s, then %s%s%s: %s (mode %d latch %d ekeys %d ksteps %d)\n",
+                                   base, s ? "KEYS" : "STEPS", PK_NAME[p], click == 1 ? " + B11 click" : "", PK_NAME[q],
+                                   click == 2 ? " + B11 click" : "", back == 1 ? ", its own key" : back ? ", F1" : "", where, A.ui.mode, A.ui.latch, A.ui.ekeys,
+                                   A.ui.ksteps);
+                        CHECK(ok, "B11's state kept: from %s, %s%s, %s%s: %s", s ? "KEYS" : "STEPS", PK_NAME[p],
+                              click == 1 ? " + click" : "", PK_NAME[q], click == 2 ? " + click" : "", where);
+                    }
+}
+
 /* 2026-11-13 (owner): the selection (ALGORITHM's, or the lock's W keys) stays across every mode; only the user ends it */
 static void g_sel_kept(void)
 {
@@ -10557,6 +11036,7 @@ static void g_page_open(void)
         if ((A.ui.tk == UI_TK_PAGE || !A.ui.slatch || !A.ui.nheld || !A.ui.latch) && bad < 0)
             bad = i;
         btap(QD_B_HOME);
+        to_roll();                                      /* (2026-11-13: HOME leaves SEQ's roll; the picker is its) */
         turn(QD_K_ALGO, -16);
     }
     CHECK(bad < 0, "SELECT's page picker up, the lock on: EDIT, MIDI FX, TOOLS, FX, MIX open with the lock kept and "
@@ -10675,13 +11155,13 @@ static void g_save_step(void)
     ok &= !A.ui.sv.src;
     turn(QD_K_4, 1);
     CHECK(ok && A.ui.sv.src == 1, "SAVE: the step's sound (STEP 3); KNOB 4 left TRACK, right STEP again");
-    btap(QD_B_SAVE);
+    btap(F2);
     slot = qd_lib_find(&A, A.ui.tk_snd.preset);
     ok = slot >= 0 && A.ui.latch != QD_LATCH_SAVE;
     if (ok)
         qd_lib_read(&A, slot, &sd);
     CHECK(ok && sd.patch[QD_QP_FDBK] == f0 + 10 && A.model.t[0].preset == p0 && A.model.t[0].patch[QD_QP_FDBK] == f0,
-          "SAVE again: a new preset with the step's FDBK (%d); the track's sound kept", ok ? sd.patch[QD_QP_FDBK] : -1);
+          "F2: a new preset with the step's FDBK (%d); the track's sound kept", ok ? sd.patch[QD_QP_FDBK] : -1);
 }
 
 static void g_kb_round3(void)
@@ -10752,6 +11232,7 @@ static void g_kb_round3(void)
     bdown(SHIFT), run(QD_TAP_MS + 50), bup(SHIFT), run(10);
     ok &= !qd_ctl_shift(&A);
     CHECK(ok, "SHIFT: a click sticks, a click again ends it, a hold never sticks");
+    btap(QD_B_HOME);                                    /* (2026-11-13: the Home view; the roll is SEQ's page) */
     {   /* 2026-11-13 (owner): stuck + a menu button: SHIFT ends, the menu shown stays as it is */
         const int v = A.ui.view;
         bdown(SHIFT), run(30), bup(SHIFT), run(10);
@@ -10816,6 +11297,7 @@ int main(void)
         {"SHIFT + FX = FILL, SHIFT + ARP = MIDI FX bypass", g_fill_page},
         {"F3 latched: the page keys go straight to their pages", g_f3_pages},
         {"page follow", g_follow},
+        {"the FUNC grid: the box a JUMP / LEAP lands in", g_jump_to},
         {"P1.4b: the track settings, the mix, the effects", g_tracks_screen},
         {"the track settings' W keys, the global key", g_track_keys},
         {"MIDI notes into a held step", g_midi_held},
@@ -10824,6 +11306,7 @@ int main(void)
         {"P1.3d: the knob layout, nothing held (defaults)", g_knobs_default},
         {"P1.3y: nothing held: FX + ALGORITHM the track", g_plock_track},
         {"P1.3d: SEQ + B1..B4 banks", g_banks},
+        {"2026-11-13: PATTERNS + F1 / F2: copy, cut, paste", g_pat_copy},
         {"P1.3d: the stopped preview", g_preview},
         {"P1.3d: F3 latched: open, use, OCT- / HOME close", g_f3_latch},
         {"P1.3d/f: the step latch (LFO), selection by gesture", g_step_latch},
@@ -10908,7 +11391,8 @@ int main(void)
         {"P1.5v: DELETE?: armed, cancelled by any other key, deleted", g_p15v_delete},
         {"P1.5v: B10 toggles the pool from ALL and MINE; OUT?", g_p15v_pool},
         {"P1.5v: tags: SHIFT + B2..B8, the filters, the factory's", g_p15v_tags},
-        {"P1.5v: NEW / REPLACE: F2 chooses, SAVE does it", g_p15v_save},
+        {"P1.5v: NEW / REPLACE: PRESETS chooses, F2 does it (2026-11-13)", g_p15v_save},
+        {"2026-11-13: SAVE clicks cycle SAVE PRESET / PROJECT; held, PROJECT SAVED", g_save_cycle},
         {"P1.5v: a step + PRESETS: the picker up while held", g_p15v_picker},
         {"P1.5w: the pool's references: REPLACE, DELETE?'s use, undo", g_p15w_refs},
         {"P1.5x: presets carry their mix: LOAD, CANCEL, SAVE, a lock", g_p15x_mix},
@@ -10953,6 +11437,8 @@ int main(void)
         {"2026-11-13: stage 2: a page opened keeps the lock, clears the popup", g_page_open},
         {"2026-11-13: stage 2: the playhead on every step row", g_rows_one},
         {"2026-11-13: MIDI FX keeps B11's global state", g_mfx_b11_global},
+        {"B11 walk: every page to page keeps the steps / keys", g_b11_walk},
+        {"wake: the press or turn that wakes the unit does nothing else", g_wake_eats},
         {"2026-11-13: round 3: F1 / F2 the steps, B11 breathes, ALGORITHM's flash, LIVE's override + REC, SHIFT sticks",
          g_kb_round3},
     };

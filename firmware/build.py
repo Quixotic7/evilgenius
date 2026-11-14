@@ -216,9 +216,11 @@ if SINGLE and VARIANT not in ("xip", "o2"):      # (o2: the render at -O2 does n
 BLE_X2 = ["*/o2/build_units_c_ui_layer.o(.text* .rodata*)", "*/o2/build_units_c_ui_held.o(.text* .rodata*)",
           "*/o2/build_units_c_ui_tracks.o(.text* .rodata*)", "*/o2/build_units_c_ui_turn.o(.text* .rodata*)", "*(.qd_xdata.qf_bits_18_300 .qd_xdata.qf_g_18_300)",
           "*/o2/build_units_c_ctl_latch.o(.text.qd_msnd_engine .text.side_keep .text.qd_trk_engine "
-          ".text.qd_trk_engine_set .text.qd_msnd_put .text.qd_msnd_take .text.qd_side_clear)",
+          ".text.qd_trk_engine_set .text.qd_msnd_put .text.qd_msnd_take .text.qd_side_clear "
+          ".text.qd_pc_white .text.qd_pc_ms .text.qd_pc_up .text.qd_pc_layer .text.pc_do .text.pc_run)",
+          "*/o2/build_units_c_ctl.o(.text.b_seq .text.qd_ctl_seq_page .text.qd_ctl_home_view)",
           "*/o2/build_units_c_quad_voice.o(.text.qd_quad_side_pack .text.qd_quad_side_unpack .text.qd_msnd_over)",
-          "*/o2/build_units_c_app.o(.text.qd_app_fm_auto)", "*(.fzx2.*)"]
+          "*/o2/build_units_c_app.o(.text.qd_app_fm_auto .text.qd_undo_forget_pat .text.qd_hist_recall_k)", "*(.fzx2.*)"]
 BLE_SLOT = {"build_units_c_ui_layer.o": ["ui_geek_draw", "ui_menu_draw"]}
 # (2026-11-10) .. and single functions of other units the other way, into the second blob (sections renamed .fzx2.*;
 # main-loop drawing only, noinline in the source): OVERVIEW's model (view.c), ~0.4 KB the slot did not have; the

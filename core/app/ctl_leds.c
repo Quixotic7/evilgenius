@@ -460,7 +460,8 @@ void qd_ctl_leds(const qd_app_t *a, qd_leds_t *out)
      * lit while the track's MIDI FX is on (a group, not bypassed), no dim; FX lit while SHIFT + FX holds FILL */
     out->button[QD_B_KEYS] = qd_mfx_open(a) || (qd_mfx_tgroup(a) && !(qd_ctl_cpat(a)->trk[a->sel].mfx & QD_TMFX_OFF))
                                  ? QD_LED_LIT : QD_LED_OFF;
-    if (u->seq_used & 2)                                /* SEQ lit while its patterns are latched */
+    if (qd_ctl_seq_page(a) >= 0)                        /* SEQ lit on its pages (2026-11-13: TOOLS, PATTERNS, PIANO
+                                                         * ROLL) */
         out->button[QD_B_MIX] = QD_LED_LIT;
     if (u->latch == QD_LATCH_MIX)                       /* P1.4b: ENV (MIX), FX, SEL lit while their pages are open */
         out->button[QD_B_PAGE] = QD_LED_LIT;
@@ -492,22 +493,20 @@ void qd_ctl_leds(const qd_app_t *a, qd_leds_t *out)
     if (u->latch == QD_LATCH_BROWSE) {                  /* P1.5t: F1 (cancel) and F2 (load) lit */
         out->button[QD_B_OCTDN] = QD_LED_LIT;
         out->button[QD_B_OCTUP] = QD_LED_LIT;
-    } else if (u->latch == QD_LATCH_SAVE) {             /* .. SAVE blinking, F1 lit (delete), F2 lit with REPLACE
-                                                         * offered (P1.5v: it switches NEW / REPLACE) */
-        out->button[QD_B_SAVE] = blink(a, QD_BLINK_MS) ? QD_LED_LIT : QD_LED_DIM;
+    } else if (u->latch == QD_LATCH_SAVE || u->latch == QD_LATCH_NAME) {   /* .. 2026-11-13: SAVE lit (the SAVE
+                                                         * pages'; a name's: dark), F1 lit (delete), F2 lit (save / keep) */
+        out->button[QD_B_SAVE] = u->latch == QD_LATCH_SAVE ? QD_LED_LIT : QD_LED_OFF;
         out->button[QD_B_OCTDN] = QD_LED_LIT;
-        out->button[QD_B_OCTUP] = u->sv.replace >= 0 ? QD_LED_LIT : QD_LED_OFF;
+        out->button[QD_B_OCTUP] = QD_LED_LIT;
     } else if (u->latch == QD_LATCH_PRJ) {
-        out->button[QD_B_SAVE] = QD_LED_LIT;            /* (T1b: SHIFT + SAVE opened it) */
-        out->button[QD_B_OCTUP] = u->pj.page == 1 && u->pj.chosen != a->per.proj
-                                      ? (blink(a, QD_BLINK_MS) ? QD_LED_LIT : QD_LED_OFF) : QD_LED_OFF;
-    } else if (u->latch == QD_LATCH_NAME) {             /* P1.5u: SAVE blinking (keep), F1 lit (delete) */
-        out->button[QD_B_SAVE] = blink(a, QD_BLINK_MS) ? QD_LED_LIT : QD_LED_DIM;
-        out->button[QD_B_OCTDN] = QD_LED_LIT;
-        out->button[QD_B_OCTUP] = QD_LED_OFF;
+        out->button[QD_B_SAVE] = QD_LED_LIT;            /* (a SAVE page) */
+        out->button[QD_B_OCTUP] = u->pj.page == 0 ? QD_LED_LIT   /* (2026-11-13: F2 saves the project) */
+                                  : u->pj.chosen != a->per.proj ? (blink(a, QD_BLINK_MS) ? QD_LED_LIT : QD_LED_OFF)
+                                                                : QD_LED_OFF;
     }
-    if (u->mode == QD_MODE_STEP && !qd_snd_open(a) && !qd_tools_open(a) && !qd_mfx_open(a) &&   /* (2026-10-25: one page
-                                                         * button lit: HOME on the step view, no page open) */
+    if (u->mode == QD_MODE_STEP && !qd_snd_open(a) && qd_ctl_seq_page(a) < 0 && !qd_mfx_open(a) &&   /* (2026-10-25:
+                                                         * one page button lit: HOME on the step view, no page open;
+                                                         * 2026-11-13: none of SEQ's) */
         u->latch != QD_LATCH_MIX && u->latch != QD_LATCH_FX && u->latch != QD_LATCH_TRK && u->latch != QD_LATCH_SAVE &&
         u->latch != QD_LATCH_PRJ && u->latch != QD_LATCH_NAME && !(QD_OV_ON(a) && !u->latch))
         out->button[QD_B_HOME] = QD_LED_LIT;

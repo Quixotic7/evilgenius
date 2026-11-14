@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MPL-2.0
-"""fm1-base's web installer code into FIZZ's install page (site/install/), from the submodule as it is checked out.
+"""fm1-base's web installer code into the install page (site/install/), from the submodule as it is checked out.
 
   firmware/tools/sync_installer.py            write site/install/fm1lib.js (and backup/index.html, see below)
   firmware/tools/sync_installer.py --check    exit 1 if they differ from what the submodule makes (release.py runs it)

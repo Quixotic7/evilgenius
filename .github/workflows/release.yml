@@ -1,24 +1,23 @@
 # SPDX-License-Identifier: MPL-2.0
-# Build, sign and release FIZZ from a tag (BUILDING.md "Releasing"): both packages, USB (fizz) and Bluetooth (fizz-ble),
+# Build, sign and release EvilGenius from a tag (BUILDING.md "Releasing"): its one package (the Bluetooth build),
 # built by The Firmware Hub's shared workflow zvenson/fm1-build at its reviewed tag v1, which signs a GitHub build
-# attestation for every file: the hub then shows "Built from source on GitHub" on FIZZ's card, and anyone can check a
-# file with gh attestation verify (BUILDING.md "Checking a package").
+# attestation for every file: the hub then shows "Built from source on GitHub" on EvilGenius's card, and anyone can
+# check a file with gh attestation verify (BUILDING.md "Checking a package"). FIZZ's workflow, for one package.
 #   push of a tag vX.Y.Z[-beta.N] -> draft:   the tagged commit's site/firmware/VERSION/ checked (SHA256SUMS,
 #                                             site/tools/test_install.mjs), a draft release (the notes from
 #                                             firmware/release.py --notes, LICENSE, LICENSING.md, LICENSES.zip):
 #                                             nothing public yet
 #                                    build:   fm1-build@v1 runs firmware/hub_build.sh (firmware/release.py VERSION
 #                                             --rebuild; every sha256 checked against site/firmware/releases.json and
-#                                             the committed files before anything is signed), attests fizz-* (the two
-#                                             packages and their three data blobs, the version in their names:
-#                                             fizz-V.fwsc the Bluetooth package, which the hub installs, fizz-usb-V.fwsc
-#                                             the USB one) and uploads them with its SHA256SUMS to the draft
+#                                             the committed files before anything is signed), attests evilgenius-*
+#                                             (evilgenius-V.fwsc, the package the hub installs, and its two data
+#                                             blobs) and uploads them with its SHA256SUMS to the draft
 #                                    publish: the draft's files checked (signed by fm1-build v1 at its reviewed
 #                                             tag object, for this tag and commit; SHA256SUMS; releases.json), then
 #                                             the release published (a pre-release for a beta)
 #   workflow_dispatch              -> build only: fm1-build signs the build of the branch, no release; the files are
 #                                     the run's artifact "packages"
-# The install page needs nothing from here: Pages serves master's committed site/firmware/, the same bytes as the
+# The install page needs nothing from here: Pages serves main's committed site/firmware/, the same bytes as the
 # signed files (publish checks it). The signed files are never rebuilt, replaced or uploaded by hand afterwards.
 name: Release
 
@@ -28,7 +27,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version to build, e.g. 0.12.0-beta.13 (X.Y.Z[-beta.N][-suffix]). Builds and signs an artifact; no release."
+        description: "Version to build, e.g. 0.1.0-beta.1 (X.Y.Z[-beta.N][-suffix]). Builds and signs an artifact; no release."
         required: true
         type: string
 
@@ -108,7 +107,7 @@ jobs:
             python3 firmware/release.py --notes "$V"
             sed -e "s/@VERSION@/$V/g" -e "s|@REPO@|$GITHUB_REPOSITORY|g" <<'EOT'
 
-          `SHA256SUMS` lists both packages, `fizz-@VERSION@.fwsc` (Bluetooth) and `fizz-usb-@VERSION@.fwsc` (USB), and their data. GitHub built and signed each file from this tag's source (The Firmware Hub's shared workflow); check one with `gh attestation verify fizz-@VERSION@.fwsc --repo @REPO@ --signer-workflow zvenson/fm1-build/.github/workflows/build.yml`. The packages hold three JieLi AC79 SDK files (Apache-2.0), the Bluetooth one JieLi's Bluetooth libraries too; `LICENSE`, `LICENSING.md` and `LICENSES.zip` carry every licence. Installing firmware is at your own risk.
+          `SHA256SUMS` lists the package, `evilgenius-@VERSION@.fwsc`, and its two data files. GitHub built and signed each file from this tag's source (The Firmware Hub's shared workflow); check one with `gh attestation verify fizz-@VERSION@.fwsc --repo @REPO@ --signer-workflow zvenson/fm1-build/.github/workflows/build.yml`. The packages hold three JieLi AC79 SDK files (Apache-2.0), the Bluetooth one JieLi's Bluetooth libraries too; `LICENSE`, `LICENSING.md` and `LICENSES.zip` carry every licence. Installing firmware is at your own risk.
           EOT
           } > release-body.md
           cat release-body.md
@@ -125,7 +124,7 @@ jobs:
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           tag_name: ${{ github.ref_name }}
-          name: FIZZ ${{ steps.version.outputs.version }}
+          name: EVILGENIUS ${{ steps.version.outputs.version }}
           # a draft until publish has checked the signed files; a beta (X.Y.Z-beta.N) a pre-release
           draft: true
           prerelease: ${{ steps.version.outputs.prerelease == 'true' }}
@@ -145,7 +144,7 @@ jobs:
       attestations: write
     with:
       build: bash firmware/hub_build.sh
-      packages: fizz-*
+      packages: evilgenius-*
       # the AC79 SDK at its tag (AC79NN_SDK_V1.2.1_2023-12-13, the one the release builds use): the Bluetooth package
       # builds on JieLi's BT libraries and SDK sources, which are never in git
       sdk: true
@@ -175,16 +174,16 @@ jobs:
           set -euo pipefail
           mkdir signed
           gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --dir signed \
-              --pattern 'fizz-*' --pattern SHA256SUMS
-          n=5                         # fizz (Bluetooth), fizz-usb, fizz-xdata, fizz-ble-xdata, fizz-ble-xdata2
+              --pattern 'evilgenius-*' --pattern SHA256SUMS
+          n=3                         # evilgenius-V.fwsc, evilgenius-xdata-V.bin, evilgenius-xdata2-V.bin
           ls -l signed
-          files=(signed/fizz-*)
+          files=(signed/evilgenius-*)
           if [ "${#files[@]}" != $n ] || [ "$(grep -c . signed/SHA256SUMS)" != $n ]; then
             echo "::error::the draft $GITHUB_REF_NAME does not have the $n files with their SHA256SUMS"
             exit 1
           fi
           (cd signed && sha256sum -c SHA256SUMS)
-          for f in signed/fizz-*; do
+          for f in signed/evilgenius-*; do
             gh attestation verify "$f" --repo "$GITHUB_REPOSITORY" \
                 --signer-workflow "$FM1_BUILD" --signer-digest "$FM1_BUILD_V1_SHA" \
                 --source-ref "$GITHUB_REF" --source-digest "$GITHUB_SHA" --deny-self-hosted-runners
@@ -194,4 +193,4 @@ jobs:
       - name: Publish the release
         run: |
           gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false
-          echo "FIZZ $VERSION: released, signed by fm1-build v1" >> "$GITHUB_STEP_SUMMARY"
+          echo "EVILGENIUS $VERSION: released, signed by fm1-build v1" >> "$GITHUB_STEP_SUMMARY"

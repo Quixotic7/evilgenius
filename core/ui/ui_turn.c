@@ -360,7 +360,21 @@ void ui_word_band(const char *s)
 /* ---------------------------------------------------------------- the confirmation's scene, UNDO / REDO */
 #include "ui_scene.c"                   /* EvilGenius: the scenes (built here: the source lists stay) */
 
-void ui_undo_draw(int redo, int kind, float t)
+/* FIZZ 2026-11-13: PROJECT SAVED: a green tick in its box (the box snapping shut over its first 150 ms), the word under */
+FZ_COLD void ui_saved_draw(const char *big, float t)
+{
+    const int r = t < .15f ? 4 + (int)(t * 80.f) : 16;
+    int k;
+    px_box(60 - r, 46 - r, 2 * r + 1, 2 * r + 1, UI_K2);
+    for (k = 0; k < 3; k++) {                           /* the tick, three pixels thick */
+        px_line(51, 46 + k, 57, 52 + k, UI_K2);
+        px_line(57, 52 + k, 69, 38 + k, UI_K2);
+    }
+    px_ctext(60, 76, big, UI_K2, PX_FB, 1);
+}
+
+/* P1.5c: UNDO / REDO, what it was as a glyph */
+FZ_COLD void ui_undo_draw(int redo, int kind, float t)
 {
     const qd_rgb c = kind < 0 ? UI_G2 : UI_K3;
     const int cx = 60, cy = 76;

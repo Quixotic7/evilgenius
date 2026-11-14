@@ -1,69 +1,114 @@
 <!doctype html>
-<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<!-- SPDX-License-Identifier: MPL-2.0 -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="fizz-build" content="dev">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>FIZZ · preview</title>
-<meta name="description" content="FIZZ, an FM TONE step sequencer for the M-VAVE FM-1, in preview: play it in the browser with the on-screen panel, or with your own FM-1 running RemoteFM1. Feedback welcome.">
-<meta name="theme-color" content="#000000">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23000'/%3E%3Ccircle cx='13' cy='18' r='8' fill='none' stroke='%2328E1FF' stroke-width='2.5'/%3E%3Ccircle cx='23.5' cy='8.5' r='4' fill='none' stroke='%23FF3CA0' stroke-width='2.2'/%3E%3Ccircle cx='24' cy='22' r='2.4' fill='none' stroke='%23FFD23F' stroke-width='2'/%3E%3C/svg%3E">
-<link rel="preload" href="fonts/InterTight-VF-latin.woff" as="font" type="font/woff" crossorigin>
-<link rel="stylesheet" href="css/site.css">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EVILGENIUS: a SID groovebox for the FM-1</title>
+<meta name="description" content="EVILGENIUS is a free firmware for the M-VAVE FM-1: a six-track SID groovebox that talks, with per-step sound locks and eight retro effects.">
+<link rel="stylesheet" href="./css/eg.css">
+<script type="module" src="./js/px.js"></script>
+<style>
+.hero { display: flex; flex-wrap: wrap; gap: calc(var(--px) * 8); align-items: center; margin: calc(var(--px) * 6) 0; }
+.hero .cast { display: flex; align-items: flex-end; gap: calc(var(--px) * 5); border-bottom: var(--px) solid var(--lightblue); padding: 0 calc(var(--px) * 3); }
+.hero .say { flex: 1 1 320px; }
+.hero h1 px-text { display: block; margin-bottom: calc(var(--px) * 2); }
+.tag { color: var(--yellow); margin-top: calc(var(--px) * 4); }
+.grid h3 { margin-top: 0; }
+</style>
 </head>
 <body>
-<header id="top">
-  <a class="logo" href="./" aria-label="FIZZ, home">
-    <svg class="bubbles" viewBox="0 0 32 32" aria-hidden="true"><circle cx="13" cy="18" r="8"/><circle cx="23.5" cy="8.5" r="4"/><circle cx="24" cy="22" r="2.4"/></svg>
-    <b class="wordmark">FIZZ</b>
-  </a>
-  <div class="tagline">
-    <span class="pitch">An FM TONE step sequencer for the M-VAVE FM-1</span>
-    <span class="preview"><i></i>Preview: feedback welcome <span class="ver" data-version></span></span>
-  </div>
-  <span id="status" role="status"></span>
-  <nav>
-    <div id="rec" class="rec" hidden>
-      <button id="rec-btn" class="rec-btn" aria-pressed="false" aria-label="Record" title="Record (Shift+R)"><span class="rec-dot"></span></button>
-      <span id="rec-time" class="rec-time" hidden>0:00</span>
-      <span id="rec-meter" class="rec-meter" aria-hidden="true" hidden><i></i><i></i></span>
-      <button id="takes-btn" class="takes-btn" aria-haspopup="dialog" aria-expanded="false" aria-controls="takes" hidden><span class="takes-label">Takes</span><b id="takes-n">0</b></button>
+<div class="screen">
+  <header class="head">
+    <a href="./" aria-label="EVILGENIUS, home"><px-text font="big" scale="3" color="lightred" shadow="red">EVIL</px-text> <px-text font="big" scale="3" color="white" shadow="darkgrey">GENIUS</px-text></a>
+    <span class="where"><px-text font="small" scale="3" color="lightblue">FOR THE FM-1</px-text></span>
+    <nav class="nav" aria-label="Pages">
+      <a href="./" aria-current="page"><px-text font="small" scale="2" color="white">HOME</px-text></a>
+      <a href="./try/"><px-text font="small" scale="2" color="white">TRY</px-text></a>
+      <a href="./install/"><px-text font="small" scale="2" color="white">INSTALL</px-text></a>
+      <a href="./manager/"><px-text font="small" scale="2" color="white">MANAGER</px-text></a>
+    </nav>
+  </header>
+  <hr class="rule">
+
+  <main>
+    <section class="hero">
+      <div class="cast" aria-hidden="true">
+        <px-sprite name="AGENT_RUN2" scale="6"></px-sprite>
+        <px-sprite name="DOC" scale="6"></px-sprite>
+        <px-sprite name="ROBOT1" scale="6"></px-sprite>
+        <px-sprite name="GENIUS_TALK" scale="6"></px-sprite>
+      </div>
+      <div class="say">
+        <h1>
+          <px-text font="big" scale="5" color="lightred" shadow="red">EVIL</px-text>
+          <px-text font="big" scale="5" color="white" shadow="darkgrey">GENIUS</px-text>
+        </h1>
+        <p class="tag">A SID groovebox that talks, for the M-VAVE FM-1.</p>
+        <p>Six tracks of SID chip, a speech synthesizer that says what you type, per-step sound locks and a tower of eight effects. Free and open source. Your FM-1 keeps its hardware; this replaces what runs on it, and you can go back.</p>
+        <div class="keys">
+          <a class="key go" href="./try/"><px-sprite name="ICON_NOTE" scale="2"></px-sprite><px-text font="big" scale="2" color="white">TRY IT HERE</px-text></a>
+          <a class="key" href="./install/"><px-sprite name="ICON_DISK" scale="2"></px-sprite><px-text font="big" scale="2" color="white">INSTALL</px-text></a>
+          <a class="key plain" href="./manager/"><px-sprite name="ICON_KEY" scale="2"></px-sprite><px-text font="big" scale="2" color="white">MANAGER</px-text></a>
+        </div>
+      </div>
+    </section>
+
+    <hr class="rule">
+    <h2><px-text font="big" scale="3" color="yellow">THE MISSION</px-text></h2>
+    <div class="grid">
+      <div class="box">
+        <h3><px-text font="big" scale="2" color="lightblue">SID VOICES</px-text></h3>
+        <p>Each track is a SID: three oscillators, pulse width, ring and sync, the filter with its routing, eight voices across the FM-1's two cores.</p>
+      </div>
+      <div class="box">
+        <h3><px-text font="big" scale="2" color="lightblue">IT TALKS</px-text></h3>
+        <p>Words are spoken on the unit by SAM, played as samples through the volume register as C64 games did, and fed through the SID's filter. Type your own.</p>
+      </div>
+      <div class="box">
+        <h3><px-text font="big" scale="2" color="lightblue">STEP LOCKS</px-text></h3>
+        <p>Hold a step and turn a knob: that step keeps its own sound, word, level, pan or effect send. Chance, conditions, ratchets and micro-timing per step.</p>
+      </div>
+      <div class="box">
+        <h3><px-text font="big" scale="2" color="lightblue">FX TOWER</px-text></h3>
+        <p>Ride the lift between CHORUS, ECHO, ROOM, CRUSH, ROBOT, WARP, GLITCH and TV. Every track has its own send into each floor.</p>
+      </div>
+      <div class="box">
+        <h3><px-text font="big" scale="2" color="lightblue">THE ROOM</px-text></h3>
+        <p>Your pattern is a room: notes are platforms, the agent runs the playhead, robots guard the steps you lock. Stay away from the sentries.</p>
+      </div>
+      <div class="box">
+        <h3><px-text font="big" scale="2" color="lightblue">PLAYS WITH OTHERS</px-text></h3>
+        <p>USB and Bluetooth MIDI, USB audio to the computer, MIDI effects per track (arp, chance, harmonise, scale), four projects and 128 presets of your own.</p>
+      </div>
     </div>
-    <button id="fm1-btn" class="fm1-btn" aria-haspopup="dialog" aria-expanded="false" hidden><span class="fm1-dot off"></span><span class="fm1-label">Connect FM-1</span><span class="fm1-short">FM-1</span><span class="fm1-via" hidden></span></button>
-    <button id="dn-btn" class="nav-btn" aria-haspopup="dialog" aria-expanded="false" title="Load FIZZ presets (.fizzsnd, .fizzlib) and Elektron Digitone (.dnsnd) and Digitone II (.dn2pst) FM TONE sounds into FIZZ: read in this browser, nothing is uploaded"><span class="long">Import sounds</span><span class="short">Import</span></button>
-    <button id="lib-btn" class="nav-btn" aria-haspopup="dialog" aria-expanded="false" title="MY PRESETS: export them as files (.fizzsnd, .fizzlib) to keep or share"><span class="long">My presets</span><span class="short">Presets</span></button>
-    <a href="install/" class="nav-link" title="Install FIZZ on your FM-1 (beta)">Install</a>
-    <a href="manager/" id="mgr-link" class="nav-link" title="FIZZ Manager: back up and restore the FM-1 running FIZZ, edit its presets and pool">Manager</a>
-    <a href="guide.html" class="nav-link">Guide</a>
-    <a href="midi.html" class="nav-link" title="FIZZ and MIDI: the channels, the CC map, the remote on channel 16, MIDI out, MIDI tracks">MIDI</a>
-    <a data-feedback class="nav-link feedback" href="https://discord.gg/emf6DmZ9V" target="_blank" rel="noopener">Feedback</a>
-    <button id="menu-btn" class="icon-btn menu" aria-label="Settings" title="Settings"></button>
-  </nav>
-</header>
-<main id="stage" tabindex="-1">
-  <div id="screen-wrap" hidden><canvas id="screen" aria-label="FIZZ's screen"></canvas></div>
-  <div id="device-wrap"><canvas id="device" aria-label="The FM-1 running FIZZ: click or touch its keys, buttons and knobs"></canvas></div>
-  <button id="corner" aria-label="Settings" title="Settings"></button>
-  <div id="start" hidden>
-    <p id="start-from" class="start-from" hidden></p>
-    <div class="start-row">
-      <button id="start-btn"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.2v9.6L12.6 8z"/></svg><span>Play <b>FIZZ</b></span></button>
-      <button id="start-fm1" class="start-fm1"><span class="fm1-dot off"></span><span>Play on my FM-1</span></button>
+
+    <h2><px-text font="big" scale="3" color="yellow">SURVEILLANCE</px-text></h2>
+    <div class="shots">
+      <figure><img class="shot" src="./img/00c-idle-title.png" alt="The title screen: the genius at his desk above EVIL GENIUS, an agent running below" width="240" height="240"><figcaption>Leave it alone and the genius gloats.</figcaption></figure>
+      <figure><img class="shot" src="./img/201-room-drums.png" alt="The room view: an agent running over coloured note platforms, with the step row beneath" width="240" height="240"><figcaption>The room: a pattern you can run through.</figcaption></figure>
+      <figure><img class="shot" src="./img/205-room-robots.png" alt="The room view with three robots on the floor and the agent on a lift" width="240" height="240"><figcaption>Locked steps post a robot.</figcaption></figure>
+      <figure><img class="shot" src="./img/211-tower-ride.png" alt="The effects tower at the CHORUS floor: two sine waves, RATE, DEPTH, WIDTH and SEND" width="240" height="240"><figcaption>The FX tower, one floor per effect.</figcaption></figure>
+      <figure><img class="shot" src="./img/216-tower-robot.png" alt="The ROBOT effect: a robot beside a ring-modulated wave, FREQ, WAVE, WOBBLE and MIX" width="240" height="240"><figcaption>ROBOT: a ring modulator with a face.</figcaption></figure>
+      <figure><img class="shot" src="./img/243-snd-word.png" alt="The word editor: the waveform of INTRUDER, with WORD, ROOT, START and END" width="240" height="240"><figcaption>A word, spoken on the unit, trimmed like a sample.</figcaption></figure>
+      <figure><img class="shot" src="./img/240-snd-osc.png" alt="The sound editor on oscillator 2: a saw wave, WAVE, COARSE, FINE and PW" width="240" height="240"><figcaption>Three oscillators a voice, drawn as they sound.</figcaption></figure>
+      <figure><img class="shot" src="./img/231-mix-sends.png" alt="The mixer's sends page: six tracks, each with bars for CHORUS, ECHO, ROOM and DRY" width="240" height="240"><figcaption>Every track's sends on one page.</figcaption></figure>
     </div>
-    <p id="start-fm1-note" class="start-note" hidden></p>
-    <p>Sound starts with a click. Steps <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> <kbd>F</kbd> &hellip; &middot; <kbd>-</kbd> PLAY &middot; <a href="guide.html">the guide</a> &middot; <a href="midi.html">MIDI</a></p>
-    <p class="start-small">An FM-1 as the panel needs <a href="https://quixotic7.github.io/RemoteFM1/installer/" target="_blank" rel="noopener">RemoteFM1 installed</a> (Chrome or Edge).</p>
-  </div>
-  <div id="update" class="update" role="status" hidden>
-    <span id="update-text">A new FIZZ is out.</span>
-    <button id="update-btn" class="pill primary">Reload</button><button id="update-no" class="pill ghost" aria-label="Not now">Later</button>
-  </div>
-  <div id="toast" class="toast" role="status" aria-live="polite"></div>
-</main>
-<div id="takes" class="takes-pop" role="dialog" aria-label="Takes" hidden></div>
-<span id="rec-live" class="sr-only" aria-live="polite"></span>
-<noscript><p style="color:#ddd;padding:24px">FIZZ's preview needs JavaScript.</p></noscript>
-<script type="module" src="js/main.js"></script>
+
+    <h2><px-text font="big" scale="3" color="yellow">BEFORE YOU GO IN</px-text></h2>
+    <div class="box">
+      <ul>
+        <li>This is a beta, made by one person for fun. It has been played on real FM-1s, not on many.</li>
+        <li>Installing replaces M-VAVE's firmware and overwrites the flash where other firmwares keep their data. Back that up first. M-VAVE's firmware can be put back from the <a href="./install/">install page</a>.</li>
+        <li>The <a href="https://github.com/Quixotic7/evilgenius/blob/main/PLAYING.md">playing guide</a> covers every button. Bugs and wishes go to <a href="https://github.com/Quixotic7/evilgenius/issues">the issues</a>.</li>
+      </ul>
+    </div>
+  </main>
+
+  <footer class="foot">
+    <hr class="rule">
+    <p>EVILGENIUS is <a href="https://github.com/Quixotic7/evilgenius">open source</a> (MPL-2.0), built on <a href="https://github.com/Quixotic7/FIZZ">FIZZ</a>, fm1-base and felucca-bsp; the speech is SAM's. Original art and words; a tribute to the C64 and its games, affiliated with none of them, nor with M-VAVE.</p>
+  </footer>
+</div>
 </body>
 </html>

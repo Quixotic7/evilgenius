@@ -1,0 +1,121 @@
+/* SPDX-License-Identifier: MPL-2.0
+ * EvilGenius's site: the unit's look. The C64's sixteen colours (Colodore, as core/ui/px.h), a black screen in a
+ * light blue border, chunky boxes with their corners square, the firmware's own pixel fonts for every heading, label
+ * and button (js/px.js: <px-text>), a plain monospace for running text (a manual in a 3 x 5 font is no manual).
+ * No web fonts, nothing loaded from another site. One theme: the C64 had no light mode. */
+:root {
+  --black: #000000; --white: #ffffff; --red: #813338; --cyan: #75cec8; --purple: #8e3c97; --green: #56ac4d;
+  --blue: #2e2c9b; --yellow: #edf171; --orange: #8e5029; --brown: #553800; --lightred: #c46c71;
+  --darkgrey: #4a4a4a; --grey: #7b7b7b; --lightgreen: #a9ff9f; --lightblue: #706deb; --lightgrey: #b2b2b2;
+  --px: 4px;                             /* a "pixel" of the page's chrome: borders, gaps, the dotted rules */
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+* { box-sizing: border-box; }
+html { background: var(--lightblue); }
+body {
+  margin: 0; min-height: 100vh; background: var(--lightblue); color: var(--lightgrey);
+  font: 15px/1.55 var(--mono); -webkit-font-smoothing: none;
+}
+/* the screen: black, inside the border the C64 drew round it */
+.screen {
+  max-width: 1040px; margin: 0 auto; min-height: 100vh; background: var(--black);
+  border-left: calc(var(--px) * 4) solid var(--lightblue); border-right: calc(var(--px) * 4) solid var(--lightblue);
+  padding: calc(var(--px) * 6) calc(var(--px) * 6) calc(var(--px) * 12);
+}
+@media (max-width: 640px) {
+  .screen { border-width: 0 var(--px); padding: calc(var(--px) * 4) 16px calc(var(--px) * 10); }
+  body { font-size: 14px; }
+}
+a { color: var(--cyan); text-decoration-thickness: 2px; text-underline-offset: 3px; }
+a:hover { color: var(--white); }
+a:focus-visible, button:focus-visible, .key:focus-visible, input:focus-visible, select:focus-visible {
+  outline: var(--px) solid var(--yellow); outline-offset: 2px;
+}
+p { margin: 0 0 1em; max-width: 68ch; }
+strong { color: var(--white); font-weight: 700; }
+code, kbd { font: inherit; color: var(--lightgreen); }
+kbd { border: 2px solid var(--darkgrey); padding: 0 5px; color: var(--white); }
+ul { margin: 0 0 1em; padding-left: 1.4em; max-width: 68ch; }
+li { margin: 0 0 0.35em; }
+li::marker { color: var(--lightblue); }
+
+px-text, px-sprite { display: inline-block; line-height: 0; vertical-align: middle; }
+px-text canvas, px-sprite canvas { display: block; }
+.px-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* the top line: the name, where you are, the other pages */
+.head { display: flex; align-items: center; gap: calc(var(--px) * 4); flex-wrap: wrap; margin-bottom: calc(var(--px) * 3); }
+.head .where { margin-right: auto; }
+.head > a { text-decoration: none; }
+.nav { display: flex; gap: calc(var(--px) * 3); flex-wrap: wrap; }
+.nav a { text-decoration: none; padding: var(--px) calc(var(--px) * 2); border: var(--px) solid var(--blue); line-height: 0; }
+.nav a:hover, .nav a[aria-current="page"] { border-color: var(--lightblue); background: var(--blue); }
+
+/* a dotted rule, as the firmware's px_dots */
+.rule {
+  height: var(--px); border: 0; margin: calc(var(--px) * 5) 0;
+  background: repeating-linear-gradient(90deg, var(--blue) 0 var(--px), transparent var(--px) calc(var(--px) * 2));
+}
+
+h1, h2, h3 { margin: 0; font: inherit; line-height: 0; }
+h2 { margin: calc(var(--px) * 8) 0 calc(var(--px) * 4); }
+h3 { margin: calc(var(--px) * 5) 0 calc(var(--px) * 3); }
+
+/* a key of the panel: a button */
+.key {
+  display: inline-flex; align-items: center; gap: calc(var(--px) * 2); cursor: pointer; line-height: 0;
+  padding: calc(var(--px) * 3) calc(var(--px) * 4); border: var(--px) solid var(--lightblue); background: var(--blue);
+  color: var(--white); text-decoration: none; font: inherit;
+  box-shadow: var(--px) var(--px) 0 var(--darkgrey);
+}
+.key:hover { background: var(--lightblue); }
+.key:active { transform: translate(var(--px), var(--px)); box-shadow: none; }
+.key.go { border-color: var(--lightgreen); background: var(--green); }
+.key.go:hover { background: var(--lightgreen); }
+.key.warn { border-color: var(--lightred); background: var(--red); }
+.key.warn:hover { background: var(--lightred); }
+.key.plain { border-color: var(--grey); background: var(--black); }
+.key.plain:hover { background: var(--darkgrey); }
+.key[disabled], .key[aria-disabled="true"] { border-color: var(--darkgrey); background: var(--black); cursor: not-allowed; box-shadow: none; opacity: 0.7; }
+.keys { display: flex; flex-wrap: wrap; gap: calc(var(--px) * 4); margin: calc(var(--px) * 4) 0; }
+
+/* a box, its corners square; .lit: the one that matters now */
+.box { border: var(--px) solid var(--blue); padding: calc(var(--px) * 4); margin: 0 0 calc(var(--px) * 4); }
+.box.lit { border-color: var(--lightblue); }
+.box.good { border-color: var(--green); }
+.box.bad { border-color: var(--lightred); }
+.box > :last-child { margin-bottom: 0; }
+.grid { display: grid; gap: calc(var(--px) * 4); grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+
+/* a shot of the unit's screen: 240 x 240, its pixels kept */
+.shot { image-rendering: pixelated; width: 240px; height: 240px; border: var(--px) solid var(--darkgrey); display: block; background: var(--black); }
+.shots { display: flex; flex-wrap: wrap; gap: calc(var(--px) * 3); margin: calc(var(--px) * 4) 0; }
+figure { margin: 0; }
+figcaption { font-size: 12px; color: var(--grey); margin-top: 6px; max-width: 248px; }
+
+/* a line of status: what the page is doing; .ok / .err / .busy colour it */
+.status { min-height: 1.6em; color: var(--lightgrey); }
+.status.ok { color: var(--lightgreen); }
+.status.err { color: var(--lightred); }
+.status.busy { color: var(--yellow); }
+.status.busy::after { content: "\2588"; animation: blink 1s steps(2) infinite; margin-left: 4px; }
+@keyframes blink { 50% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .status.busy::after { animation: none; } }
+
+/* a progress bar: the search bar of the cabinet */
+.bar { height: calc(var(--px) * 3); border: var(--px) solid var(--lightgrey); background: var(--black); max-width: 420px; }
+.bar > i { display: block; height: 100%; width: 0; background: var(--lightgreen); }
+
+table { border-collapse: collapse; width: 100%; margin: 0 0 1em; }
+th, td { text-align: left; padding: 6px 10px; border-bottom: 2px solid var(--blue); vertical-align: top; }
+th { color: var(--white); font-weight: 700; }
+tr:hover td { background: #0c0b2a; }
+
+input[type="text"], input[type="file"], select {
+  font: inherit; color: var(--white); background: var(--black); border: var(--px) solid var(--blue); padding: 6px 8px;
+}
+label { color: var(--lightgrey); }
+.foot { margin-top: calc(var(--px) * 10); font-size: 13px; color: var(--grey); }
+.foot a { color: var(--lightblue); }
+.dim { color: var(--grey); }
+.hide { display: none !important; }

@@ -215,6 +215,7 @@ static void fill_lane(qd_app_t *a, ui_lane_t *v, char *pat)
         c->chance = (uint8_t)r.chance;
         cond_short(r.cond, c->cond);
         c->sound = (uint8_t)r.sound;
+        c->sname = r.sound ? qd_sound_name(&a->proj, r.sound) : 0;
         c->nlock = (uint8_t)qd_lock_count(P, t, s);
         {   /* (EvilGenius: the locks that shape the sound: a robot guards the step) */
             int nl, k;
@@ -574,14 +575,6 @@ static void fill_layer(qd_app_t *a, ui_layer_t *v, int layer)
     v->last_w = u->f2_last_w;
     v->last_act = u->f2_last_act;
     v->sel = t;
-    v->mute = a->seq.mute;
-    v->solo = a->seq.solo;
-    for (i = 0; i < QD_NTRACK; i++) {
-        v->tname[i] = a->model.t[i].name;
-        v->flash[i] = (uint8_t)qd_ctl_trig_flash(a, i);
-        if (qd_seq_track_pat(&a->seq, i)->trk[i].mute)
-            v->mute |= (uint8_t)(1u << i);
-    }
     v->rate_val = ts->rbase;
     v->rate_type = ts->rtype;
     v->rate_val_name = qd_rate_val_name(v->rate_val);
@@ -1216,6 +1209,9 @@ static void draw_patterns(const qd_app_t *a)
     v.blink = (a->ms / QD_BLINK_MS) % 2u == 0;
     v.launch = a->proj.launch;
     v.launch_name = qd_launch_name(a->proj.launch);
+    v.layer = qd_pc_layer(a);                           /* (2026-11-13: F1 / F2's copy, cut and paste) */
+    v.src = a->ui.pc_src, v.last = a->ui.pc_last, v.last_act = a->ui.pc_act;
+    v.loaded = a->undo.pclip_ok, v.hand = a->ui.pc_hand, v.next_paste = v.loaded && a->ui.pc_hold;
     ui_patterns_draw(&v);
 }
 
@@ -1425,8 +1421,6 @@ int qd_view_screen(const qd_app_t *a)
     const qd_ui_t *u = &a->ui;
     if (u->mode != QD_MODE_IDLE && qd_ctl_seq_map(a))   /* (P1.5a: after a hold, or a key: a tap is the project) */
         return QD_SCR_SEQ;
-    if (u->mode != QD_MODE_IDLE && qd_ctl_sel_map(a))   /* (P1.3y: after a hold, or a key: a tap shows nothing) */
-        return QD_SCR_SEL;
     if (qd_ctl_shift(a) && !u->shift_used && qd_ctl_shift_page(a))
         return QD_SCR_SHIFT;                            /* 2026-11-10 (owner): SHIFT held alone, the same screen over
                                                          * every page (the keyboard, the sound editor ..) */
@@ -2084,8 +2078,8 @@ static void fill_menu(const qd_app_t *a, ui_menu_t *v)
     v->boost = u->boost;
     v->clk_out = u->clk_out, v->cc_out = u->cc_out;     /* (FIZZ MIDI (c)) */
     v->set_page = u->set_page;
-    v->home_view = qd_ctl_view_family(u->ov_back >= 0 ? u->ov_back : u->view), v->home_lock = u->home_lock;
     v->voice = u->voice_mode, v->voice_lvl = u->voice_lvl * 100 / QD_VOICE_LVL_MAX;
+    v->home_view = qd_ctl_view_family(qd_ctl_home_view(a)) - 1, v->home_lock = u->home_lock;   /* (2026-11-13: STEPS 0 ..) */
 #if QD_PKG_BLE
     v->ble_on = !u->ble_off, v->ble_st = u->ble_st;     /* (the Bluetooth package's page 3) */
 #endif
@@ -2611,10 +2605,6 @@ static void view_draw(qd_app_t *a, ui_lane_t *lvp, ui_held_t *hvp, ui_turn_t *tv
     case QD_SCR_TOOLS:                                  /* T1: the track tools */
         draw_tools(a);
         break;
-    case QD_SCR_SEL:                                    /* printed SEL held: the tracks */
-        fill_layer(a, &yv, 4);
-        ui_layer_draw(&yv);
-        break;
     case QD_SCR_SHIFT:
         fill_shift(a, &sv);
         ui_shift_draw(&sv);
@@ -2759,6 +2749,10 @@ static void view_draw(qd_app_t *a, ui_lane_t *lvp, ui_held_t *hvp, ui_turn_t *tv
             qd_save();
             qd_alpha(al);
             ui_word_band(w);
+            qd_restore();
+        } else if (al > 0.f && u->cf_col == QD_CF_TICK) {   /* (2026-11-13: PROJECT SAVED: a big tick over it) */
+            overlay_begin(al);
+            ui_saved_draw(u->cf_big, (float)d / 1000.f);
             qd_restore();
         } else if (al > 0.f) {
             overlay_begin(al);
