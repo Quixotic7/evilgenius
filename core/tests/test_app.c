@@ -1124,14 +1124,14 @@ static void t_clock(void)
     printf("  clock: MIDI START and 24 PPQN at 140 BPM drive the transport; STOP stops\n");
 }
 
-/* EvilGenius: the title's pixels: the band EVIL sits in (y 80 .. 112) drawn in its light red (near it: the 8-bit
- * frame's palette may round it) */
+/* EvilGenius: the title's pixels: the band EVIL sits in (y 122 .. 150, under the jar: the brain is light red too)
+ * drawn in its light red (near it: the 8-bit frame's palette may round it) */
 static int word_px(void)
 {
     static uint16_t lcd[QD_W * QD_H];
     int x, y, n = 0;
     qd_app_frame(&A, lcd);
-    for (y = 80; y < 112; y++)
+    for (y = 122; y < 150; y++)
         for (x = 0; x < QD_W; x++) {
             const unsigned px = (unsigned)(lcd[y * QD_W + x] >> 8 | (lcd[y * QD_W + x] & 0xffu) << 8);
             const int r = (int)((px >> 11) & 31u) * 255 / 31, g = (int)((px >> 5) & 63u) * 255 / 63,

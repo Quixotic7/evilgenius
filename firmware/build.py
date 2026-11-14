@@ -141,6 +141,9 @@ if SINGLE and "FM1B_POOL_SPARE" not in os.environ:
 # so what it has of them goes to RAM and the rest runs from the flash)
 HOT = {"build_units_c_qd_fx.o": ["?xf_reverb", "?xf_delay", "?out_master", "?xq_block", "?xc_block",
                                  "?fz_real_qd_fx_block", "?qd_fx_block"]}
+# (EvilGenius, 2026-11-14: the pixel screens' rectangles played from the display list: the list's run of them and the
+# write into the 8-bit frame, two small functions a band calls a thousand times: qd_gfx_fast.c qdb_px_rect)
+HOT["build_units_c_qd_gfx_fast.o"] = ["?rl_px_run", "?qdb_px_rect"]
 if os.environ.get("FZ_HOT_DRAW") == "1":
     HOT = {"build_units_c_qd_gfx_fast.o": ["qd_dl_play", "text_draw", "fill_path", "paint_setup", "acc_edge",
                                            "qd_text_mask_rows", "quad_dev", "rect_dev"]}

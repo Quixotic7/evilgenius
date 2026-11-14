@@ -1926,6 +1926,24 @@ void qd_fill_rect(float x, float y, float w, float h, qd_rgb col)
         float X0, Y0, X1, Y1;
         box_dev(&S.m, x, y, w, h, &X0, &Y0, &X1, &Y1);
         paint_setup(col, Y0, Y1);
+#if defined(QD_GFX_FB) && !defined(QD_NO_PXFAST)        /* (QD_NO_PXFAST: the check's build, the old way) */
+        /* EvilGenius: a rectangle of whole pixels, opaque, the clip's edges whole (every one the pixel kit draws:
+         * a sprite's, a glyph's): its index straight into the rows. rect_dev makes a row of coverage for each row
+         * and put_row blends it a pixel at a time, which is the same bytes here (a full pixel takes the paint's
+         * index) and was most of a pixel screen's frame: the start screen's 1,300 rectangles 41 ms of its 75. */
+        if (ga >= 255u && !mk && p_yt == -9 && p_yb == -9 && p_fl >= 256 && p_fr >= 256) {
+            const int ix0 = (int)X0, iy0 = (int)Y0, ix1 = (int)X1, iy1 = (int)Y1;
+            if ((float)ix0 == X0 && (float)iy0 == Y0 && (float)ix1 == X1 && (float)iy1 == Y1) {
+                const int xa = ix0 < p_c0 ? p_c0 : ix0, xb = ix1 > p_c1 ? p_c1 : ix1;
+                const int ya = iy0 < p_r0 ? p_r0 : iy0, yb = iy1 > p_r1 ? p_r1 : iy1;
+                int yy;
+                if (xb > xa)
+                    for (yy = ya; yy < yb; yy++)
+                        memset(fb_row[yy] + xa, (int)f_s, (size_t)(xb - xa));
+                return;
+            }
+        }
+#endif
         if (ga && !mk)
             rect_dev(X0, Y0, X1, Y1);
         return;
@@ -2274,6 +2292,50 @@ int qd_text_mask(const char *utf8, float x, float y, const qd_font *f, uint8_t *
             return 0;
     return h > 0;
 }
+
+#if defined(QD_GFX_FB) && !defined(QD_NO_PXFAST)
+/* EvilGenius: the pixel screens' rectangles from the list, the short way. A pixel screen's frame is a thousand or
+ * two of them, and a band plays the whole list: on the unit the pass over one (its two words read, the transform's
+ * multiplies, then qd_fill_rect's clip and paint set up in floats) was most of the frame (the start screen: 1,300
+ * rectangles, 3 ms a band, eleven bands a frame). qdb_px_plain: nothing stands between such a rectangle and the
+ * frame (no transform, alpha 1, no text mask, the clip whole pixels), so qdb_px_rect writes its palette index
+ * straight into the rows it has in the band: the same bytes qd_fill_rect makes (QD_NO_PXFAST builds the old way:
+ * the frames compared equal). Both, and the list's run of them (qd_gfx_rec.c rl_px_run), are small and go to the
+ * RAM code region (firmware/build.py HOT). */
+#define QDB_PX_FAST 1
+static int qdb_px_plain(void)
+{
+    return !hashing && !mk && S.alpha >= 1.f && S.m.a == 1.f && S.m.b == 0.f && S.m.c == 0.f && S.m.d == 1.f &&
+           S.m.e == 0.f && S.m.f == 0.f && S.cx0 == (float)(int)S.cx0 && S.cy0 == (float)(int)S.cy0 &&
+           S.cx1 == (float)(int)S.cx1 && S.cy1 == (float)(int)S.cy1;
+}
+static __attribute__((noinline)) void qdb_px_rect(int x, int y, int w, int h, qd_rgb col)
+{
+    static qd_rgb last = QD_NONE;                       /* (the colour before: a sprite's rectangles come by colour) */
+    static uint8_t idx;
+    const int cx0 = (int)S.cx0, cy0 = (int)S.cy0, cx1 = (int)S.cx1, cy1 = (int)S.cy1;
+    int x1 = x + w, y1 = y + h;
+    x = x < t_c0 ? t_c0 : x, x = x < cx0 ? cx0 : x, x1 = x1 > t_c1 ? t_c1 : x1, x1 = x1 > cx1 ? cx1 : x1;
+    y = y < t_r0 ? t_r0 : y, y = y < cy0 ? cy0 : y, y1 = y1 > t_r1 ? t_r1 : y1, y1 = y1 > cy1 ? cy1 : y1;
+    if (x1 <= x || y1 <= y)
+        return;
+    if (col != last) {
+        const unsigned r = (col >> 16) & 255u, g = (col >> 8) & 255u, b = col & 255u;
+        idx = (uint8_t)fb_index(col, (uint16_t)(L5[r] << 11 | L6[g] << 5 | L5[b]));
+        last = col;
+    }
+    for (; y < y1; y++) {
+        uint8_t *p = fb_row[y] + x;
+        int n = x1 - x;
+        if (n >= 48) {                                  /* (memset is a call into the flash: for the long ones) */
+            memset(p, idx, (size_t)n);
+            continue;
+        }
+        while (n--)
+            *p++ = idx;
+    }
+}
+#endif
 
 /* P2.6: the public calls, and the frame recorded once, every strip drawn from it */
 #define QDB_ROW0 t_r0                           /* (P2.6e: the strip's rows, for the list's path groups) */

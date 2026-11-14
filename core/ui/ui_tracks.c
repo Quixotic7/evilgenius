@@ -235,6 +235,7 @@ static void fx_sends(const ui_fx_t *v)
     const int tick = (int)(v->t * 14.f);
     int k, i;
     px_sprite_part(SM_X, SM_Y, PXS_GENIUS_BIG, 0, 1, 100, 76);       /* the pylons to the computer's underside */
+    ui_genius_bubbles(SM_X, SM_Y - 1, v->t);
     if (v->beat >= 0.f && v->beat < 0.15f)                          /* it laughs at the track's notes */
         px_sprite(SM_X + 33, SM_Y + 27, PXS_GENIUS_HA, 0);
     px_rect(SM_X + 37, SM_Y, 33, 9, PX_BLACK);                      /* (its own sparks and screens out) */

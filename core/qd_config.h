@@ -186,7 +186,9 @@
 #define QD_PACE_PLAYHEAD 2             /* the step view's playhead: 0 continuous, 1 a hop a step, 2 a hop a half step */
 #endif
 #ifndef QD_IDLE_FPS
-#define QD_IDLE_FPS 16                 /* the idle logo's clock steps, stopped: 16, 10 or 8 a second */
+#define QD_IDLE_FPS 30                 /* the idle screen's clock steps, stopped: 30 a second (EvilGenius, 2026-11-14:
+                                        * its frame is 14 ms of work on the unit now, and at 16 its line of text
+                                        * crawled four pixels a step); 16, 10 or 8 as FIZZ had them */
 #endif
 #ifndef QD_EDIT_ANIM_FPS
 #define QD_EDIT_ANIM_FPS 30            /* EDIT's picture's clock: 30 (every frame's own) or 15 steps a second */

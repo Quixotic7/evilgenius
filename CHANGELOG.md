@@ -12,6 +12,18 @@ EVILGENIUS began as FIZZ 0.12.0-beta.17 with another engine and another face; FI
 
 <!-- The next release's notes, for testers, in plain language. firmware/release.py moves them. -->
 
+- **The start screen runs smoothly: 29 frames a second on the unit, from 11.** It drew more than the unit's frame
+  holds, so the unit drew it the slow way, and its clock stepped 16 times a second: the picture stuttered and the
+  line of text crawled four pixels a step. Now only the letters on screen are drawn, the machine is 645 pieces
+  instead of 1,091, and the screen steps 30 times a second.
+- **Every pixel screen draws faster.** The unit writes the screens' rectangles straight into its frame and reads its
+  drawing list a word at a time (it was calling out to the flash six thousand times a frame). The start screen's
+  drawing went from 66 ms a frame to 12.
+- **The Evil Genius laughs without a box round its face**, and the liquid in its jar boils: bubbles rise at the
+  brain's sides and the surface ripples, on the start screen, on SENDS and in the scenes.
+- **LFO MULT goes on to 1/64 and 1/128** (after 8 BAR in the list, so your sounds keep their settings). With an ARP
+  wave a note is a division: at 120 BPM a 1/64 is 32 notes a second and a 1/128 is 64, past the PAL frame's 50.
+
 ## 0.1.0-beta.2 (2026-11-14)
 
 - **Notes start on time.** A note on a voice that had gone silent could start 33 ms late (a 32nd note at 124 BPM), or

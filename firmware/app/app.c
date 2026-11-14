@@ -163,7 +163,7 @@ static uint32_t fz_tick_lag_max;         /* (the most the clock was behind plat_
 #define FZ_TOUCHED_MS 1500u              /* a frame every FZ_FRAME_TOUCHED for this long after a press or a turn */
 #define FZ_FRAME_TOUCHED 33u             /* how often a frame is looked at (drawn if it changed) */
 #define FZ_FRAME_PLAYING 50u
-#define FZ_FRAME_IDLE 66u                /* the idle screen's animation */
+#define FZ_FRAME_IDLE 33u                /* the idle screen's animation (30 a second: qd_config.h QD_IDLE_FPS) */
 #define FZ_FRAME_QUIET 100u
 #define FZ_STORE_MS 15u                  /* the store's step (qd_persist_step) */
 #define FZ_XFER_HOLD_MS 300u             /* a transfer: FIZZ frames (SysEx) came in the last this many ms .. */

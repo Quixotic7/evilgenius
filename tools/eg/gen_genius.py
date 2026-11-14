@@ -101,9 +101,18 @@ def main():
     L = (378, 256, 756, 566)                                          # the second's brain
     bh = round(bw * (L[3] - L[1]) / (L[2] - L[0]))
     lau = cells(b, L, bw, bh)
-    lau = [[5 if v in (5, 13, 7, 3) else v for v in r] for r in lau]  # (round it: the liquid, plain)
     jx0, jy0 = bx0 - 1, by1 - bh
-    ha = [[5] + r + [5] for r in lau]
+    # Only the brain is drawn over the machine: a cell of the second picture's liquid is left open, so the jar's own
+    # liquid (its surface, its bubbles, the glass's shine) shows round the laugh, and no box. Where the first
+    # picture's brain would show beside the laughing one (a row's cells from its first pink to its last, and one
+    # two more each side for its outline), the cell is plain liquid.
+    LIQ = (5, 13, 7, 3)
+    ha = []
+    for y, r in enumerate([[5] + r + [5] for r in lau]):
+        base = big[jy0 + y][jx0:jx0 + len(r)]
+        pink = [x for x, v in enumerate(base) if v in (10, 2)]
+        lo, hi = (min(pink) - 2, max(pink) + 2) if pink else (1, 0)
+        ha.append([v if v not in LIQ else (5 if lo <= x <= hi else None) for x, v in enumerate(r)])
     # the jar in the machine (its glass, outside edge), for the screens that show it alone
     J = (round((312 - 36) * sx), round((222 - 6) * sy), round((918 - 36) * sx) + 1, round((660 - 6) * sy) + 1)
     put("GENIUS_BIG", big, "the Evil Genius (tools/eg/gen_genius.py, from the owner's pictures): the machine, %d x %d, "
@@ -119,7 +128,7 @@ def main():
         for k in range(2):
             for y, r in enumerate(big):
                 for x, v in enumerate(r):
-                    if k and jy0 <= y < jy1 and jx0 <= x < jx1:
+                    if k and jy0 <= y < jy1 and jx0 <= x < jx1 and ha[y - jy0][x - jx0] is not None:
                         v = ha[y - jy0][x - jx0]
                     c = PAL[v or 0]
                     for yy in range(S):

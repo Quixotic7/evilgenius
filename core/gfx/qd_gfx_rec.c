@@ -81,7 +81,12 @@ static void rl_put(const void *p, uint32_t n)
         rl_fail = 1;
         return;
     }
-    memcpy(rl_buf + rl_len, p, n);
+    /* (EvilGenius: a word, and the list is words: stored as one. The unit's memcpy is a call into the flash, and a
+     * pixel screen's frame made six thousand of them here and in the readers below: half of its latch) */
+    if (n == 4u && !(((uintptr_t)rl_buf | rl_len | (uintptr_t)p) & 3u))
+        *(uint32_t *)(void *)(rl_buf + rl_len) = *(const uint32_t *)p;
+    else
+        memcpy(rl_buf + rl_len, p, n);
     rl_len += n;
 }
 static void rl_op(int op) { const uint32_t w = (uint32_t)op; rl_put(&w, 4); }   /* (a word: the floats aligned) */
@@ -508,20 +513,50 @@ void qd_dl_drop(void)
 
 /* the reader */
 static uint32_t rl_at;
-static float rl_gf(void)
-{
-    float f;
-    memcpy(&f, rl_buf + rl_at, 4);
-    rl_at += 4;
-    return f;
-}
-static uint32_t rl_gu(void)
+static uint32_t rl_gu(void)                             /* (a word of the list: read as one where it is one) */
 {
     uint32_t u;
-    memcpy(&u, rl_buf + rl_at, 4);
+    if (!(((uintptr_t)rl_buf | rl_at) & 3u))
+        u = *(const uint32_t *)(const void *)(rl_buf + rl_at);
+    else
+        memcpy(&u, rl_buf + rl_at, 4);
     rl_at += 4;
     return u;
 }
+static float rl_gf(void)
+{
+    const uint32_t u = rl_gu();
+    float f;
+    memcpy(&f, &u, 4);                                  /* (between two locals: no call) */
+    return f;
+}
+
+#ifdef QDB_PX_FAST
+/* EvilGenius: the packed rectangles from at on, until a call that is not one: those with rows in the band drawn
+ * (qdb_px_rect), the rest passed on two compares. Where the list goes on from */
+static __attribute__((noinline)) uint32_t rl_px_run(uint32_t at)
+{
+    const int r0 = (int)QDB_ROW0, r1 = (int)QDB_ROW1;
+    const uint8_t *const buf = rl_buf;
+    const uint32_t len = rl_len;
+    if (((uintptr_t)buf | at) & 3u)                     /* (never: the arena's blocks and the list's calls are words) */
+        return at;
+    while (at + 8u <= len) {
+        /* (read as words: the unit's memcpy is a call into the flash, two a rectangle, most of this pass) */
+        const uint32_t *q = (const uint32_t *)(const void *)(buf + at);
+        const uint32_t w0 = q[0], w1 = q[1];
+        int y0, y1;
+        if ((w0 & 255u) != (uint32_t)RO_PXR)
+            break;
+        at += 8u;
+        y0 = (int)(w0 >> 16 & 255u) << 1, y1 = y0 + ((int)(w1 >> 24) << 1);
+        if (y1 <= r0 || y0 >= r1)
+            continue;
+        qdb_px_rect((int)(w0 >> 8 & 255u) << 1, y0, (int)(w0 >> 24) << 1, y1 - y0, w1 & 0xFFFFFFu);
+    }
+    return at;
+}
+#endif
 
 /* the list into the backend: the strip begun (qd_begin_strip). P2.6e: a path group (from a path's begin to the next)
  * whose rows miss the strip's: its path calls and paints left out (the state calls between played) */
@@ -530,6 +565,9 @@ void qd_dl_play(void)
     float v[8];
     uint32_t u0, u1, u2;
     int i, skip = 0;
+#ifdef QDB_ROW0
+    int plain = -1;                     /* the transform is none (1), is one (0), not looked at since it changed (-1) */
+#endif
     if (rl_buf && !rl_indexed)
         qd_dl_strip_hashes(0, 0, 0);
     rl_at = 0;
@@ -537,10 +575,30 @@ void qd_dl_play(void)
         const uint32_t opw = rl_gu();
         const int op = (int)(opw & 255u);
         if (op == RO_PXR) {                             /* (first: the pixel screens are mostly these) */
+#ifdef QDB_PX_FAST
+            if (plain < 0)
+                plain = qdb_px_plain();
+            if (plain) {                                /* (this one and the ones after it: rl_px_run) */
+                const uint32_t at = rl_px_run(rl_at - 4u);
+                if (at != rl_at - 4u) {
+                    rl_at = at;
+                    continue;
+                }
+            }
+#endif
             const uint32_t w1 = rl_gu();
             const float y = (float)((opw >> 16 & 255u) << 1), hh = (float)((w1 >> 24) << 1);
 #ifdef QDB_ROW0
-            if (axis_aligned()) {                       /* (its rows miss the strip's: not drawn) */
+            /* EvilGenius: a pixel screen is a thousand or two of these and a band plays the whole list, so most are
+             * only looked at and passed: with no transform (as the pixel kit draws) that is two whole-number
+             * compares, not the transform's multiplies (the start screen: 4.5 ms a band, eleven bands a frame) */
+            if (plain < 0)
+                plain = axis_aligned() && S.m.d == 1.f && S.m.f == 0.f;
+            if (plain) {
+                const int y0 = (int)(opw >> 16 & 255u) << 1, y1 = y0 + ((int)(w1 >> 24) << 1);
+                if (y1 <= (int)QDB_ROW0 || y0 >= (int)QDB_ROW1)
+                    continue;
+            } else if (axis_aligned()) {                /* (its rows miss the strip's: not drawn) */
                 const float Y0 = y * S.m.d + S.m.f, Y1 = (y + hh) * S.m.d + S.m.f;
                 if ((Y0 < Y1 ? Y1 : Y0) <= (float)QDB_ROW0 || (Y0 < Y1 ? Y0 : Y1) >= (float)QDB_ROW1)
                     continue;
@@ -549,6 +607,9 @@ void qd_dl_play(void)
             qdb_fill_rect((float)((opw >> 8 & 255u) << 1), y, (float)((opw >> 24) << 1), hh, w1 & 0xFFFFFFu);
             continue;
         }
+#ifdef QDB_ROW0
+        plain = -1;                                     /* (any other call may move the transform) */
+#endif
         if (skip && op >= RO_MOVE && op <= RO_PPAINT) {
             static const uint8_t W[RO_PPAINT - RO_MOVE + 1] = {8, 8, 16, 24, 20, 0, 4, 8, 8, 12};   /* (their bytes) */
             rl_at += W[op - RO_MOVE];
@@ -696,6 +757,13 @@ static uint32_t rl_mix(uint32_t h, const void *p, uint32_t n)   /* (P2.6h: a wor
 {
     const uint8_t *b = (const uint8_t *)p;
     uint32_t i = 0, w;
+    if (!((uintptr_t)b & 3u)) {                         /* (words where they are words: as rl_gu) */
+        const uint32_t *q = (const uint32_t *)(const void *)b;
+        for (; i + 4u <= n; i += 4u) {
+            h = (h ^ q[i >> 2]) * 0x01000193u;
+            h ^= h >> 15;
+        }
+    }
     for (; i + 4u <= n; i += 4u) {
         memcpy(&w, b + i, 4);
         h = (h ^ w) * 0x01000193u;

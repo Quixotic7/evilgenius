@@ -10,7 +10,13 @@
 <script type="module" src="./js/px.js"></script>
 <style>
 .hero { display: flex; flex-wrap: wrap; gap: calc(var(--px) * 8); align-items: center; margin: calc(var(--px) * 6) 0; }
-.hero .cast { display: flex; align-items: flex-end; gap: calc(var(--px) * 5); border-bottom: var(--px) solid var(--lightblue); padding: 0 calc(var(--px) * 3); }
+.hero .cast { display: flex; flex-direction: column; align-items: center; max-width: 100%; overflow: hidden; }
+/* the Evil Genius's machine (the firmware's GENIUS_BIG, 100 x 88 at 3x), its laugh (GENIUS_HA, at 33, 28 in it) coming and going */
+.hero .machine { position: relative; line-height: 0; }
+.hero .machine .ha { position: absolute; left: 99px; top: 84px; visibility: hidden; animation: ha 5s steps(1) infinite; }
+@keyframes ha { 0% { visibility: hidden; } 56% { visibility: visible; transform: translateY(0); } 62% { transform: translateY(-3px); } 68% { transform: translateY(0); } 74% { transform: translateY(-3px); } 80% { transform: translateY(0); } 86% { transform: translateY(-3px); } 92% { transform: translateY(0); visibility: visible; } 100% { visibility: hidden; } }
+@media (prefers-reduced-motion: reduce) { .hero .machine .ha { animation: none; } }
+.hero .floor { display: flex; align-items: flex-end; justify-content: space-between; gap: calc(var(--px) * 6); width: 300px; max-width: 100%; box-sizing: border-box; border-bottom: var(--px) solid var(--lightblue); padding: calc(var(--px) * 2) calc(var(--px) * 4) 0; line-height: 0; }
 .hero .say { flex: 1 1 320px; }
 .hero h1 px-text { display: block; margin-bottom: calc(var(--px) * 2); }
 .tag { color: var(--yellow); margin-top: calc(var(--px) * 4); }
@@ -34,10 +40,16 @@
   <main>
     <section class="hero">
       <div class="cast" aria-hidden="true">
-        <px-sprite name="AGENT_RUN2" scale="6"></px-sprite>
-        <px-sprite name="DOC" scale="6"></px-sprite>
-        <px-sprite name="ROBOT1" scale="6"></px-sprite>
-        <px-sprite name="GENIUS_TALK" scale="6"></px-sprite>
+        <div class="machine">
+          <px-sprite name="GENIUS_BIG" scale="3"></px-sprite>
+          <px-sprite class="ha" name="GENIUS_HA" scale="3"></px-sprite>
+        </div>
+        <div class="floor">
+          <px-sprite name="AGENT_RUN2" scale="3"></px-sprite>
+          <px-sprite name="ROBOT1" scale="3"></px-sprite>
+          <px-sprite name="DOC" scale="3"></px-sprite>
+          <px-sprite name="ROBOT2" scale="3" flip></px-sprite>
+        </div>
       </div>
       <div class="say">
         <h1>
@@ -88,6 +100,7 @@
       <figure><img class="shot" src="./img/00c-idle-title.png" alt="The title screen: the Evil Genius, a brain in a jar on its computer, laughing over EVIL GENIUS, an agent running below" width="240" height="240"><figcaption>Leave it alone and the genius gloats.</figcaption></figure>
       <figure><img class="shot" src="./img/201-room-drums.png" alt="The room view: an agent running over coloured note platforms, with the step row beneath" width="240" height="240"><figcaption>The room: a pattern you can run through.</figcaption></figure>
       <figure><img class="shot" src="./img/205-room-robots.png" alt="The room view with three robots on the floor and the agent on a lift" width="240" height="240"><figcaption>Locked steps post a robot.</figcaption></figure>
+      <figure><img class="shot" src="./img/210-tower-sends.png" alt="The effects' SENDS page: the Evil Genius's machine, a spark between its pylons, a wave on its left monitor, bars on its right" width="240" height="240"><figcaption>SENDS: the track's sends are the machine's sparks and screens.</figcaption></figure>
       <figure><img class="shot" src="./img/211-tower-ride.png" alt="The effects tower at the CHORUS floor: two sine waves, RATE, DEPTH, WIDTH and SEND" width="240" height="240"><figcaption>The FX tower, one floor per effect.</figcaption></figure>
       <figure><img class="shot" src="./img/216-tower-robot.png" alt="The ROBOT effect: a robot beside a ring-modulated wave, FREQ, WAVE, WOBBLE and MIX" width="240" height="240"><figcaption>ROBOT: a ring modulator with a face.</figcaption></figure>
       <figure><img class="shot" src="./img/243-snd-word.png" alt="The word editor: the waveform of INTRUDER, with WORD, ROOT, START and END" width="240" height="240"><figcaption>A word, spoken on the unit, trimmed like a sample.</figcaption></figure>

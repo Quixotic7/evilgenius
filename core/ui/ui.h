@@ -62,6 +62,7 @@ void ui_idle_draw(const ui_idle_t *v);
 void ui_idle_word(float t, float *solid, float *parts);
 /* the Evil Genius, big: the brain in its jar (56 x 43 at x, y), laughing or not (ui_idle.c) */
 void ui_genius(int x, int y, int laugh, float t);
+void ui_genius_bubbles(int ox, int oy, float t);   /* the jar's liquid boiling, over GENIUS_BIG drawn at ox, oy */
 
 /* ---- the kit's drawings shared by screens (line.html's box, head, keyboard) */
 void ui_box(float x, float y, int n, qd_rgb col);   /* the track's number in a little box */

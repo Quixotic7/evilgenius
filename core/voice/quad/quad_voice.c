@@ -40,7 +40,10 @@ static const char *const L_PORT[3] = {"OFF", "ON", "LEGATO"};
 static const char *const L_PSLOPE[2] = {"TIME", "RATE"};
 static const char *const L_VLOOP[3] = {"OFF", "FWD", "BOUNCE"};
 static const char *const L_DHOLD[8] = {"2K", "3K", "4K", "6K", "8K", "11K", "16K", "22K"};
-static const char *const L_MULT[10] = {"FREE", "1/32", "1/16", "1/8", "1/4", "1/2", "1 BAR", "2 BAR", "4 BAR", "8 BAR"};
+/* (1/64 and 1/128 after the bars: a sound's MULT is its place in this list, and the sounds saved before them keep
+ * theirs. At 120 BPM a 1/64 is 32 Hz and a 1/128 64 Hz: an ARP wave a note a division reaches the PAL frame's 50 Hz) */
+static const char *const L_MULT[12] = {"FREE", "1/32", "1/16", "1/8", "1/4", "1/2", "1 BAR", "2 BAR", "4 BAR", "8 BAR",
+                                       "1/64", "1/128"};
 static const char *const L_LWAVE[QD_LW_N] = {"TRI", "SINE", "SAW", "SQR", "S&H", "EXP", "RAMP", "ARP OCT", "ARP 5TH",
                                              "ARP MAJ", "ARP MIN", "ARP SUS", "ARP 7", "ARP MI7", "ARP MA7",
                                              "ARP DIM"};   /* (seven letters: the editor's value) */
@@ -63,7 +66,7 @@ static val_t val(int i)
     static const val_t ENV[4] = {{"ATK", 0, 15, 0, VK_NUM, 0}, {"DEC", 0, 15, 8, VK_NUM, 0},
                                  {"SUS", 0, 15, 12, VK_NUM, 0}, {"REL", 0, 15, 5, VK_NUM, 0}};
     static const val_t LFO[8] = {{"SPEED", 0, 127, 60, VK_NUM, 0},
-                                 {"MULT", 0, 9, 0, VK_LIST, L_MULT},
+                                 {"MULT", 0, 11, 0, VK_LIST, L_MULT},
                                  {"FADE", 0, 127, 64, VK_C64, 0},
                                  {"DEST", 0, QD_D_N - 1, 0, VK_DEST, 0},
                                  {"WAVE", 0, QD_LW_N - 1, 0, VK_LIST, L_LWAVE},
@@ -762,10 +765,10 @@ static int arp_semis(const int16_t *p, int k, uint32_t ph)
  * (FREE: SPEED in PAL frames, 50.12 Hz the frame), the cycle its steps */
 static uint32_t lfo_inc(const int16_t *p, int k, int bpm)
 {
-    static const float QUARTERS[10] = {0.f, 0.125f, 0.25f, 0.5f, 1.f, 2.f, 4.f, 8.f, 16.f, 32.f};
+    static const float QUARTERS[12] = {0.f, 0.125f, 0.25f, 0.5f, 1.f, 2.f, 4.f, 8.f, 16.f, 32.f, 0.0625f, 0.03125f};
     const int mu = p[QD_QP_LFO(k, QD_QL_MULT)], steps = arp_steps(p, k);
     float hz;
-    if (mu > 0 && mu < 10)
+    if (mu > 0 && mu < 12)
         hz = (float)(bpm > 0 ? bpm : 120) / 60.f / QUARTERS[mu];
     else if (steps)
         hz = ((float)PAL_CLK / 19656.f) / (float)(1 + (127 - p[QD_QP_LFO(k, QD_QL_SPEED)]) / 8);

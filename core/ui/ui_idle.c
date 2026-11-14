@@ -174,9 +174,37 @@ static void draw_title(float u)
 /* ---------------------------------------------------------------- the Evil Genius */
 /* The brain in its jar alone (56 x 41 at x, y: the machine's jar), laughing or not (its laugh shakes). The mascot
  * wherever it is big without its machine (the effects' SENDS, the scene of a word); small, it is PXS_GENIUS. */
+/* The jar's liquid boiling, over the machine drawn at ox, oy (GENIUS_BIG's corner) and under the laugh: bubbles up
+ * the liquid at the brain's two sides (each a ring, swaying, a white pop as it reaches the surface), and the
+ * surface itself running along. Only where the picture is liquid: the brain is never crossed. */
+void ui_genius_bubbles(int ox, int oy, float t)
+{
+    int i;
+    for (i = 0; i < 8; i++) {
+        const uint32_t h = ih((uint32_t)i, 9u);
+        /* (whole climbs a loop of the idle screen, 3 to 6 of them: it loops without a seam) */
+        const float rise = t * (25.f * (float)(3u + (h & 3u)) / FZ_LOOP) + (float)(h >> 8 & 31u);
+        const int k = (int)rise % 25;                   /* 0 at the bottom .. 24 at the surface */
+        const int x = ox + (i & 1 ? 74 : 29) + (int)(h >> 16 & 3u) + (((k >> 1) + i) & 1);
+        const int y = oy + 56 - k;
+        if (k >= 22) {                                  /* the pop */
+            px_pset(x, y, PX_WHITE);
+        } else if (i < 4) {                             /* a ring */
+            px_pset(x, y - 1, PX_LGREEN), px_pset(x, y + 1, PX_LGREEN);
+            px_pset(x - 1, y, PX_LGREEN), px_pset(x + 1, y, PX_LGREEN);
+        } else {                                        /* a small one */
+            px_pset(x, y, PX_LGREEN);
+        }
+    }
+    for (i = 28; i < 78; i++)                           /* the surface: a ripple going along, clear of the brain */
+        if ((i < 44 || i > 66) && ((i + (int)(t * 7.f)) % 7) < 2)
+            px_pset(ox + i, oy + 30, PX_LGREEN);
+}
+
 void ui_genius(int x, int y, int laugh, float t)
 {
     px_sprite_part(x, y, PXS_GENIUS_BIG, JAR_X, JAR_Y, JAR_W, JAR_H);
+    ui_genius_bubbles(x - JAR_X, y - JAR_Y, t);
     if (laugh)
         px_sprite(x + HA_X - JAR_X, y + HA_Y - JAR_Y - ((int)(t * 12.f) & 1), PXS_GENIUS_HA, 0);
     px_rect(x + 2, y + JAR_H, JAR_W - 4, 2, PX_GREY);   /* a collar under it */
@@ -203,6 +231,7 @@ static void draw_machine(int laugh, int flick, float t)
         px_rect(MX + 37, MY + 1, 33, 9, PX_BLACK);
     if (flick & 2)                                      /* .. and the one under its feet */
         px_rect(MX + 33, MY + 83, 30, 5, PX_BLACK);
+    ui_genius_bubbles(MX, MY, t);
     if (laugh)
         px_sprite(MX + HA_X, MY + HA_Y - ((int)(t * 12.f) & 1), PXS_GENIUS_HA, 0);
 }
@@ -283,7 +312,22 @@ static void draw_scroller(float u, int playing, long beat)
     static const qd_rgb BAR[4] = {PX_BLUE, PX_LBLUE, PX_CYAN, PX_LBLUE};
     px_hline(0, 109, 120, BAR[playing ? (int)(beat & 3) : 1]);
     px_hline(0, 119, 120, BAR[playing ? (int)((beat + 2) & 3) : 0]);
-    px_text(x, 112, SCROLL, PX_LGREY, PX_FS, 1);
+    {   /* only the letters on the screen: the whole line is 950 rectangles, and the unit's frame holds 2816 */
+        const char *p = SCROLL;
+        int cx = x;
+        while (*p && cx < 120) {
+            const int n = ((unsigned char)*p & 0xE0u) == 0xC0u ? 2 : 1;   /* (a letter, or the middle dot's two bytes) */
+            if (cx > -4) {
+                char ch[3] = {0, 0, 0};
+                ch[0] = p[0];
+                if (n == 2)
+                    ch[1] = p[1];
+                px_text(cx, 112, ch, PX_LGREY, PX_FS, 1);
+            }
+            p += n;
+            cx += 4;
+        }
+    }
 }
 
 void ui_idle_draw(const ui_idle_t *v)

@@ -19,7 +19,7 @@
  *                                  step with a wav begun on the same line of time
  *     hold MS                      the film keeps its last picture for MS (the app and the sound run on): two
  *                                  presses that only pass through a screen do not show it for a frame
- *     mark NAME                    prints the film's time here (ms)
+ *     mark NAME                    prints the film's time here (ms) and the rectangles a frame here draws
  *     chain P P ..                 the patterns PLAY plays, one after another, and round again (1 = A01; up to 16)
  *     solo TRACK                   the first eight patterns keep only TRACK's steps (0..5): one track's level */
 #include <stdio.h>
@@ -180,8 +180,12 @@ int main(int argc, char **argv)
                 fclose(filmf);
             filmf = fopen(a, "wb");
             filmms = 0, filmn = 0;
-        } else if (!strcmp(cmd, "mark"))
-            printf("%-12s %6u ms\n", a, (unsigned)filmms);
+        } else if (!strcmp(cmd, "mark")) {              /* (and what a frame here costs: its rectangles) */
+            extern unsigned px_calls;
+            px_calls = 0;
+            qd_app_frame(&A, lcd);
+            printf("%-12s %6u ms  %u rectangles\n", a, (unsigned)filmms, px_calls);
+        }
         else if (!strcmp(cmd, "hold"))
             filmhold = (uint32_t)atoi(a);
         else if (!strcmp(cmd, "chain")) {               /* (the sequencer's chain: the panel has no page for it) */

@@ -7,10 +7,18 @@
 const qd_rgb PX_C64[16] = {PX_BLACK, PX_WHITE, PX_RED, PX_CYAN, PX_PURPLE, PX_GREEN, PX_BLUE, PX_YELLOW,
                            PX_ORANGE, PX_BROWN, PX_LRED, PX_DGREY, PX_GREY, PX_LGREEN, PX_LBLUE, PX_LGREY};
 
+#ifndef QD_DEVICE
+unsigned px_calls;                      /* the rectangles drawn (the host: tools/eg/tour.c's mark counts a frame's;
+                                         * the unit's display list holds 2816 of them, 22528 B at 8 B each: a frame
+                                         * over that is drawn live, the whole screen again for every band) */
+#endif
 static void fill(int x, int y, int w, int h, qd_rgb c)
 {
     if (c == QD_NONE || w <= 0 || h <= 0)
         return;
+#ifndef QD_DEVICE
+    px_calls++;
+#endif
     qd_fill_rect((float)(2 * x), (float)(2 * y), (float)(2 * w), (float)(2 * h), c);
 }
 
@@ -284,6 +292,13 @@ static void sprite_sc(int x, int y, int id, int flip, qd_rgb tint, int sc)
     if (id < 0 || id >= PXS_N)
         return;
     s = &PX_SPR[id];
+    if (s->nr) {                                        /* a picture kept as rectangles */
+        const uint8_t *q = s->d;
+        for (i = 0; i < s->nr; i++, q += 5)
+            fill(x + (flip ? s->w - q[0] - q[2] : q[0]) * sc, y + q[1] * sc, q[2] * sc, q[3] * sc,
+                 tint != QD_NONE ? tint : PX_C64[q[4] & 15u]);
+        return;
+    }
     for (r = 0; r < s->h; r++) {
         const uint8_t *row = s->d + r * s->w;
         for (i = 0; i < s->w;) {                         /* runs of one colour */
@@ -308,6 +323,16 @@ void px_sprite_part(int x, int y, int id, int sx, int sy, int w, int h)
     s = &PX_SPR[id];
     if (sx < 0 || sy < 0 || sx + w > s->w || sy + h > s->h)
         return;
+    if (s->nr) {                                        /* a picture kept as rectangles: each cut to the part */
+        const uint8_t *q = s->d;
+        for (i = 0; i < s->nr; i++, q += 5) {
+            const int x0 = q[0] > sx ? q[0] : sx, y0 = q[1] > sy ? q[1] : sy;
+            const int x1 = q[0] + q[2] < sx + w ? q[0] + q[2] : sx + w, y1 = q[1] + q[3] < sy + h ? q[1] + q[3] : sy + h;
+            if (x1 > x0 && y1 > y0)
+                fill(x + x0 - sx, y + y0 - sy, x1 - x0, y1 - y0, PX_C64[q[4] & 15u]);
+        }
+        return;
+    }
     for (r = 0; r < h; r++) {
         const uint8_t *row = s->d + (sy + r) * s->w + sx;
         for (i = 0; i < w;) {                           /* runs of one colour */
