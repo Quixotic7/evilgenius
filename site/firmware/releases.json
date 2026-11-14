@@ -1,7 +1,44 @@
 {
   "name": "EVILGENIUS",
-  "latest": "0.1.0-beta.2",
+  "latest": "0.1.0-beta.3",
   "releases": [
+    {
+      "version": "0.1.0-beta.3",
+      "date": "2026-11-14",
+      "channel": "beta",
+      "identity": "FM-1_45000100",
+      "source": "0390108a9ef208dcdf442c1654151bdcef0fe26e",
+      "fm1base": "934e40d846d84e76e9c428d37b74bccb6192c823",
+      "notes": "- **The start screen runs smoothly: 29 frames a second on the unit, from 11.** It drew more than the unit's frame\n  holds, so the unit drew it the slow way, and its clock stepped 16 times a second: the picture stuttered and the\n  line of text crawled four pixels a step. Now only the letters on screen are drawn, the machine is 645 pieces\n  instead of 1,091, and the screen steps 30 times a second.\n- **Every pixel screen draws faster.** The unit writes the screens' rectangles straight into its frame and reads its\n  drawing list a word at a time (it was calling out to the flash six thousand times a frame). The start screen's\n  drawing went from 66 ms a frame to 12.\n- **The Evil Genius laughs without a box round its face**, and the liquid in its jar boils: bubbles rise at the\n  brain's sides and the surface ripples, on the start screen, on SENDS and in the scenes.\n- **LFO MULT goes on to 1/64 and 1/128** (after 8 BAR in the list, so your sounds keep their settings). With an ARP\n  wave a note is a division: at 120 BPM a 1/64 is 32 notes a second and a 1/128 is 64, past the PAL frame's 50.",
+      "packages": [
+        {
+          "name": "evilgenius",
+          "kind": "ble",
+          "label": "8 voices across both cores, USB and Bluetooth MIDI, USB audio; 4 projects, 128 MY presets",
+          "projects": 4,
+          "presets": 128,
+          "fwsc": {
+            "path": "0.1.0-beta.3/evilgenius.fwsc",
+            "bytes": 1042154,
+            "sha256": "c994927fbabdb7543d7c8c4b513b0e9371a0d8d59db975ab8cd3e85a976936f6"
+          },
+          "data": {
+            "path": "0.1.0-beta.3/evilgenius-xdata.bin",
+            "bytes": 51288,
+            "sha256": "e64859eee9cbbdbad084ff3ade0f98dd2a7e97576206c9e06487fdaf1e186f4e",
+            "crc32": 3606035030,
+            "at": 946176
+          },
+          "data2": {
+            "path": "0.1.0-beta.3/evilgenius-xdata2.bin",
+            "bytes": 92560,
+            "sha256": "66984ab024a1bf281115f9da5785b38ab0f68c2192fe498758534ae5d6df5595",
+            "crc32": 2242816980,
+            "at": 618496
+          }
+        }
+      ]
+    },
     {
       "version": "0.1.0-beta.2",
       "date": "2026-11-14",

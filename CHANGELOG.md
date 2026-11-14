@@ -12,6 +12,8 @@ EVILGENIUS began as FIZZ 0.12.0-beta.17 with another engine and another face; FI
 
 <!-- The next release's notes, for testers, in plain language. firmware/release.py moves them. -->
 
+## 0.1.0-beta.3 (2026-11-14)
+
 - **The start screen runs smoothly: 29 frames a second on the unit, from 11.** It drew more than the unit's frame
   holds, so the unit drew it the slow way, and its clock stepped 16 times a second: the picture stuttered and the
   line of text crawled four pixels a step. Now only the letters on screen are drawn, the machine is 645 pieces
