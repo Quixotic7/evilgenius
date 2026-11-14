@@ -1,4 +1,43 @@
 {
   "name": "EVILGENIUS",
-  "releases": []
+  "latest": "0.1.0-beta.1",
+  "releases": [
+    {
+      "version": "0.1.0-beta.1",
+      "date": "2026-11-14",
+      "channel": "beta",
+      "identity": "FM-1_45000100",
+      "source": "733697fd24a4e14bbd7b36b03a73826950fd1339",
+      "fm1base": "934e40d846d84e76e9c428d37b74bccb6192c823",
+      "notes": "The first release. EVILGENIUS is a six-track SID groovebox that talks: FIZZ's sequencer and controls, a C64 SID for\nevery voice, SAM for the words, and the screen of a C64 game about a villain's tower.\n\n- **SID voices.** Each note is a SID chip: three oscillators (triangle, saw, pulse, noise and their mixes), pulse\n  width, ring modulation and sync, three envelopes, an LFO, and the chip's filter with its eight modes and its routing.\n  Eight voices across the FM-1's two cores.\n- **It talks.** VOX sounds speak. SAM renders each word on the unit when a sound or a step first needs it, and the\n  word plays as 4-bit samples through the SID's volume register, as C64 games did. WORD picks one of the 54 it comes\n  with, SAY speaks what you type; a word is trimmed, looped and pitched like a sample, and with the filter's ROUTE on\n  V it goes through the SID's filter.\n- **Step locks.** Hold a step (or select several) and turn a knob: that step keeps its own sound, word, level, pan\n  or effect send. Per step too: chance, conditions, ratchets, micro-timing, slides and functions.\n- **The room.** The EDIT view at rest is a room of the tower over the page's steps: a note is a platform at its\n  pitch, the agent runs the playhead, a locked step posts a robot.\n- **The FX tower.** Eight effects, a floor each, the lift at the left: CHORUS, ECHO, ROOM, CRUSH, ROBOT (a ring\n  modulator), WARP, GLITCH and TV. Every track has its own send into each one, on the mixer's SENDS and FX MIX pages\n  and on the effects' own first pages, and every send locks on a step.\n- **The villain speaks** when you clear, copy, paste or ride the lift. HOME held, page 2: **VOICE** is STOPPED (only\n  while nothing plays, the default), ALWAYS or OFF, and **VOICE LEVEL** is how loud.\n- **SEQ and SAVE are page buttons** (FIZZ's, 2026-11-14). SEQ clicks go round TOOLS, PATTERNS and the PIANO ROLL;\n  holding SEQ is a quick peek at the patterns. SAVE clicks turn between SAVE PRESET and PROJECT; **hold SAVE** half a\n  second to save the project now (a green tick: PROJECT SAVED), and F2 saves on either page. HOME's views are STEPS,\n  EDIT and GEEK OUT.\n- **Copy, cut and paste whole patterns** on PATTERNS: F1 + a pattern copies it and every other pattern you press\n  gets it; F2 + a pattern picks it up and drops it on the next one you press.\n- **Waking the unit does nothing else**: the button or knob that wakes it from the title screen only wakes it.\n- **OVERVIEW (SEL) is easy to read**: a step is a solid bar in its track's colour on black, an empty step only its\n  floor. (The cells were the C64's blue, which the red and light blue tracks sank into.)\n- **The manager** (the site's MANAGER page) backs the unit's store up to a file and restores it, and exports and\n  imports MY PRESETS, over USB from Chrome or Edge.\n- **One package, with Bluetooth**: USB and Bluetooth MIDI, USB audio to the computer, four projects, 128 presets of\n  your own. The step view draws in 28 ms a frame on the unit with a pattern playing.\n\nKnown:\n\n- FIZZ's new 4 x 4 grid for the PIANO ROLL's COND, TRIG, FUNC, SLIDE and SOUND modes is not in: those modes draw as\n  lanes, as before.\n- ECHO's longest time is 0.575 s and its repeats are 8-bit; ROOM's longest pre-delay is 23 ms (what fits the unit).",
+      "packages": [
+        {
+          "name": "evilgenius",
+          "kind": "ble",
+          "label": "8 voices across both cores, USB and Bluetooth MIDI, USB audio; 4 projects, 128 MY presets",
+          "projects": 4,
+          "presets": 128,
+          "fwsc": {
+            "path": "0.1.0-beta.1/evilgenius.fwsc",
+            "bytes": 1042154,
+            "sha256": "410f02c1bb40fcace029a29e2c5ff191443310cd83ccde3140ba7171fff10cfb"
+          },
+          "data": {
+            "path": "0.1.0-beta.1/evilgenius-xdata.bin",
+            "bytes": 51288,
+            "sha256": "0be2fc4ae1219dab0bd9e6bfdc6b0c98987abaf2a68b840f9f34af3b98cb14ea",
+            "crc32": 494672402,
+            "at": 946176
+          },
+          "data2": {
+            "path": "0.1.0-beta.1/evilgenius-xdata2.bin",
+            "bytes": 92700,
+            "sha256": "d8248a51c17977bc4199e7488c55b96870038704669b0df135967ce0899e8acf",
+            "crc32": 3051593915,
+            "at": 618496
+          }
+        }
+      ]
+    }
+  ]
 }

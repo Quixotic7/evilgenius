@@ -12,6 +12,8 @@ EVILGENIUS began as FIZZ 0.12.0-beta.17 with another engine and another face; FI
 
 <!-- The next release's notes, for testers, in plain language. firmware/release.py moves them. -->
 
+## 0.1.0-beta.1 (2026-11-14)
+
 The first release. EVILGENIUS is a six-track SID groovebox that talks: FIZZ's sequencer and controls, a C64 SID for
 every voice, SAM for the words, and the screen of a C64 game about a villain's tower.
 
