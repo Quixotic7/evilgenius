@@ -33,7 +33,7 @@ void fz_midi_ui(int status, int d1, int d2);
  * room for (a NOTE ON waits for room for the OFFs owed). The audio interrupt's, right after its block (app_render).
  * The Bluetooth package: to a computer connected over Bluetooth too (both queues' room) */
 void fz_midi_out(void);
-/* SysEx in: one frame's bytes between F0 and F7 (FIZZ's 7D 46 5A ..); its replies, whole frames F0 .. F7 */
+/* SysEx in: one frame's bytes between F0 and F7 (FIZZ's 7D 45 47 ..); its replies, whole frames F0 .. F7 */
 void fz_sysex(const uint8_t *f, uint32_t n);
 int fz_sysex_peek(void);
 /* (the Bluetooth package) the frames' port (0 USB, 1 Bluetooth) before fz_sysex, and the next reply's (its request's);

@@ -1,143 +1,154 @@
 /* SPDX-License-Identifier: MPL-2.0
  * This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0. If a copy of the MPL was not
  * distributed with this file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-/* P2.11: the Geek Out pages (ui.h ui_geek_t), mockups/fizz-geekout.html as approved: METERS (core 0's load, core 1 off
- * until it runs, the frame rate, RAM, the store: tall bars that chase their values, a peak tick held 2 s, the value on
- * top), NUMBERS (the voices of the pool as dots, steals, the audio interrupt's longest half, late halves, the longest
- * lock, the frame time, the BPM; a crash's cause at the foot), VOICES (a column a track: its voice slots, steals, its
- * share of the audio) and SCOPE (~3 cycles of the loudest track, one bold line). Yellow plus a spark of rays: trouble.
- * Built through ui_layer.c (it includes this file). */
+/* EvilGenius: the Geek Out pages (FIZZ's P2.11, ui.h ui_geek_t, redrawn on the 120 x 120 grid; the model is FIZZ's) as
+ * the C64's own screen: light blue on blue in a light blue border, the head a reverse-video bar (the page's name, the
+ * transport's light, the four pages as glyphs, the one shown reversed back). The pages:
+ *   METERS   core 0's load, core 1 (off until it runs), the frame rate, RAM, the store as five lift shafts: the
+ *            platform at the value, raster lines under it, a peak tick held 2 s, the value on top
+ *   NUMBERS  a BASIC listing: the voices of the pool (and its slots as cells, in their tracks' colours), steals, the
+ *            audio interrupt's longest half, late halves, the longest lock, the frame time, the BPM; a crash's cause
+ *            as ?... ERROR; READY. and the cursor, blinking on the beat
+ *   VOICES   a shaft a track: its number, its voice slots, its steals, its share of the audio
+ *   SCOPE    ~3 cycles of the loudest track as a hard pixel line on the screen's window
+ *   TRACKS   the whole screen: six raster bands, each track's own line in its colour (no sound: flat)
+ * Yellow (and a spark of rays) marks trouble. A figure the platform does not give is drawn dim. Built through
+ * ui_layer.c (it includes this file). */
 
 #define GK_WARN UI_KSEL                                 /* yellow: trouble, on these pages */
-#define GK_TAU 6.28318531f
+#define GK_BG PX_BLUE                                   /* the C64's screen .. */
+#define GK_FG PX_LBLUE                                  /* .. its text and border */
+#define GK_DIM PX_DGREY                                 /* a figure not given */
+#define GK_INK PX_WHITE                                 /* a value */
 
-static qd_rgb gk_mix(qd_rgb a, qd_rgb b, float u)       /* a .. b at u (0..1), per channel */
+static qd_rgb gk_dark(qd_rgb c)                         /* a colour's darker partner (the raster lines) */
 {
-    unsigned r, g, bl;
-    u = u < 0.f ? 0.f : u > 1.f ? 1.f : u;
-    r = (unsigned)((float)((a >> 16) & 255u) + ((float)((b >> 16) & 255u) - (float)((a >> 16) & 255u)) * u + 0.5f);
-    g = (unsigned)((float)((a >> 8) & 255u) + ((float)((b >> 8) & 255u) - (float)((a >> 8) & 255u)) * u + 0.5f);
-    bl = (unsigned)((float)(a & 255u) + ((float)(b & 255u) - (float)(a & 255u)) * u + 0.5f);
-    return r << 16 | g << 8 | bl;
-}
-static void gk_line(float x0, float y0, float x1, float y1, qd_rgb col, float lw)
-{
-    const float p[4] = {x0, y0, x1, y1};
-    ui_P(p, 2, col, lw, 0, QD_NONE);
-}
-static void gk_alpha_begin(float a)
-{
-    qd_save();
-    qd_alpha(qd_get_alpha() * (a < 0.f ? 0.f : a > 1.f ? 1.f : a));
-}
-static void gk_rr(float x, float y, float w, float h, float r, qd_rgb col, float lw, qd_rgb fill, float a)
-{
-    gk_alpha_begin(a);
-    ui_RR(x, y, w, h, r, col, lw, fill);
-    qd_restore();
-}
-static void gk_dot(float x, float y, float r, qd_rgb col, float a)   /* a lit dot and its faint halo */
-{
-    gk_alpha_begin(a * 0.18f);
-    ui_O(x, y, r * 2.1f, QD_NONE, 1.f, col);
-    qd_restore();
-    gk_alpha_begin(a);
-    ui_O(x, y, r, QD_NONE, 1.f, col);
-    qd_restore();
-}
-static void gk_burst(float x, float y, float r, float a)   /* a steal: a spark of eight rays */
-{
-    int k;
-    gk_alpha_begin(a);
-    for (k = 0; k < 8; k++) {
-        const float an = (float)k * GK_TAU / 8.f + 0.2f, r0 = r * 0.72f;
-        gk_line(x + cosf(an) * r0, y + sinf(an) * r0, x + cosf(an) * r, y + sinf(an) * r, GK_WARN, 2.f);
+    switch (c) {
+    case PX_LBLUE: return PX_BLUE;
+    case PX_LGREEN: return PX_GREEN;
+    case PX_WHITE: return PX_LGREY;
+    case PX_LRED: return PX_RED;
+    case PX_YELLOW: return PX_ORANGE;
+    case PX_CYAN: return PX_GREEN;
+    case PX_ORANGE: return PX_BROWN;
+    case PX_PURPLE: return PX_BLUE;
+    default: return PX_DGREY;
     }
-    qd_restore();
 }
-static qd_rgb gk_heat(float u)                          /* a load: green, yellow over 60 %, orange over 85 % */
+static qd_rgb gk_heat(float u)                          /* a load: green, yellow over 60 %, light red over 85 % */
 {
-    return u < 0.6f ? UI_K2 : u < 0.72f ? gk_mix(UI_K2, GK_WARN, (u - 0.6f) / 0.12f) : u < 0.85f ? GK_WARN
-                                                                                       : gk_mix(GK_WARN, UI_K4, (u - 0.85f) / 0.08f);
+    return u < 0.6f ? UI_K2 : u < 0.85f ? GK_WARN : UI_K4;
+}
+static int gk_h(float u, int h)                         /* u (0..1) of h, in whole pixels */
+{
+    return (int)((u < 0.f ? 0.f : u > 1.f ? 1.f : u) * (float)h + 0.5f);
 }
 
-/* ---------------------------------------------------------------- the header */
+/* a steal: a spark of eight rays round x, y, r long (yellow) */
+static void gk_burst(int x, int y, int r)
+{
+    static const int8_t D[8][2] = {{1, 0}, {1, 1}, {0, 1}, {-1, 1}, {-1, 0}, {-1, -1}, {0, -1}, {1, -1}};
+    int k, j;
+    for (k = 0; k < 8; k++)
+        for (j = r - 1; j <= r; j++)
+            px_pset(x + D[k][0] * j, y + D[k][1] * j, GK_WARN);
+}
+
+/* the raster lines: a fill in c, every third row its darker partner */
+static void gk_raster(int x, int y, int w, int h, qd_rgb c)
+{
+    int j;
+    if (h <= 0)
+        return;
+    px_rect(x, y, w, h, c);
+    for (j = h - 2; j > 0; j -= 3)
+        px_hline(x, y + j, w, gk_dark(c));
+}
+
+/* ---------------------------------------------------------------- the screen, the head */
 static const char *const GK_PAGE[4] = {"METERS", "NUMBERS", "VOICES", "SCOPE"};
-static void gk_icon(int i, float x, float y, int on)    /* each page as a little picture of itself */
+static const char *const GK_ICON[4][7] = {
+    {"...#...", "...#...", "#..#...", "#..#..#", "#..#..#", "#..#..#", "#..#..#"},   /* METERS: bars */
+    {"##.####", ".......", "##.###.", ".......", "##.####", ".......", "##.##.."},   /* NUMBERS: a listing */
+    {"#......", "#......", "....#..", "#...#..", "#.#.#..", "......#", "#.#.#.#"},   /* VOICES: slots lit */
+    {".##....", "#..#...", "#..#...", "....#..", "....#.#", ".....#.", "......."},   /* SCOPE: a wave */
+};
+static void gk_glyph(const char *const *rows, int x, int y, qd_rgb c)
 {
-    const qd_rgb col = on ? UI_K3 : UI_G2;
-    const float lw = on ? 1.5f : 1.3f;
-    int k;
-    if (i == 0) {
-        static const float B[3][2] = {{0.f, 8.f}, {5.f, 12.f}, {10.f, 5.f}};
-        for (k = 0; k < 3; k++)
-            gk_line(x + 2.f + B[k][0], y + 7.f, x + 2.f + B[k][0], y + 7.f - B[k][1], col, 2.2f);
-    } else if (i == 1) {
-        static const float L[3][2] = {{12.f, -4.f}, {8.f, 0.f}, {11.f, 4.f}};
-        for (k = 0; k < 3; k++)
-            gk_line(x + 1.f, y + 1.5f + L[k][1], x + 1.f + L[k][0], y + 1.5f + L[k][1], col, 2.f);
-    } else if (i == 2) {
-        static const int N[3] = {3, 1, 2};
-        int j;
-        for (k = 0; k < 3; k++)
-            for (j = 0; j < N[k]; j++)
-                ui_O(x + 2.f + 5.f * (float)k, y + 5.f - 4.f * (float)j, 1.6f, QD_NONE, 1.f, col);
-    } else {
-        float p[22];
-        for (k = 0; k <= 10; k++)
-            p[2 * k] = x + (float)k * 1.3f, p[2 * k + 1] = y + 1.f - sinf((float)k * 0.1f * GK_TAU) * 4.5f;
-        ui_P(p, 11, col, lw, 0, QD_NONE);
-    }
-    if (on)
-        gk_line(x, y + 11.f, x + 13.f, y + 11.f, UI_K3, 1.4f);
+    int r, i;
+    for (r = 0; r < 7; r++)
+        for (i = 0; i < 7; i++)
+            if (rows[r][i] == '#') {
+                int n = 1;
+                while (i + n < 7 && rows[r][i + n] == '#')
+                    n++;
+                px_rect(x + i, y + r, n, 1, c);
+                i += n - 1;
+            }
+}
+static void gk_screen(void)                             /* the border (and the head's bar), the screen */
+{
+    px_rect(0, 0, 120, 120, GK_FG);
+    px_rect(2, 11, 116, 107, GK_BG);
 }
 static void gk_header(const ui_geek_t *v)
 {
-    int i;
-    const float w = ui_T(GK_PAGE[v->page], 8.f, 18.f, 12.f, 600, 1.f, UI_K3, QD_LEFT);
-    if (v->page == 3 && v->scope_track >= 0)
-        ui_box(14.f + w, 5.f, v->scope_track + 1, UI_TRACK_PAL[v->scope_track]);
-    if (v->playing)
-#if QD_GEEK_STEADY_DOT                                  /* (P2.6i: steady: the header's bands not redrawn every frame) */
-        gk_dot(150.f, 13.f, 4.f, UI_RED, 0.85f);
+    int i, x;
+    x = px_text(4, 3, GK_PAGE[v->page & 3], GK_BG, PX_FB, 1);
+    if (v->page == 3 && v->scope_track >= 0) {          /* the scope's track, reverse video */
+        char n[12];
+        px_rect(x + 2, 2, 10, 9, GK_BG);
+        px_rect(x + 3, 3, 8, 7, UI_TRACK_PAL[v->scope_track & 7]);
+        px_ctext(x + 7, 4, ui_itoa(n, v->scope_track + 1), UI_BG, PX_FS, 1);
+    }
+    if (v->playing) {
+#if QD_GEEK_STEADY_DOT                                  /* (P2.6i: steady: the head not redrawn every frame) */
+        px_rect(75, 4, 5, 5, PX_RED);
 #else
-        gk_dot(150.f, 13.f, 3.4f + 1.6f * expf(-v->beat * 6.f), UI_RED, 0.55f + 0.45f * expf(-v->beat * 5.f));
+        if (v->beat < 0.2f)                             /* (the beat: the light big a moment) */
+            px_rect(75, 3, 6, 6, PX_RED);
+        else
+            px_rect(76, 4, 4, 4, PX_RED);
 #endif
-    else
-        ui_RR(146.f, 9.f, 8.f, 8.f, 1.5f, QD_NONE, 1.f, UI_G2);
-    for (i = 0; i < 4; i++)
-        gk_icon(i, 166.f + (float)i * 18.f, 11.f, i == v->page);
+    } else {
+        px_box(76, 4, 4, 4, GK_BG);
+    }
+    for (i = 0; i < 4; i++) {
+        const int gx = 86 + i * 8;
+        if (i == v->page) {
+            px_rect(gx - 1, 2, 9, 9, GK_BG);
+            gk_glyph(GK_ICON[i], gx, 3, GK_FG);
+        } else {
+            gk_glyph(GK_ICON[i], gx, 3, GK_BG);
+        }
+    }
 }
 
-/* ---------------------------------------------------------------- 1. METERS */
-#define GK_TOP 50.f
-#define GK_BOT 198.f
-static void gk_bar(float cx, float u, float pk, qd_rgb col, qd_rgb pkcol, int on)
+/* ---------------------------------------------------------------- 1. METERS: the lift shafts */
+#define GK_ST 22                                        /* the shafts' top, their foot */
+#define GK_SB 100
+static void gk_shaft(int cx, float u, float pk, qd_rgb col, qd_rgb pkcol, int on)
 {
-    static const float SC[3] = {0.25f, 0.5f, 0.75f};
-    const float w = 22.f, H = GK_BOT - GK_TOP;
-    float f;
+    static const int SC[3] = {1, 2, 3};
+    const int x0 = cx - 6, H = GK_SB - GK_ST;
     int k;
-    ui_RR(cx - w / 2.f, GK_TOP, w, H, 3.f, UI_G3, 1.f, QD_NONE);
-    for (k = 0; k < 3; k++)
-        gk_line(cx - w / 2.f - 4.f, GK_BOT - SC[k] * H, cx - w / 2.f - 1.f, GK_BOT - SC[k] * H, UI_G2, 1.f);
+    px_vline(x0, GK_ST - 1, H + 2, PX_GREY);            /* the rails, the dark well */
+    px_vline(x0 + 11, GK_ST - 1, H + 2, PX_GREY);
+    px_rect(x0 + 1, GK_ST - 1, 10, H + 2, UI_BG);
+    for (k = 0; k < 3; k++)                             /* (a quarter, a half, three quarters) */
+        px_hline(x0 - 3, GK_SB - SC[k] * H / 4, 2, GK_FG);
     if (!on)
         return;
-    f = (u < 0.f ? 0.f : u > 1.f ? 1.f : u) * (H - 2.f);
-    if (f > 0.5f) {
-        gk_rr(cx - w / 2.f - 2.f, GK_BOT - 1.f - f - 2.f, w + 4.f, f + 3.f, 4.f, QD_NONE, 1.f, col, 0.14f);
-        gk_rr(cx - w / 2.f + 2.f, GK_BOT - 1.f - f, w - 4.f, f - 1.f, 2.f, QD_NONE, 1.f, col, 0.85f);
-        gk_line(cx - w / 2.f + 3.f, GK_BOT - 1.f - f, cx + w / 2.f - 3.f, GK_BOT - 1.f - f, gk_mix(col, 0xffffffu, 0.5f), 1.5f);
+    {
+        const int f = gk_h(u, H - 3), fy = GK_SB - f;
+        px_vdots(cx, GK_ST, fy - 2 - GK_ST, PX_DGREY, 2);   /* the cable */
+        gk_raster(x0 + 1, fy, 10, f, col);
+        px_hline(x0 + 1, fy - 2, 10, PX_LGREY);          /* the platform */
+        px_dots(x0 + 1, fy - 1, 10, PX_GREY, 2);
     }
-    if (pk >= 0.f) {
-        const float y = GK_BOT - 1.f - (pk > 1.f ? 1.f : pk) * (H - 2.f);
-        gk_alpha_begin(0.16f);
-        gk_line(cx - w / 2.f - 3.f, y, cx + w / 2.f + 3.f, y, pkcol, 6.8f);
-        qd_restore();
-        gk_line(cx - w / 2.f - 3.f, y, cx + w / 2.f + 3.f, y, pkcol, 2.f);
-    }
+    if (pk >= 0.f)
+        px_hline(x0 - 1, GK_SB - gk_h(pk, H - 3) - 2, 14, pkcol);
 }
-static void gk_val(const char *s, float cx, qd_rgb col) { ui_T(s, cx, 42.f, 17.f, 500, 0.f, col, QD_CENTER); }
 static void gk_pct(char *s, int v)
 {
     ui_itoa(s, v);
@@ -145,220 +156,230 @@ static void gk_pct(char *s, int v)
         s++;
     s[0] = '%', s[1] = 0;
 }
+static void gk_val(const char *s, int cx, qd_rgb col) { px_ctext(cx, 14, s, col, PX_FS, 1); }
 static void gk_meters(const ui_geek_t *v)
 {
     char s[16];
     const qd_rgb lc = gk_heat(v->load);
     const int fv = v->fps_n;
     const qd_rgb fcol = fv >= 50 ? UI_K2 : fv >= 36 ? GK_WARN : UI_K4;
-    /* the two cores: core 0 live, core 1 dashed with a cross and OFF until it runs */
-    gk_bar(26.f, v->load, v->load_pk, lc, gk_heat(v->load_pk), v->load_on);
+    /* the two cores: core 0 live, core 1 dotted with a cross and OFF until it runs */
+    gk_shaft(13, v->load, v->load_pk, lc, gk_heat(v->load_pk), v->load_on);
     if (v->load_on)
-        gk_pct(s, v->load_pct), gk_val(s, 26.f, lc);
+        gk_pct(s, v->load_pct), gk_val(s, 13, lc);
     else
-        ui_T("--", 26.f, 42.f, 17.f, 500, 0.f, UI_G2, QD_CENTER);
+        gk_val("--", 13, GK_DIM);
     if (v->core1_on) {
-        gk_bar(68.f, v->load1, -1.f, gk_heat(v->load1), 0, 1);
-        gk_pct(s, v->load1_pct), gk_val(s, 68.f, gk_heat(v->load1));
+        gk_shaft(34, v->load1, -1.f, gk_heat(v->load1), 0, 1);
+        gk_pct(s, v->load1_pct), gk_val(s, 34, gk_heat(v->load1));
     } else {
-        qd_dash((const float[]){3.f, 3.f}, 2);
-        ui_RR(68.f - 11.f, GK_TOP, 22.f, GK_BOT - GK_TOP, 3.f, UI_G2, 1.f, QD_NONE);
-        qd_dash(0, 0);
-        gk_line(63.f, GK_BOT - 12.f, 73.f, GK_BOT - 22.f, UI_G2, 1.4f);
-        gk_line(63.f, GK_BOT - 22.f, 73.f, GK_BOT - 12.f, UI_G2, 1.4f);
-        ui_T("OFF", 68.f, 42.f, 12.f, 600, 0.f, UI_G2, QD_CENTER);
+        px_vdots(28, GK_ST - 1, GK_SB - GK_ST + 2, GK_DIM, 2);
+        px_vdots(39, GK_ST - 1, GK_SB - GK_ST + 2, GK_DIM, 2);
+        px_line(31, GK_SB - 10, 36, GK_SB - 5, GK_DIM);
+        px_line(36, GK_SB - 10, 31, GK_SB - 5, GK_DIM);
+        gk_val("OFF", 34, GK_DIM);
     }
-    {
-        const float p[8] = {18.f, 208.f, 18.f, 212.f, 76.f, 212.f, 76.f, 208.f};
-        ui_P(p, 4, UI_G2, 1.2f, 0, QD_NONE);
-    }
-    ui_T("CORE", 47.f, 230.f, 12.f, 600, 1.f, UI_G1, QD_CENTER);
+    px_vline(7, GK_SB + 2, 2, GK_FG);                   /* (both: CORE) */
+    px_hline(7, GK_SB + 3, 33, GK_FG);
+    px_vline(39, GK_SB + 2, 2, GK_FG);
+    px_ctext(24, 107, "CORE", GK_FG, PX_FS, 1);
     /* the frame rate: full at 60; its tick the slowest frame of the last two seconds */
-    gk_bar(118.f, v->fps, v->fps_min, fcol, v->fps_min * 60.f < 50.f ? GK_WARN : UI_K2, v->fps_on);
-    gk_val(v->fps_on ? ui_itoa(s, fv) : "--", 118.f, v->fps_on ? fcol : UI_G2);
-    ui_T("FPS", 118.f, 222.f, 12.f, 600, 1.f, UI_G1, QD_CENTER);
+    gk_shaft(59, v->fps, v->fps_min, fcol, v->fps_min * 60.f < 50.f ? GK_WARN : UI_K2, v->fps_on);
+    gk_val(v->fps_on ? ui_itoa(s, fv) : "--", 59, v->fps_on ? fcol : GK_DIM);
+    px_ctext(59, 107, "FPS", GK_FG, PX_FS, 1);
     /* RAM and the store: capacities, white (yellow over 90 %) */
-    gk_bar(166.f, v->ram, v->ram_pk, v->ram > 0.9f ? GK_WARN : UI_K3, v->ram > 0.9f ? GK_WARN : UI_K3, v->ram_on);
+    gk_shaft(83, v->ram, v->ram_pk, v->ram > 0.9f ? GK_WARN : GK_INK, v->ram > 0.9f ? GK_WARN : GK_INK, v->ram_on);
     if (v->ram_on)
-        gk_pct(s, v->ram_pct), gk_val(s, 166.f, UI_K3);
+        gk_pct(s, v->ram_pct), gk_val(s, 83, v->ram > 0.9f ? GK_WARN : GK_INK);
     else
-        gk_val("--", 166.f, UI_G2);
-    ui_T("RAM", 166.f, 222.f, 12.f, 600, 1.f, UI_G1, QD_CENTER);
-    gk_bar(212.f, v->store, v->store, UI_K3, UI_K3, v->store_on);
+        gk_val("--", 83, GK_DIM);
+    px_ctext(83, 107, "RAM", GK_FG, PX_FS, 1);
+    gk_shaft(106, v->store, v->store, GK_INK, GK_INK, v->store_on);
     if (v->store_on)
-        gk_pct(s, v->store_pct), gk_val(s, 212.f, UI_K3);
+        gk_pct(s, v->store_pct), gk_val(s, 106, GK_INK);
     else
-        gk_val("--", 212.f, UI_G2);
-    ui_T("STORE", 212.f, 222.f, 12.f, 600, 1.f, UI_G1, QD_CENTER);
+        gk_val("--", 106, GK_DIM);
+    px_ctext(106, 107, "STORE", GK_FG, PX_FS, 1);
 }
 
-/* ---------------------------------------------------------------- 2. NUMBERS */
-static void gk_grp(float x, float y, float w, float h, qd_rgb col) { ui_RR(x, y, w, h, 6.f, col, 1.2f, QD_NONE); }
-static void gk_lab(const char *s, float x, float y, qd_rgb col) { ui_T(s, x, y, 12.f, 600, 1.f, col, QD_LEFT); }
-static void gk_cell(float x, const char *label, const char *val, const char *unit, qd_rgb col, float sub, int on)
+/* ---------------------------------------------------------------- 2. NUMBERS: the listing */
+#define GK_RY(r) (13 + (r) * 10)                        /* a line's top */
+#define GK_VX 44                                        /* the values' left */
+static void gk_line(int r, const char *label, qd_rgb lc)   /* a line: its number, its name */
 {
-    float w;
-    gk_lab(label, x, 127.f, col == GK_WARN ? GK_WARN : UI_G1);
-    w = ui_T(on ? val : "--", x, 154.f, 24.f, 300, 0.f, on ? col : UI_G2, QD_LEFT);
+    char n[12];
+    ui_itoa(n, 10 * (r + 1));
+    px_text(4, GK_RY(r) + 2, n, GK_FG, PX_FS, 1);
+    px_text(14, GK_RY(r) + 2, label, lc, PX_FS, 1);
+}
+static int gk_value(int r, const char *val, const char *unit, qd_rgb col, int on)   /* the x after it */
+{
+    int x = px_text(GK_VX, GK_RY(r), on ? val : "--", on ? col : GK_DIM, PX_FB, 1);
     if (unit && on)
-        ui_T(unit, x + 3.f + w, 154.f, 12.f, 600, 0.f, UI_G1, QD_LEFT);
-    if (sub >= 0.f && on) {
-        ui_RR(x, 158.f, 56.f, 4.f, 2.f, QD_NONE, 1.f, UI_G3);
-        ui_RR(x, 158.f, 56.f * (sub > 1.f ? 1.f : sub) < 4.f ? 4.f : 56.f * (sub > 1.f ? 1.f : sub), 4.f, 2.f, QD_NONE, 1.f,
-              gk_heat(sub));
-    }
+        x = px_text(x, GK_RY(r) + 2, unit, GK_FG, PX_FS, 1);
+    return x;
 }
 static void gk_numbers(const ui_geek_t *v)
 {
     char s[16], s2[16];
-    int q;
-    float w;
-    /* the voices: the count of the pool big, its slots as dots in their tracks' colours */
-    gk_grp(4.f, 28.f, 150.f, 78.f, UI_G3);
-    gk_lab("VOICES", 14.f, 46.f, UI_G1);
-    w = ui_T(ui_itoa(s, v->voices), 14.f, 94.f, 46.f, 300, 0.f, UI_K3, QD_LEFT);
+    int q, x, r;
+    /* the voices: the count of the pool, its slots as cells in their tracks' colours */
+    gk_line(0, "VOICES", GK_FG);
     s2[0] = '/';
     ui_itoa(s2 + 1, v->nvoice);
-    ui_T(s2, 16.f + w, 94.f, 18.f, 500, 0.f, UI_G1, QD_LEFT);
-    for (q = 0; q < v->nvoice && q < 16; q++) {        /* (8 voices: 4 x 2 dots; 16: 8 x 2, smaller) */
-        const int big = v->nvoice <= 8;
-        const float x = big ? 92.f + (float)(q % 4) * 16.f : 88.f + (float)(q % 8) * 8.f;
-        const float y = big ? 58.f + (float)(q / 4) * 18.f : 60.f + (float)(q / 8) * 14.f, r = big ? 5.f : 3.f;
-        ui_O(x, y, r, UI_G2, 1.2f, QD_NONE);
-        if (v->slot_lvl[q] > 0.02f)
-            gk_dot(x, y, r, v->slot_col[q], 0.25f + v->slot_lvl[q]);
-    }
-    /* steals: big; a yellow flash and a spark on each new one */
-    gk_grp(158.f, 28.f, 78.f, 78.f, v->steal_flash > 0.05f ? gk_mix(UI_G3, GK_WARN, v->steal_flash) : UI_G3);
-    gk_lab("STEALS", 168.f, 46.f, v->steals ? GK_WARN : UI_G1);
-    ui_T(ui_itoa(s, v->steals), 197.f, 94.f, 38.f, 300, 0.f,
-         v->steals ? gk_mix(GK_WARN, 0xffffffu, v->steal_flash * 0.6f) : UI_G1, QD_CENTER);
-    if (v->steal_flash > 0.02f)
-        gk_burst(197.f, 80.f, 22.f + (1.f - v->steal_flash) * 14.f, v->steal_flash);
-    /* the audio interrupt and the locks */
-    gk_grp(4.f, 110.f, 232.f, 56.f, UI_G3);
-    gk_cell(14.f, "ISR", ui_itoa(s, v->isr_us), "us", UI_K3, v->isr_frac, v->isr_on);
-    gk_cell(96.f, "LATE", ui_itoa(s2, v->late), 0, v->late ? gk_mix(GK_WARN, 0xffffffu, v->late_flash * 0.6f) : UI_G1,
-            -1.f, v->late_on);
-    if (v->late && v->late_flash > 0.02f) {
-        gk_alpha_begin(v->late_flash);
-        ui_O(104.f, 145.f, 12.f + (1.f - v->late_flash) * 22.f, GK_WARN, 2.f, QD_NONE);
-        qd_restore();
-    }
-    gk_cell(158.f, "LOCK", ui_itoa(s, v->lock_us), "us", UI_K3, -1.f, v->lock_on);
-    /* the frame time and the tempo */
-    gk_grp(4.f, 170.f, 232.f, 46.f, UI_G3);
-    {
-        const int slow = v->frame_on && v->frame10 > 200;
-        gk_lab("FRAME", 14.f, 186.f, slow ? GK_WARN : UI_G1);
-        if (v->frame_on) {
-            ui_itoa(s, v->frame10 / 10);
-            q = (int)strlen(s);
-            s[q] = '.', s[q + 1] = (char)('0' + v->frame10 % 10), s[q + 2] = 0;
-            w = ui_T(s, 14.f, 210.f, 22.f, 300, 0.f, slow ? GK_WARN : UI_K3, QD_LEFT);
-            ui_T("ms", 17.f + w, 210.f, 12.f, 600, 0.f, UI_G1, QD_LEFT);
-        } else {
-            ui_T("--", 14.f, 210.f, 22.f, 300, 0.f, UI_G2, QD_LEFT);
+    gk_value(0, ui_itoa(s, v->voices), s2, GK_INK, 1);
+    for (q = 0; q < v->nvoice && q < 16; q++) {         /* (8 voices: a row of 8 x 7 cells; 16: two rows of 3 x 3) */
+        const int big = v->nvoice <= 8, cx = 84 + (q % 8) * 4, cy = big ? GK_RY(0) : GK_RY(0) + (q / 8) * 4;
+        const int h = big ? 7 : 3;
+        px_rect(cx, cy, 3, h, UI_BG);
+        if (v->slot_lvl[q] > 0.02f) {
+            const int f = 1 + gk_h(v->slot_lvl[q], h - 1);
+            px_rect(cx, cy + h - f, 3, f > h ? h : f, v->slot_col[q]);
         }
     }
-    gk_lab("BPM", 140.f, 186.f, UI_G1);
-    ui_T(ui_itoa(s, v->bpm), 140.f, 210.f, 22.f, 300, 0.f, UI_K3, QD_LEFT);
-    /* the last boot's cause: only after a crash */
-    if (v->boot) {
-        const float tri[6] = {16.f, 234.f, 22.f, 224.f, 28.f, 234.f};
-        ui_RR(4.f, 220.f, 232.f, 19.f, 4.f, GK_WARN, 1.3f, gk_mix(0, GK_WARN, 0.12f));
-        ui_P(tri, 3, GK_WARN, 1.5f, 1, QD_NONE);
-        gk_line(22.f, 228.f, 22.f, 230.5f, GK_WARN, 1.6f);
-        ui_T("BOOT", 36.f, 234.f, 12.f, 600, 1.f, UI_G1, QD_LEFT);
-        ui_T(v->boot, 228.f, 234.f, 13.f, 600, 0.5f, GK_WARN, QD_RIGHT);
+    /* steals: a yellow flash and a spark on each new one */
+    gk_line(1, "STEALS", v->steals ? GK_WARN : GK_FG);
+    x = gk_value(1, ui_itoa(s, v->steals), 0, v->steals ? (v->steal_flash > 0.4f ? GK_INK : GK_WARN) : GK_FG, 1);
+    if (v->steal_flash > 0.02f)                         /* (the spark beside it, growing as it fades) */
+        gk_burst(x + 6, GK_RY(1) + 3, 3 + gk_h(1.f - v->steal_flash, 2));
+    /* the audio interrupt (its share of a half as a bar), late halves, the locks */
+    gk_line(2, "ISR", GK_FG);
+    gk_value(2, ui_itoa(s, v->isr_us), "US", GK_INK, v->isr_on);
+    if (v->isr_on) {
+        px_rect(86, GK_RY(2) + 1, 30, 5, UI_BG);
+        px_rect(87, GK_RY(2) + 2, gk_h(v->isr_frac, 28) < 1 ? 1 : gk_h(v->isr_frac, 28), 3, gk_heat(v->isr_frac));
     }
+    gk_line(3, "LATE", v->late ? GK_WARN : GK_FG);
+    x = gk_value(3, ui_itoa(s, v->late), 0, v->late ? (v->late_flash > 0.4f ? GK_INK : GK_WARN) : GK_FG, v->late_on);
+    if (v->late_on && v->late && v->late_flash > 0.02f) {   /* (a new one: a box round it, opening out as it fades) */
+        const int g = 2 + gk_h(1.f - v->late_flash, 6);
+        px_box(GK_VX - g, GK_RY(3) - 2, x - GK_VX + 2 * g - 1, 11, GK_WARN);
+    }
+    gk_line(4, "LOCK", GK_FG);
+    gk_value(4, ui_itoa(s, v->lock_us), "US", GK_INK, v->lock_on);
+    /* the frame time and the tempo */
+    {
+        const int slow = v->frame_on && v->frame10 > 200;
+        gk_line(5, "FRAME", slow ? GK_WARN : GK_FG);
+        ui_itoa(s, v->frame10 / 10);
+        q = (int)strlen(s);
+        s[q] = '.', s[q + 1] = (char)('0' + v->frame10 % 10), s[q + 2] = 0;
+        gk_value(5, s, "MS", slow ? GK_WARN : GK_INK, v->frame_on);
+    }
+    gk_line(6, "BPM", GK_FG);
+    gk_value(6, ui_itoa(s, v->bpm), 0, GK_INK, 1);
+    r = 7;
+    if (v->boot) {                                      /* the last boot's cause: only after a crash */
+        px_text(4, GK_RY(r) + 2, "?", GK_WARN, PX_FS, 1);
+        x = px_text(8, GK_RY(r) + 2, v->boot, GK_WARN, PX_FS, 1);
+        px_text(x + 4, GK_RY(r) + 2, "ERROR", GK_WARN, PX_FS, 1);
+        r++;
+    }
+    px_text(4, GK_RY(r) + 1, "READY.", GK_FG, PX_FB, 1);
+#if QD_GEEK_STEADY_DOT                                  /* (the cursor: steady with the steady light, else blinking on
+                                                         * the beat) */
+    px_rect(4, GK_RY(r + 1) + 1, 7, 7, GK_FG);
+#else
+    if (!v->playing || v->beat < 0.5f)
+        px_rect(4, GK_RY(r + 1) + 1, 7, 7, GK_FG);
+#endif
 }
 
-/* ---------------------------------------------------------------- 3. VOICES, a column a track */
+/* ---------------------------------------------------------------- 3. VOICES: a shaft a track */
 static void gk_voices(const ui_geek_t *v)
 {
     char s[12];
     int i, k;
-    for (i = 0; i < UI_NTRACK; i++) {                   /* (six tracks: 40 px a column) */
-        const float cx = 20.f + (float)i * 40.f, top = 140.f, bot = 230.f, H = bot - top;
+    for (i = 0; i < UI_NTRACK && i < 6; i++) {
+        const int cx = 12 + i * 19, top = 63, bot = 114;
         const qd_rgb col = UI_TRACK_PAL[i];
         const float fl = v->tflash[i];
-        float u, f;
-        gk_alpha_begin(v->on[i] ? 1.f : 0.55f);
-        ui_box(cx - 8.f, 28.f, i + 1, col);
-        qd_restore();
-        for (k = 0; k < 3; k++) {                       /* its voice limit as rings, a lit dot a sounding voice */
-            const float y = 62.f + (float)k * 18.f;
+        px_rect(cx - 7, 12, 15, 105, UI_BG);
+        if (v->on[i])                                   /* its number: reverse video while it sounds */
+            px_rect(cx - 4, 14, 9, 8, col);
+        else
+            px_box(cx - 4, 14, 9, 8, col);
+        px_ctext(cx + 1, 16, ui_itoa(s, i + 1), v->on[i] ? UI_BG : col, PX_FS, 1);
+        for (k = 0; k < 3; k++) {                       /* its voice limit as cells, a sounding voice filled to its
+                                                         * level */
+            const int y = 26 + k * 9;
             if (k >= v->lim[i]) {
-                ui_O(cx, y, 1.5f, QD_NONE, 1.f, UI_G3);
+                px_pset(cx, y + 3, PX_DGREY);
                 continue;
             }
-            ui_O(cx, y, 7.f, UI_G2, 1.2f, QD_NONE);
-            if (k < v->on[i] && v->lvl[i][k] > 0.02f)
-                gk_dot(cx, y, 7.f, col, 0.2f + v->lvl[i][k]);
+            px_box(cx - 3, y, 7, 7, PX_GREY);
+            if (k < v->on[i] && v->lvl[i][k] > 0.02f) {
+                const int f = 2 + gk_h(v->lvl[i][k], 3);
+                px_rect(cx - 2, y + 6 - f, 5, f, col);
+            }
         }
         if (fl > 0.02f)
-            gk_burst(cx, 62.f, 9.f + (1.f - fl) * 6.f, fl);
+            gk_burst(cx, 29, 6 + gk_h(1.f - fl, 3));
         if (v->tsteals[i])                              /* its steals so far (a dash: none) */
-            ui_T(ui_itoa(s, v->tsteals[i]), cx, 128.f, 13.f, 600, 0.f, gk_mix(GK_WARN, 0xffffffu, fl * 0.6f), QD_CENTER);
+            px_ctext(cx + 1, 54, ui_itoa(s, v->tsteals[i]), fl > 0.4f ? GK_INK : GK_WARN, PX_FS, 1);
         else
-            gk_line(cx - 3.f, 124.f, cx + 3.f, 124.f, UI_G2, 1.5f);
-        u = v->share[i];                                /* its share of the audio (full: half of it) */
-        f = (u / 0.5f > 1.f ? 1.f : u / 0.5f) * (H - 2.f);
-        ui_RR(cx - 10.f, top, 20.f, H, 3.f, UI_G3, 1.f, QD_NONE);
-        if (f > 0.5f) {
-            gk_rr(cx - 12.f, bot - 1.f - f - 2.f, 24.f, f + 3.f, 4.f, QD_NONE, 1.f, col, 0.14f);
-            gk_rr(cx - 8.f, bot - 1.f - f, 16.f, f - 1.f, 2.f, QD_NONE, 1.f, col, 0.85f);
+            px_hline(cx - 1, 56, 3, PX_DGREY);
+        px_box(cx - 4, top, 9, bot - top + 1, PX_DGREY);   /* its share of the audio (full: half of it) */
+        {
+            const int f = gk_h(v->share[i] * 2.f, bot - top - 1);
+            gk_raster(cx - 3, bot - f, 7, f, col);
         }
     }
 }
 
-/* 2026-11-11: a long wave stroked in short overlapping pieces (16 points, one shared): one stroke of the whole 113
- * points at 5 px asked the drawing's arena for 27.5 KB at once (the stroker's outline, the rasterizer's spans) and a
- * fragmented arena refused it; pieces keep each stroke's memory small, the line the same */
-static void gk_wave(const float *p, int n, qd_rgb col, float lw)
+/* ---------------------------------------------------------------- 4. SCOPE: a hard pixel line */
+static void gk_wave(int x0, int n, const int *ys, qd_rgb col)   /* a line through n points, 1 px apart */
 {
-    int s;
-    for (s = 0; s < n - 1; s += 15)
-        ui_P(p + 2 * s, n - s < 16 ? n - s : 16, col, lw, 0, QD_NONE);
+    int i;
+    for (i = 0; i < n; i++) {
+        const int y = ys[i], p = i ? ys[i - 1] : y;
+        if (y > p + 1)                                  /* (a step: joined by a column) */
+            px_vline(x0 + i, p + 1, y - p, col);
+        else if (y < p - 1)
+            px_vline(x0 + i, y, p - y, col);
+        else
+            px_pset(x0 + i, y, col);
+    }
 }
-
-/* ---------------------------------------------------------------- 4. SCOPE */
 static void gk_scope(const ui_geek_t *v)
 {
-    const float cy = 132.f, A = 82.f;
-    float p[2 * UI_GEEK_SCOPE];
-    int i;
-    gk_line(8.f, cy, 232.f, cy, UI_G3, 1.f);
+    const int cy = 64, A = 48;
+    int ys[UI_GEEK_SCOPE], i;
+    px_rect(3, 13, 114, 103, UI_BG);                    /* the window, its graticule */
+    for (i = 1; i < 4; i++)
+        px_vdots(3 + i * 114 / 4, 15, 100, PX_DGREY, 4);
+    px_dots(4, cy, 112, PX_DGREY, 2);
     if (v->scope_track < 0) {
-        gk_line(8.f, cy, 232.f, cy, UI_G2, 2.f);
+        px_hline(4, cy, 112, PX_GREY);
         return;
     }
-    for (i = 0; i < UI_GEEK_SCOPE; i++)
-        p[2 * i] = 8.f + 2.f * (float)i, p[2 * i + 1] = cy - A * v->w.scope[i];
-    {
-        const qd_rgb col = UI_TRACK_PAL[v->scope_track];
-        gk_alpha_begin(0.22f);                          /* (one glow under it, then the line) */
-        gk_wave(p, UI_GEEK_SCOPE, col, 5.f);
-        qd_restore();
-        gk_wave(p, UI_GEEK_SCOPE, gk_mix(col, 0xffffffu, 0.15f), 2.6f);
+    for (i = 0; i < UI_GEEK_SCOPE; i++) {
+        const int y = cy - (int)floorf((float)A * v->w.scope[i] + 0.5f);
+        ys[i] = y < 14 ? 14 : y > 114 ? 114 : y;
     }
+    gk_wave(4, UI_GEEK_SCOPE, ys, UI_TRACK_PAL[v->scope_track & 7]);
 }
 
-/* 2026-10-27 (the owner): TRACKS, the whole screen, no header: six rows of 40 px, each track's own signal before the
- * effects in its colour (no middle line); a track with no sound: one flat line */
+/* ---------------------------------------------------------------- 5. TRACKS: the whole screen, six raster bands */
 static void gk_tracks(const ui_geek_t *v)
 {
     int t, k;
+    px_rect(0, 0, 120, 120, GK_BG);
     for (t = 0; t < UI_GEEK_TRK; t++) {
-        const float mid = 20.f + (float)t * 40.f;
+        const int mid = 10 + t * 20;
         const qd_rgb col = UI_TRACK_PAL[t];
-        float p[2 * UI_GEEK_TPTS];
-        for (k = 0; k < UI_GEEK_TPTS; k++)
-            p[2 * k] = (float)k * 4.f, p[2 * k + 1] = mid - (v->tsc_live[t] ? (float)v->w.tsc[t][k] * (17.f / 127.f) : 0.f);
-        if (v->tsc_live[t])
-            qd_save(), qd_alpha(0.16f), gk_wave(p, UI_GEEK_TPTS, col, 4.f), qd_restore();
-        ui_P(p, UI_GEEK_TPTS, col, 1.5f, 0, QD_NONE);   /* (thin and low: one stroke, small; no seams) */
+        int px0 = 0, py0 = mid;
+        px_rect(0, t * 20 + 1, 120, 18, UI_BG);
+        if (!v->tsc_live[t]) {                          /* (no sound: one flat line) */
+            px_hline(0, mid, 120, col);
+            continue;
+        }
+        for (k = 0; k < UI_GEEK_TPTS; k++) {
+            const int x = k * 2 > 119 ? 119 : k * 2, y = mid - v->w.tsc[t][k] * 8 / 127;
+            if (k)
+                px_line(px0, py0, x, y, col);
+            px0 = x, py0 = y;
+        }
     }
 }
 
@@ -368,6 +389,7 @@ void ui_geek_draw(const ui_geek_t *v)
         gk_tracks(v);
         return;
     }
+    gk_screen();
     gk_header(v);
     switch (v->page) {
     case 0: gk_meters(v); break;

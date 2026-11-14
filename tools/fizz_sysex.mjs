@@ -3,7 +3,7 @@
 // Pure: no DOM, no Node APIs. The FIZZ web preview hands the bytes to the engine's midiIn (as USB-MIDI packets:
 // usbPackets below); tools/test_sysex_dnsnd.mjs uses it with ChoralRoot's .dnsnd reader.
 //
-//   identity()                                   -> Uint8Array: F0 7D 46 5A 01 01 7F F7
+//   identity()                                   -> Uint8Array: F0 7D 45 47 01 01 7F F7
 //   storeSound({name, blob, drive, pool, slot, batch, track, pan, chorus, delay, reverb, tags})
 //                                                -> Uint8Array: one STORE SOUND frame (P1.5x: pan and the sends kept
 //                                                   with the preset, LOAD or not; tags: FIZZ's tags, a mask or names).
@@ -67,7 +67,7 @@
 //                                                   name typed on the unit). parseStatus gives browse, a track's DUMP's
 //                                                   extras browse (the browser previews on that track)
 
-export const FIZZ_HEADER = [0x7d, 0x46, 0x5a];
+export const FIZZ_HEADER = [0x7d, 0x45, 0x47];
 export const FIZZ_PROTOCOL = 1;
 export const CMD = { IDENTITY: 0x01, STORE: 0x10, STORE6: 0x11, LABELS: 0x20, LIST: 0x21, DUMP: 0x22, PARAM: 0x30, BROWSE: 0x31 };   // (E1, P1.6l, P1.6m, P2-B, fixes)
 export const REPLY = { IDENTITY: 0x41, STORE: 0x50, LABELS: 0x60, LIST: 0x61, ERROR: 0x7f };
@@ -169,7 +169,7 @@ export const labelsRequest = ({ subscribe = false } = {}) => frame(CMD.LABELS, [
 
 export function parseLabels(bytes) {
   const b = Array.from(bytes);
-  if (b.length < 10 || b[0] !== 0xf0 || b[b.length - 1] !== 0xf7 || b[1] !== 0x7d || b[2] !== 0x46 || b[3] !== 0x5a ||
+  if (b.length < 10 || b[0] !== 0xf0 || b[b.length - 1] !== 0xf7 || b[1] !== 0x7d || b[2] !== 0x45 || b[3] !== 0x47 ||
       b[5] !== REPLY.LABELS) return null;
   if (b.slice(5, -1).reduce((s, x) => s + x, 0) & 0x7f) return null;
   const count = (b[6] << 7) | b[7], n = b[8], list = [];
@@ -197,7 +197,7 @@ export const dumpRequest = ({ source = "mine", slot = 0 } = {}) => {
   return frame(CMD.DUMP, [src, (slot >> 7) & 0x7f, slot & 0x7f]);
 };
 const sumOk = (b) => !(b.slice(5, -1).reduce((s, x) => s + x, 0) & 0x7f);
-const isFizz = (b) => b.length >= 8 && b[0] === 0xf0 && b[b.length - 1] === 0xf7 && b[1] === 0x7d && b[2] === 0x46 && b[3] === 0x5a;
+const isFizz = (b) => b.length >= 8 && b[0] === 0xf0 && b[b.length - 1] === 0xf7 && b[1] === 0x7d && b[2] === 0x45 && b[3] === 0x47;
 export function parseList(bytes) {
   const b = Array.from(bytes);
   if (!isFizz(b) || b[5] !== REPLY.LIST || !sumOk(b)) return null;
@@ -298,7 +298,7 @@ export function parseProjects(bytes) {
 
 export function parseReply(bytes) {
   const b = Array.from(bytes);
-  if (b.length < 8 || b[0] !== 0xf0 || b[b.length - 1] !== 0xf7 || b[1] !== 0x7d || b[2] !== 0x46 || b[3] !== 0x5a)
+  if (b.length < 8 || b[0] !== 0xf0 || b[b.length - 1] !== 0xf7 || b[1] !== 0x7d || b[2] !== 0x45 || b[3] !== 0x47)
     return null;
   const body = b.slice(5, -1);
   if (body.reduce((s, x) => s + x, 0) & 0x7f) return null;

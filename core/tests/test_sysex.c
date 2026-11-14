@@ -59,7 +59,7 @@ static void fresh(void)
 static uint32_t frame(uint8_t *f, int cmd, const uint8_t *body, uint32_t n)
 {
     uint32_t i, o = 0, sum = (uint32_t)cmd;
-    f[o++] = 0x7D, f[o++] = 0x46, f[o++] = 0x5A, f[o++] = 0x01, f[o++] = (uint8_t)cmd;
+    f[o++] = QD_SX_ID0, f[o++] = QD_SX_ID1, f[o++] = QD_SX_ID2, f[o++] = 0x01, f[o++] = (uint8_t)cmd;
     for (i = 0; i < n; i++)
         f[o++] = body[i], sum += body[i];
     f[o++] = (uint8_t)((0x80u - (sum & 0x7Fu)) & 0x7Fu);
@@ -101,10 +101,10 @@ static int send(const uint8_t *f, uint32_t n)           /* -> the reply's length
     rn = qd_app_sysex_take(&A, R, sizeof R);
     return rn;
 }
-static int reply_ok(void)                               /* F0 7D 46 5A 01 .. chk F7, the sum 0 */
+static int reply_ok(void)                               /* F0 7D 45 47 01 .. chk F7, the sum 0 */
 {
     int i, sum = 0;
-    if (rn < 8 || R[0] != 0xF0 || R[1] != 0x7D || R[2] != 0x46 || R[3] != 0x5A || R[4] != 0x01 || R[rn - 1] != 0xF7)
+    if (rn < 8 || R[0] != 0xF0 || R[1] != QD_SX_ID0 || R[2] != QD_SX_ID1 || R[3] != QD_SX_ID2 || R[4] != 0x01 || R[rn - 1] != 0xF7)
         return 0;
     for (i = 5; i < rn - 1; i++) {
         if (R[i] & 0x80)
@@ -606,17 +606,17 @@ static void p2b_tests(void)
     cmd_io = 0;
     /* PARAM */
     u0 = qd_undo_count(&A, -1);
-    n = param(2, QD_QP_FREQ, 5000, 0);
-    CHECK(n == 0 && A.model.t[2].patch[QD_QP_FREQ] == 5000 && A.model.t[2].edited &&
-              qd_proj_pat(&A.proj, A.seq.cur)->snd[2].patch[QD_QP_FREQ] == 5000,
-          "PARAM: track 3's FREQ 50.00 (no reply): the track's sound and the pattern's copy, marked edited");
+    n = param(2, QD_QP_FREQ, 1500, 0);                 /* (EvilGenius: SID TONE's CUTOFF, 0..2047) */
+    CHECK(n == 0 && A.model.t[2].patch[QD_QP_FREQ] == 1500 && A.model.t[2].edited &&
+              qd_proj_pat(&A.proj, A.seq.cur)->snd[2].patch[QD_QP_FREQ] == 1500,
+          "PARAM: track 3's CUTOFF 1500 (no reply): the track's sound and the pattern's copy, marked edited");
     param(2, QD_QP_FREQ, 99999, QD_SXP_ACK);
-    CHECK(ack(QD_SX_PARAM) == QD_SX_OK && ack_v1() == 3 && ack_v2() == QD_QP_FREQ && A.model.t[2].patch[QD_QP_FREQ] == 12700,
-          "PARAM with ACK: OK (track 3, FREQ); a value past the range clamped as a knob's (127.00)");
-    param(0, QD_QP_HARM, -2601, 0);
+    CHECK(ack(QD_SX_PARAM) == QD_SX_OK && ack_v1() == 3 && ack_v2() == QD_QP_FREQ && A.model.t[2].patch[QD_QP_FREQ] == 2047,
+          "PARAM with ACK: OK (track 3, CUTOFF); a value past the range clamped as a knob's (2047)");
+    param(0, QD_QP_MOD0 + 2, -130, 0);
     param(0, QD_QP_BITS, 40, 0);
-    CHECK(A.model.t[0].patch[QD_QP_HARM] == -2600 && A.model.t[0].patch[QD_QP_BITS] == 40,
-          "PARAM: a negative value (HARM -26.01 -> -26.00), a value 74.. (BITS 40)");
+    CHECK(A.model.t[0].patch[QD_QP_MOD0 + 2] == -127 && A.model.t[0].patch[QD_QP_BITS] == 40,
+          "PARAM: a negative value (MOD 1 DEPTH -130 -> -127), a value 0..127 (BITS 40)");
     param(6, QD_QP_FREQ, 100, 0);
     CHECK(ack(QD_SX_PARAM) == QD_SX_BAD_TRACK, "PARAM onto track 7: BAD TRACK (answered without ACK)");
     param(1, QD_LK_N, 0, 0);
@@ -731,7 +731,7 @@ static void p2b_tests(void)
               "(project 1 again; its pattern %d's track 1 still MY preset %d)", pat1 + 1, m);
     }
     memcpy(p2, p0, sizeof p2);
-    p2[QD_QP_FREQ] = (int16_t)(p0[QD_QP_FREQ] > 6000 ? 1000 : 9000), p2[QD_QP_FDBK] = 99;
+    p2[QD_QP_FREQ] = (int16_t)(p0[QD_QP_FREQ] > 1000 ? 200 : 1800), p2[QD_QP_RESO] = 9;
     qd_app_play(&A);
     send(f, store6_msg(f, QD_SXF_OWN, m, "SAVED OVER", p2, 0, 64, 0, 0, 0, 0x0F, 0, 0));
     CHECK(status() == QD_SX_BUSY && !strcmp(qd_lib_name(&A, m - 1), "MINE OWN"), "STORE over a used MY place while playing: BUSY, nothing changed");

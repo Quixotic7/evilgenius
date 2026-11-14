@@ -1451,7 +1451,7 @@ static void fz_wipe(void)                /* 7D 46 50 "WIPE": the store's region 
 {
     char line[48], *c;
     app_panic();
-    fz_message("FIZZ: WIPING ITS STORE", "DO NOT SWITCH OFF");
+    fz_message("EVILGENIUS: WIPING ITS STORE", "DO NOT SWITCH OFF");
     fz_wiped = fz_store_wipe();
     if (fz_ok) {
         fz_restart();
@@ -2349,7 +2349,7 @@ static void fz_store_start(void)         /* the store, once, at the first screen
     fz_store_started = 1;
     if (plat_buttons() >> B_SAVE & 1u) { /* SAVE held at power-on: safe mode, no store (nothing read or written) */
         fz_safe = 1;
-        fz_message("FIZZ: SAFE MODE", "THE STORE IS NOT USED");
+        fz_message("EVILGENIUS: SAFE MODE", "THE STORE IS NOT USED");
         fz_hold_ms(1500u);
         return;
     }
@@ -2358,7 +2358,7 @@ static void fz_store_start(void)         /* the store, once, at the first screen
 #else
     if (fz_store_foreign() > 0) {        /* another firmware's data in the region (none of FIZZ's): erased first */
 #endif
-        fz_message("FIZZ: CLEARING ITS STORE", "ONCE, A FEW SECONDS");
+        fz_message("EVILGENIUS: CLEARING ITS STORE", "ONCE, A FEW SECONDS");
         fz_wiped = fz_store_wipe();
     }
     fz_store_attach();                   /* (no lock: the sound is not on yet, the interrupt leaves FIZZ alone; the
@@ -2399,7 +2399,7 @@ void app_ui_init(void)
             fz_store_us = (plat_ticks24() - t) / PLAT_TICKS_PER_US;   /* (the store's start: after USB is up) */
     }
     if (!fz_ok) {
-        fz_message(fz_xdata_state() < 0 ? "FIZZ: ITS DATA IS ANOTHER BUILD'S" : "FIZZ NEEDS ITS DATA",
+        fz_message(fz_xdata_state() < 0 ? "EVILGENIUS: ANOTHER BUILD'S DATA" : "EVILGENIUS NEEDS ITS DATA",
                    "RUN FIZZ_XDATA.PY OVER USB");
         return;
     }
@@ -2765,7 +2765,7 @@ static uint32_t fz_restore(uint32_t lo, uint32_t size, uint32_t len, uint32_t cr
     if (c != crc)
         return 12;
     app_panic();
-    fz_message("FIZZ: RESTORING ITS STORE", "DO NOT UNPLUG");
+    fz_message("EVILGENIUS: RESTORING ITS STORE", "DO NOT UNPLUG");
     for (a = 0; a < len; a += sizeof buf) {
         if (!(a & 0xFFFu) && plat_data_erase(lo + a))
             return 13;
@@ -2858,7 +2858,7 @@ void app_usb_cmd(const uint8_t *d, uint32_t n)
         return;
     }
     app_panic();
-    fz_message("FIZZ: WRITING ITS DATA", "DO NOT UNPLUG");
+    fz_message("EVILGENIUS: WRITING ITS DATA", "DO NOT UNPLUG");
     fz_pull_begin();
     rc = fz_xdata_write(off, len, crc);
     fz_pull_end();

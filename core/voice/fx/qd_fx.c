@@ -1,21 +1,18 @@
 /* SPDX-License-Identifier: MPL-2.0
  * This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0. If a copy of the MPL was not
  * distributed with this file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-/* ChoralRoot's effects and output chain as a library (qd_fx.h): fz_out.c (Output Clean, the chorus line) and the
- * owner's cr_fx.c (v0.25.1: delay, reverb, master filter, stereo chorus; one core; no profiling) built in this one
- * unit on core/voice/quad's fz_core.h, fz_voice.h and fz_tables.h (L1). Then the block in ChoralRoot's order:
- * xc_block, xf_block, xq_block, out_master (Output Clean). */
+/* EvilGenius's effects (qd_fx.h): the retro set. The three sends: CHORUS (the PAL chorus: two taps swaying apart),
+ * ECHO (a ping-pong tempo echo at half rate whose repeats are darkened, coarsened and wobbled by LOFI and WOW), ROOM
+ * (a small reverb at half rate: four combs and two allpasses a side). Then the mix through CRUSH, ROBOT, WARP, GLITCH,
+ * TV, then FIZZ's output (fz_out.c). The levels are the mix's (a voice's full scale near 24000). */
 #include <stdint.h>
-#include <stdio.h>
 #include <string.h>
 
 #include "qd_fx.h"
-#include "../../seq/qd_div.h"                  /* (P2.4) */
 
 #if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wpedantic"
-#pragma clang diagnostic ignored "-Wc11-extensions"
 #pragma clang diagnostic ignored "-Wunused-function"
 #pragma clang diagnostic ignored "-Wunused-const-variable"
 #pragma clang diagnostic ignored "-Wunused-variable"
@@ -29,18 +26,12 @@
 #pragma GCC diagnostic ignored "-Wunused-variable"
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #endif
-#define __attribute__(x)                /* (ChoralRoot's .pool sections, its inlining hints: the host's choice, as
-                                         * ChoralRoot's hostsim.c builds them) */
-#define CR_FX 1                         /* ChoralRoot's delay, reverb and stereo chorus (cr_fx.c) */
-#define CR_CPU1 0                       /* one core */
-#define CR_PROFX(k) ((void)0)           /* (cr_cpu1.h's profiling: none) */
-#define CR_PROFX_START() ((void)0)
+#define __attribute__(x)                /* (the buffers: zero-initialised, the link puts them in the pool) */
 #include "fz_tables.h"
 #include "fz_core.h"
-#include "cr_ram.h"                     /* (the CR_HOT_* markers: nothing on the host) */
-#include "fz_voice.h"                   /* (fz_dsp.h, fz_chorus_block) */
+#include "cr_ram.h"
+#include "fz_voice.h"
 #include "fz_out.c"
-#include "cr_fx.c"
 #undef __attribute__
 #if defined(__clang__)
 #pragma clang diagnostic pop
@@ -48,348 +39,563 @@
 #pragma GCC diagnostic pop
 #endif
 
-#define QD_FX_POT_DEFAULT 724           /* fz_master_of_pot(724) = 2047: the power-on MASTER, half way */
-
+#define QD_FX_POT_DEFAULT 724
+#define N QD_FX_CTL
+#define H (N / 2)                       /* a block at the half rate */
 typedef char qd_fx_ctl_ok[QD_FX_CTL == CTL ? 1 : -1];
 
-/* THE ROUTING (2026-10-26, after ChoralRoot 0.27's, GitHub issue 21 there): qd_rt[] = the mode, the order, the three
- * chain amounts (QD_FXP_RMODE ..). PARALLEL (0, the default) is the block as it always was, bit for bit: the chorus's,
- * the delay's and the reverb's buses fed by the tracks' sends, their returns into the mix, the master filter after
- * (or, the FILTER first in the order, before: on the dry mix, so the effects hear the cut signal). CHAIN (1, the owner's
- * rule of 2026-10-26, the evening's): the effects in series, each track's sends its wet / dry at each effect (mix.c
- * chain_gains: send k's share of what the track feeds the chain goes into effect k, the rest passes it by; what passes
- * them all by is heard dry in l / r, with the track's DRY part). Here: the wet W starts empty; effect k takes its bus
- * and its share qd_cg[k] of W (the tracks' sends, level-weighted: app.c), leaves the rest of W and adds its wet; the
- * FILTER filters W at its place, or, last, everything (l / r folded in first: the master filter). Sequential within
- * the block (no previous-block snapshot: one core). The delay's half-rate wet has its own up-sampler (qd_ud) so the
- * reverb's (xf.up) keeps its history */
-static int16_t qd_rt[5];
-static int32_t qd_cg[3] = {4096, 4096, 4096};           /* (CHAIN: each effect's share of the wet before it) */
-void qd_fx_chain_g(const int32_t g[3]) { qd_cg[0] = g[0], qd_cg[1] = g[1], qd_cg[2] = g[2]; }
-static const uint8_t QD_RT_ORD[24][4] = {              /* QD_FXP_ORDER -> the block at position 0..3, lexicographic */
-    {0, 1, 2, 3}, {0, 1, 3, 2}, {0, 2, 1, 3}, {0, 2, 3, 1}, {0, 3, 1, 2}, {0, 3, 2, 1},
-    {1, 0, 2, 3}, {1, 0, 3, 2}, {1, 2, 0, 3}, {1, 2, 3, 0}, {1, 3, 0, 2}, {1, 3, 2, 0},
-    {2, 0, 1, 3}, {2, 0, 3, 1}, {2, 1, 0, 3}, {2, 1, 3, 0}, {2, 3, 0, 1}, {2, 3, 1, 0},
-    {3, 0, 1, 2}, {3, 0, 2, 1}, {3, 1, 0, 2}, {3, 1, 2, 0}, {3, 2, 0, 1}, {3, 2, 1, 0}};
-static xf_hb_t qd_ud[2];                                /* CHAIN: the delay's own up-sampler, left and right */
-static uint32_t qd_ud_live;
-static const uint8_t *qd_rt_ord(void) { return QD_RT_ORD[qd_rt[1] >= 0 && qd_rt[1] < 24 ? qd_rt[1] : 0]; }
+/* ---------------------------------------------------------------- the values --- */
+typedef struct {
+    const char *name;
+    int16_t min, max, def;
+    const char *const *list;
+} fxv_t;
+static const char *const L_OFFON[2] = {"OFF", "ON"};
+static const char *const L_DMODE[2] = {"STEREO", "PING"};
+static const char *const L_DIV[12] = {"1/32", "1/16T", "1/16", "1/8T", "1/16D", "1/8", "1/4T", "1/8D", "1/4",
+                                      "1/2T", "1/4D", "1/2"};
+static const char *const L_RATIO[4] = {"1:1", "3:4", "2:3", "1:2"};
+static const char *const L_XRATE[8] = {"44K", "22K", "15K", "11K", "7K", "5K", "4K", "3K"};
+static const char *const L_RBWAVE[3] = {"SINE", "SQUARE", "TRI"};
+static const char *const L_GLEN[4] = {"1/32", "1/16", "1/8", "1/4"};
+static const char *const L_RMODE[1] = {"PARALLEL"};
+static const fxv_t FXV[QD_NFXP] = {
+    [QD_FXP_DTIME] = {"TIME", 1, 127, 40, 0}, [QD_FXP_DDIV] = {"TIME", 0, 11, 7, L_DIV},
+    [QD_FXP_DSPREAD] = {"SPREAD", 0, 127, 0, 0}, [QD_FXP_DRATIO] = {"RATIO", 0, 3, 0, L_RATIO},
+    [QD_FXP_DFDBK] = {"FDBK", 0, 127, 64, 0}, [QD_FXP_DSYNC] = {"SYNC", 0, 1, 1, L_OFFON},
+    [QD_FXP_DMODE] = {"MODE", 0, 1, 1, L_DMODE}, [QD_FXP_DTONE] = {"LOFI", 0, 127, 50, 0},
+    [QD_FXP_DWOW] = {"WOW", 0, 127, 20, 0},
+    [QD_FXP_RSIZE] = {"SIZE", 0, 127, 70, 0}, [QD_FXP_RDAMP] = {"DAMP", 0, 127, 60, 0},
+    [QD_FXP_RDECAY] = {"DECAY", 0, 127, 70, 0}, [QD_FXP_RPRE] = {"PRE", 0, 127, 12, 0},
+    [QD_FXP_RMOD] = {"MOD", 0, 127, 20, 0}, [QD_FXP_RLOW] = {"LOW CUT", 0, 127, 20, 0},
+    [QD_FXP_RWIDTH] = {"WIDTH", 0, 127, 100, 0},
+    [QD_FXP_CWIDTH] = {"WIDTH", 0, 127, 127, 0}, [QD_FXP_CRATE] = {"RATE", 0, 127, 30, 0},
+    [QD_FXP_CDEPTH] = {"DEPTH", 0, 127, 60, 0},
+    [QD_FXP_RMODE] = {"MODE", 0, 0, 0, L_RMODE}, [QD_FXP_ORDER] = {"ORDER", 0, 23, 0, 0},
+    [QD_FXP_RDRY] = {"DRY", 0, 127, 127, 0}, [QD_FXP_RSPARE1] = {"", 0, 127, 64, 0},
+    [QD_FXP_RSPARE2] = {"", 0, 127, 64, 0},
+    [QD_FXP_XBITS] = {"BITS", 1, 16, 6, 0}, [QD_FXP_XRATE] = {"RATE", 0, 7, 3, L_XRATE},
+    [QD_FXP_XJIT] = {"JITTER", 0, 127, 0, 0}, [QD_FXP_XMIX] = {"MIX", 0, 127, 0, 0},
+    [QD_FXP_RBFREQ] = {"FREQ", 0, 127, 60, 0}, [QD_FXP_RBWAVE] = {"WAVE", 0, 2, 0, L_RBWAVE},
+    [QD_FXP_RBLFO] = {"WOBBLE", 0, 127, 10, 0}, [QD_FXP_RBMIX] = {"MIX", 0, 127, 0, 0},
+    [QD_FXP_WTIME] = {"TIME", 0, 127, 40, 0}, [QD_FXP_WFB] = {"FDBK", 0, 127, 100, 0},
+    [QD_FXP_WRATE] = {"SWEEP", 0, 127, 10, 0}, [QD_FXP_WMIX] = {"MIX", 0, 127, 0, 0},
+    [QD_FXP_GLEN] = {"SLICE", 0, 3, 1, L_GLEN}, [QD_FXP_GCHNC] = {"CHANCE", 0, 127, 32, 0},
+    [QD_FXP_GPTCH] = {"PITCH", 0, 24, 12, 0}, [QD_FXP_GMIX] = {"MIX", 0, 127, 0, 0},
+    [QD_FXP_TVTONE] = {"TONE", 0, 127, 50, 0}, [QD_FXP_TVHUM] = {"HUM", 0, 127, 16, 0},
+    [QD_FXP_TVDRV] = {"DRIVE", 0, 127, 24, 0}, [QD_FXP_TVMIX] = {"MIX", 0, 127, 0, 0},
+};
+static int16_t P[QD_NFXP];
+static int fx_bpm = 120;
 
+int qd_fx_get(int id) { return id >= 0 && id < QD_NFXP ? P[id] : 0; }
+void qd_fx_set(int id, int v)
+{
+    if (id < 0 || id >= QD_NFXP)
+        return;
+    P[id] = (int16_t)(v < FXV[id].min ? FXV[id].min : v > FXV[id].max ? FXV[id].max : v);
+}
+void qd_fx_range(int id, int *min, int *max, int *def)
+{
+    const fxv_t z = {"", 0, 0, 0, 0}, *v = id >= 0 && id < QD_NFXP ? &FXV[id] : &z;
+    if (min)
+        *min = v->min;
+    if (max)
+        *max = v->max;
+    if (def)
+        *def = v->def;
+}
+const char *qd_fx_name(int id) { return id >= 0 && id < QD_NFXP ? FXV[id].name : ""; }
+
+static char *itoa_(char *b, int n)
+{
+    char t[12];
+    int i = 0, k = 0;
+    unsigned u = n < 0 ? 0u - (unsigned)n : (unsigned)n;
+    do
+        t[i++] = (char)('0' + u % 10u);
+    while ((u /= 10u) && i < 11);
+    if (n < 0)
+        b[k++] = '-';
+    while (i)
+        b[k++] = t[--i];
+    b[k] = 0;
+    return b;
+}
+
+/* ---------------------------------------------------------------- shared helpers --- */
+static float ex2(float x)
+{
+    int i = (int)(x >= 0.f ? x : x - 1.f);
+    float f = x - (float)i, r;
+    union { float f; uint32_t u; } u;
+    r = 1.f + f * (0.6931472f + f * (0.2402265f + f * (0.0555041f + f * (0.0096181f + f * 0.0013334f))));
+    if (i < -126)
+        return 0.f;
+    if (i > 127)
+        i = 127;
+    u.f = r;
+    u.u += (uint32_t)i << 23;
+    return u.f;
+}
+static int32_t sat16(int32_t x) { return x < -32767 ? -32767 : x > 32767 ? 32767 : x; }
+static int32_t tri_q15(uint32_t ph)                     /* a triangle, -32767..32767 */
+{
+    const int32_t u = (int32_t)(ph >> 17);
+    return u < 16384 ? u * 4 - 32767 : 32767 - (u - 16384) * 4;
+}
+static uint32_t rng = 0x2545F491u;
+static uint32_t rnd(void)
+{
+    rng ^= rng << 13, rng ^= rng >> 17, rng ^= rng << 5;
+    return rng;
+}
+/* a division's length in samples at the tempo */
+static uint32_t div_samples(int div, uint32_t fs)
+{
+    static const uint16_t Q16THS[12] = {2, 3, 4, 5, 6, 8, 11, 12, 16, 21, 24, 32};   /* in 32nds of a quarter (x 8) */
+    const uint32_t q = fs * 60u / (uint32_t)(fx_bpm > 0 ? fx_bpm : 120);           /* a quarter */
+    return q * Q16THS[div < 0 ? 0 : div > 11 ? 11 : div] / 16u;
+}
+
+/* ---------------------------------------------------------------- CHORUS --- */
+#define CH_LEN 2048u
+static int32_t ch_buf[CH_LEN];
+static uint32_t ch_w, ch_ph;
+static void chorus(const int32_t *in, int32_t *l, int32_t *r)
+{
+    const float hz = 0.05f * ex2((float)P[QD_FXP_CRATE] * (8.f / 127.f));
+    const uint32_t inc = (uint32_t)(hz / 44100.f * 4294967296.f);
+    const int32_t depth = 8 + P[QD_FXP_CDEPTH] * 3;                 /* samples (Q0): to ~390 (8.8 ms) */
+    const uint32_t off = (uint32_t)P[QD_FXP_CWIDTH] << 24;           /* the right tap's phase: up to half a turn */
+    int i, any = 0;
+    for (i = 0; i < N; i++)
+        any |= in[i];
+    for (i = 0; i < N; i++) {
+        int k;
+        ch_buf[ch_w & (CH_LEN - 1u)] = in[i];
+        for (k = 0; k < 2; k++) {
+            const int32_t m = tri_q15(ch_ph + (k ? off : 0u));
+            const int32_t d16 = (300 << 16) + (int32_t)(((int64_t)m * depth) << 1);   /* Q16 samples back */
+            const uint32_t rp = ch_w - (uint32_t)(d16 >> 16), fr = (uint32_t)d16 & 0xFFFFu;
+            const int32_t a = ch_buf[rp & (CH_LEN - 1u)], b = ch_buf[(rp - 1u) & (CH_LEN - 1u)];
+            const int32_t y = a + (int32_t)(((int64_t)(b - a) * fr) >> 16);
+            if (k)
+                r[i] += y;
+            else
+                l[i] += y;
+        }
+        ch_w++;
+        ch_ph += inc;
+    }
+    (void)any;
+}
+
+/* ---------------------------------------------------------------- ECHO (half rate) --- */
+#define EC_LEN 22050u                   /* 1 s at 22.05 kHz, a side */
+static int16_t ec_buf[2][EC_LEN];
+static uint32_t ec_w;
+static int32_t ec_lp[2], ec_hold[2], ec_prev[2];
+static uint32_t ec_ph, ec_cnt;
+static uint32_t echo_len(int side)
+{
+    uint32_t n;
+    if (P[QD_FXP_DSYNC]) {
+        static const uint8_t RAT[4][2] = {{1, 1}, {4, 3}, {3, 2}, {2, 1}};
+        n = div_samples(P[QD_FXP_DDIV], 22050u);
+        if (side)
+            n = n * RAT[P[QD_FXP_DRATIO] & 3][0] / RAT[P[QD_FXP_DRATIO] & 3][1];
+    } else {
+        n = (uint32_t)(220 + P[QD_FXP_DTIME] * 172);                 /* 10 ms .. 1 s */
+        if (side)
+            n += n * (uint32_t)P[QD_FXP_DSPREAD] / 254u;
+    }
+    return n < 64u ? 64u : n > EC_LEN - 64u ? EC_LEN - 64u : n;
+}
+static void echo(const int32_t *in, int32_t *l, int32_t *r)
+{
+    const int32_t fb = P[QD_FXP_DFDBK] * 245;                         /* Q15: to 0.95 */
+    const int lofi = P[QD_FXP_DTONE];
+    const int32_t lpk = 32767 - lofi * 220;                          /* the repeats' low-pass (Q15) */
+    const int bits = 16 - lofi * 9 / 127;                            /* .. their bits (16 .. 7) */
+    const uint32_t hold = 1u + (uint32_t)lofi / 40u;                  /* .. their sample-and-hold (1 .. 4) */
+    const uint32_t wow = (uint32_t)P[QD_FXP_DWOW] * 2u;               /* samples of wobble (to ~11 ms) */
+    const int ping = P[QD_FXP_DMODE];
+    const uint32_t len[2] = {echo_len(0), echo_len(1)};
+    int i, s;
+    for (i = 0; i < H; i++) {
+        const int32_t x = (in[2 * i] + in[2 * i + 1]) >> 1;
+        int32_t y[2];
+        const int32_t wm = (int32_t)(((int64_t)tri_q15(ec_ph) * (int32_t)wow) >> 15);
+        ec_ph += 136000u;                                            /* (~0.7 Hz at 22.05 kHz) */
+        for (s = 0; s < 2; s++) {
+            const uint32_t rp = ec_w + EC_LEN - len[s] + (uint32_t)wm;
+            int32_t v = (int32_t)ec_buf[s][rp % EC_LEN] << 1;
+            ec_lp[s] += (int32_t)(((int64_t)(v - ec_lp[s]) * lpk) >> 15);
+            y[s] = ec_lp[s];
+        }
+        if (++ec_cnt >= hold) {                                      /* LOFI: the repeats coarser */
+            ec_cnt = 0;
+            for (s = 0; s < 2; s++)
+                ec_hold[s] = bits < 16 ? (y[s] >> (16 - bits)) << (16 - bits) : y[s];
+        }
+        for (s = 0; s < 2; s++) {
+            const int32_t back = (int32_t)(((int64_t)ec_hold[s ^ (ping ? 1 : 0)] * fb) >> 15);
+            const int32_t inp = ping ? (s ? 0 : x) : x;
+            ec_buf[s][ec_w % EC_LEN] = (int16_t)sat16((inp + back) >> 1);
+        }
+        ec_w++;
+        for (s = 0; s < 2; s++) {                                    /* up to the full rate: a step and its average */
+            int32_t *o = s ? r : l;
+            o[2 * i] += (ec_prev[s] + ec_hold[s]) >> 1;
+            o[2 * i + 1] += ec_hold[s];
+            ec_prev[s] = ec_hold[s];
+        }
+    }
+}
+
+/* ---------------------------------------------------------------- ROOM (half rate) --- */
+static const uint16_t RC_LEN[4] = {558, 594, 638, 678};               /* Freeverb's combs at 22.05 kHz */
+static const uint16_t RA_LEN[2] = {278, 220};
+#define RC_MAX 1100u
+#define RP_LEN 4096u
+static int16_t rc_buf[2][4][RC_MAX];
+#define RA_LEN_MAX 300u
+static int16_t ra_buf[2][2][RA_LEN_MAX + 1u];
+static uint32_t rc_w[2][4], ra_w[2][2];
+static int32_t rc_lp[2][4], rm_hp[2], rm_hx[2], rm_prev[2];
+static int16_t rp_buf[RP_LEN];
+static uint32_t rp_w, rm_ph;
+static void room(const int32_t *in, int32_t *l, int32_t *r)
+{
+    const int32_t g = P[QD_FXP_RDECAY] >= 127 ? 32700 : 22000 + P[QD_FXP_RDECAY] * 82;   /* Q15 feedback */
+    const int32_t damp = P[QD_FXP_RDAMP] * 200;                    /* Q15 */
+    const uint32_t pre = (uint32_t)P[QD_FXP_RPRE] * 20u;            /* to ~115 ms */
+    const int32_t sz = 20000 + P[QD_FXP_RSIZE] * 360;               /* Q15 length scale (0.61 .. 2.0) */
+    const int32_t wid = P[QD_FXP_RWIDTH] * 258, hpk = 200 + P[QD_FXP_RLOW] * 40;
+    const uint32_t mod = (uint32_t)P[QD_FXP_RMOD] / 16u;
+    int i, s, k;
+    for (i = 0; i < H; i++) {
+        const int32_t x = (in[2 * i] + in[2 * i + 1]) >> 2;
+        int32_t y[2], xd;
+        rp_buf[rp_w & (RP_LEN - 1u)] = (int16_t)sat16(x);
+        xd = rp_buf[(rp_w - pre) & (RP_LEN - 1u)];
+        rp_w++;
+        rm_ph += 120000u;
+        for (s = 0; s < 2; s++) {
+            int32_t acc = 0;
+            for (k = 0; k < 4; k++) {
+                uint32_t n = (uint32_t)(((int32_t)RC_LEN[k] + s * 23) * sz >> 15);
+                int32_t v;
+                if (k == 0 && mod)
+                    n += (uint32_t)((tri_q15(rm_ph) * (int32_t)mod) >> 15) + mod;
+                n = n < 32u ? 32u : n > RC_MAX - 1u ? RC_MAX - 1u : n;
+                v = rc_buf[s][k][(rc_w[s][k] + RC_MAX - n) % RC_MAX];
+                rc_lp[s][k] += (int32_t)(((int64_t)(v - rc_lp[s][k]) * (32767 - damp)) >> 15);
+                rc_buf[s][k][rc_w[s][k] % RC_MAX] = (int16_t)sat16(xd + (int32_t)(((int64_t)rc_lp[s][k] * g) >> 15));
+                rc_w[s][k]++;
+                acc += v;
+            }
+            acc >>= 2;
+            for (k = 0; k < 2; k++) {                                /* two allpasses (0.5) */
+                const uint32_t n = RA_LEN[k] + (uint32_t)s * 11u;
+                const int32_t bv = ra_buf[s][k][(ra_w[s][k] + RA_LEN_MAX + 1u - n) % (RA_LEN_MAX + 1u)];
+                const int32_t o = bv - acc;
+                ra_buf[s][k][ra_w[s][k] % (RA_LEN_MAX + 1u)] = (int16_t)sat16(acc + (bv >> 1));
+                ra_w[s][k]++;
+                acc = o;
+            }
+            rm_hx[s] = acc;                                          /* the low cut */
+            rm_hp[s] += (int32_t)(((int64_t)(acc - rm_hp[s]) * hpk) >> 15);
+            y[s] = acc - rm_hp[s];
+        }
+        {
+            const int32_t m = (y[0] + y[1]) >> 1;
+            const int32_t a = m + (int32_t)(((int64_t)(y[0] - m) * wid) >> 15),
+                          b = m + (int32_t)(((int64_t)(y[1] - m) * wid) >> 15);
+            l[2 * i] += (rm_prev[0] + a) >> 1, l[2 * i + 1] += a;
+            r[2 * i] += (rm_prev[1] + b) >> 1, r[2 * i + 1] += b;
+            rm_prev[0] = a, rm_prev[1] = b;
+        }
+    }
+}
+
+/* ---------------------------------------------------------------- CRUSH --- */
+static uint32_t cr_cnt;
+static int32_t cr_h[2];
+static void crush(int32_t *l, int32_t *r)
+{
+    static const uint8_t DIV[8] = {1, 2, 3, 4, 6, 9, 11, 15};
+    const int mix = P[QD_FXP_XMIX], bits = P[QD_FXP_XBITS];
+    const uint32_t div = DIV[P[QD_FXP_XRATE] & 7];
+    int i;
+    if (!mix)
+        return;
+    for (i = 0; i < N; i++) {
+        if (cr_cnt == 0) {
+            const int sh = 16 - (bits < 1 ? 1 : bits > 16 ? 16 : bits);
+            cr_h[0] = (sat16(l[i]) >> sh) << sh;
+            cr_h[1] = (sat16(r[i]) >> sh) << sh;
+            cr_cnt = div + (P[QD_FXP_XJIT] ? (rnd() % (1u + (uint32_t)P[QD_FXP_XJIT] / 16u)) : 0u);
+        }
+        cr_cnt--;
+        l[i] += (cr_h[0] - l[i]) * mix / 127;
+        r[i] += (cr_h[1] - r[i]) * mix / 127;
+    }
+}
+
+/* ---------------------------------------------------------------- ROBOT: a ring modulator --- */
+static uint32_t rb_ph, rb_lph;
+static void robot(int32_t *l, int32_t *r)
+{
+    const int mix = P[QD_FXP_RBMIX];
+    float hz;
+    uint32_t inc;
+    int i;
+    if (!mix)
+        return;
+    rb_lph += 2u * 4294967u * 3u;                                   /* (the wobble at ~3 Hz, a block a step) */
+    hz = 20.f * ex2((float)P[QD_FXP_RBFREQ] * (6.6f / 127.f)) *
+         ex2((float)tri_q15(rb_lph) * (float)P[QD_FXP_RBLFO] * (0.5f / 32768.f / 127.f));
+    inc = (uint32_t)(hz / 44100.f * 4294967296.f);
+    for (i = 0; i < N; i++) {
+        int32_t c;
+        rb_ph += inc;
+        switch (P[QD_FXP_RBWAVE]) {
+        case 1: c = rb_ph < 0x80000000u ? 32767 : -32767; break;
+        case 2: c = tri_q15(rb_ph); break;
+        default: {
+            const int32_t t = tri_q15(rb_ph);                        /* a softened triangle: near a sine */
+            c = (int32_t)(((int64_t)t * (49152 - (int32_t)(((int64_t)t * t) >> 15) / 2)) >> 15);
+            break;
+        }
+        }
+        {
+            const int32_t a = (int32_t)(((int64_t)l[i] * c) >> 15), b = (int32_t)(((int64_t)r[i] * c) >> 15);
+            l[i] += (a - l[i]) * mix / 127;
+            r[i] += (b - r[i]) * mix / 127;
+        }
+    }
+}
+
+/* ---------------------------------------------------------------- WARP: a comb / flanger --- */
+#define WP_LEN 512u
+static int32_t wp_buf[2][WP_LEN];
+static uint32_t wp_w, wp_ph;
+static void warp(int32_t *l, int32_t *r)
+{
+    const int mix = P[QD_FXP_WMIX];
+    const int32_t fb = (P[QD_FXP_WFB] - 64) * 480;                  /* Q15: to +-0.94 */
+    const int32_t base = 9 + P[QD_FXP_WTIME] * 3;                    /* samples (0.2 .. 8.8 ms) */
+    const uint32_t inc = (uint32_t)P[QD_FXP_WRATE] * P[QD_FXP_WRATE] * 25u;
+    int i, s;
+    if (!mix)
+        return;
+    for (i = 0; i < N; i++) {
+        wp_ph += inc;
+        for (s = 0; s < 2; s++) {
+            int32_t *x = s ? &r[i] : &l[i];
+            const int32_t sw = inc ? (int32_t)((((int64_t)tri_q15(wp_ph + (s ? 0x40000000u : 0u)) + 32768) * base) >> 16)
+                                   : base;
+            const int32_t d = sw < 2 ? 2 : sw > (int32_t)WP_LEN - 2 ? (int32_t)WP_LEN - 2 : sw;
+            const int32_t y = wp_buf[s][(wp_w - (uint32_t)d) & (WP_LEN - 1u)];
+            wp_buf[s][wp_w & (WP_LEN - 1u)] = *x + (int32_t)(((int64_t)y * fb) >> 15);
+            *x += (int32_t)(((int64_t)y * mix) / 127);              /* (the comb's notches: the dry and the delayed) */
+        }
+        wp_w++;
+    }
+}
+
+/* ---------------------------------------------------------------- GLITCH: a beat-repeat --- */
+#define GL_LEN 8192u                    /* at half rate (0.37 s) */
+static int16_t gl_buf[2][GL_LEN];
+static uint32_t gl_w, gl_cnt, gl_slice, gl_start, gl_pos, gl_step, gl_left;
+static uint8_t gl_on, gl_half;
+int qd_fx_glitch_on(float *pos)
+{
+    if (pos)
+        *pos = gl_on && gl_slice ? (float)(gl_pos >> 16) / (float)gl_slice : 0.f;
+    return gl_on;
+}
+static void glitch(int32_t *l, int32_t *r)
+{
+    static const uint8_t DIV[4] = {0, 2, 5, 8};                      /* (div_samples' 1/32 1/16 1/8 1/4) */
+    const int mix = P[QD_FXP_GMIX];
+    int i;
+    if (!mix) {
+        gl_on = 0;
+        return;
+    }
+    for (i = 0; i < N; i++) {
+        if (!(gl_half ^= 1)) {                                       /* (the half rate: every other sample) */
+            gl_buf[0][gl_w & (GL_LEN - 1u)] = (int16_t)sat16(l[i] >> 1);
+            gl_buf[1][gl_w & (GL_LEN - 1u)] = (int16_t)sat16(r[i] >> 1);
+            gl_w++;
+            if (gl_cnt == 0) {                                       /* a slice boundary: repeat the last one? */
+                uint32_t n = div_samples(DIV[P[QD_FXP_GLEN] & 3], 22050u);
+                n = n > GL_LEN - 16u ? GL_LEN - 16u : n < 32u ? 32u : n;
+                gl_cnt = n;
+                if (gl_on && gl_left) {
+                    gl_left--;
+                    gl_pos = 0;
+                    gl_step = (uint32_t)((float)gl_step * ex2((float)(P[QD_FXP_GPTCH] - 12) * (1.f / 12.f)));
+                    if (gl_step < 8192u)
+                        gl_step = 8192u;
+                } else if ((int)(rnd() % 128u) < P[QD_FXP_GCHNC]) {
+                    gl_on = 1;
+                    gl_left = 3;
+                    gl_slice = n;
+                    gl_start = gl_w - n;
+                    gl_pos = 0;
+                    gl_step = 65536u;
+                } else {
+                    gl_on = 0;
+                }
+            }
+            gl_cnt--;
+            if (gl_on) {
+                gl_pos += gl_step;
+                if ((gl_pos >> 16) >= gl_slice)
+                    gl_pos = 0;
+            }
+        }
+        if (gl_on) {
+            const uint32_t k = (gl_start + (gl_pos >> 16)) & (GL_LEN - 1u);
+            const int32_t a = (int32_t)gl_buf[0][k] << 1, b = (int32_t)gl_buf[1][k] << 1;
+            l[i] += (a - l[i]) * mix / 127;
+            r[i] += (b - r[i]) * mix / 127;
+        }
+    }
+}
+
+/* ---------------------------------------------------------------- TV: a small speaker, the hum, a little drive --- */
+static int32_t tv_hp[2], tv_lp[2], tv_lp2[2];
+static uint32_t tv_ph;
+static void tv(int32_t *l, int32_t *r)
+{
+    const int mix = P[QD_FXP_TVMIX];
+    const int32_t lpk = 3000 + P[QD_FXP_TVTONE] * 180;               /* Q15 low-pass (the speaker's top) */
+    const int32_t hpk = 2400 - P[QD_FXP_TVTONE] * 12;                /* Q15 high-pass (its bottom) */
+    const int32_t hum = P[QD_FXP_TVHUM] * 14;
+    const int32_t drv = 4096 + P[QD_FXP_TVDRV] * 96;                 /* Q12 */
+    int i, s;
+    if (!mix)
+        return;
+    for (i = 0; i < N; i++) {
+        int32_t h;
+        tv_ph += 4870000u;                                           /* 50 Hz */
+        h = tri_q15(tv_ph) + (tri_q15(tv_ph * 3u) >> 2);             /* the mains and its buzz */
+        h = (int32_t)(((int64_t)h * hum) >> 15);
+        for (s = 0; s < 2; s++) {
+            int32_t *x = s ? &r[i] : &l[i], y = *x;
+            tv_hp[s] += (int32_t)(((int64_t)(y - tv_hp[s]) * hpk) >> 15);
+            y -= tv_hp[s];
+            tv_lp[s] += (int32_t)(((int64_t)(y - tv_lp[s]) * lpk) >> 15);
+            tv_lp2[s] += (int32_t)(((int64_t)(tv_lp[s] - tv_lp2[s]) * lpk) >> 15);
+            y = (tv_lp2[s] * drv) >> 12;
+            y = y > 24000 ? 24000 + (y - 24000) / 4 : y < -24000 ? -24000 + (y + 24000) / 4 : y;
+            y += h;
+            *x += (y - *x) * mix / 127;
+        }
+    }
+}
+
+/* ---------------------------------------------------------------- the chain --- */
 void qd_fx_init(void)
 {
-    /* everything at rest (a second init, as a test's, starts from where power-on would) */
-    memset(&xf, 0, sizeof xf);
-    memset(&xq, 0, sizeof xq);
-    memset(&xc, 0, sizeof xc);
-    memset(&fx, 0, sizeof fx);
-    memset(xd_buf, 0, sizeof xd_buf);
-    memset(xr_buf, 0, sizeof xr_buf);
-    memset(xr_pbuf, 0, sizeof xr_pbuf);
-    memset(cho_buf, 0, sizeof cho_buf);
+    int i;
+    memset(ch_buf, 0, sizeof ch_buf), ch_w = ch_ph = 0;
+    memset(ec_buf, 0, sizeof ec_buf), ec_w = ec_ph = ec_cnt = 0;
+    memset(ec_lp, 0, sizeof ec_lp), memset(ec_hold, 0, sizeof ec_hold), memset(ec_prev, 0, sizeof ec_prev);
+    memset(rc_buf, 0, sizeof rc_buf), memset(ra_buf, 0, sizeof ra_buf), memset(rc_w, 0, sizeof rc_w);
+    memset(ra_w, 0, sizeof ra_w), memset(rc_lp, 0, sizeof rc_lp), memset(rp_buf, 0, sizeof rp_buf), rp_w = 0;
+    memset(rm_hp, 0, sizeof rm_hp), memset(rm_prev, 0, sizeof rm_prev);
+    cr_cnt = 0, rb_ph = rb_lph = 0, memset(wp_buf, 0, sizeof wp_buf), wp_w = wp_ph = 0;
+    memset(gl_buf, 0, sizeof gl_buf), gl_w = gl_cnt = gl_pos = 0, gl_on = 0;
+    memset(tv_hp, 0, sizeof tv_hp), memset(tv_lp, 0, sizeof tv_lp), memset(tv_lp2, 0, sizeof tv_lp2), tv_ph = 0;
+    memset(rm_hx, 0, sizeof rm_hx), rm_ph = 0, memset(cr_h, 0, sizeof cr_h);   /* (every run the same: a session's
+                                                                                 * audio is a function of its input) */
+    gl_slice = gl_start = gl_step = gl_left = 0, gl_half = 0;
+    rng = 0x2545F491u;
     memset(fx_dc, 0, sizeof fx_dc);
-    fx_off = 0;
-    /* ChoralRoot's defaults: the delay's and the reverb's (cr_fx.c XFP), the chorus's rate and depth (params.c GP:
-     * G_CRATE 40, G_CDEPTH 60), the tempo */
-    xf_defaults();
-    xf_bpm = 120;
+    for (i = 0; i < QD_NFXP; i++)
+        P[i] = FXV[i].def;
+    fx_bpm = 120;
     song.g[G_BPM] = 120;
-    song.g[G_CRATE] = 40;
-    song.g[G_CDEPTH] = 60;
     fx_master_now(fz_master_of_pot(QD_FX_POT_DEFAULT));
-    qd_rt[0] = 0, qd_rt[1] = 0, qd_rt[2] = 127, qd_rt[3] = qd_rt[4] = 64;   /* PARALLEL, C D R F, DRY full */
-    xf_hb_clear(&qd_ud[0]);
-    xf_hb_clear(&qd_ud[1]);
-    qd_ud_live = 0;
-    fx_output_set(1u, 1);               /* Options > Output Clean (cr_ui.c: ChoralRoot's default), before the first
-                                         * block: no fade */
+    fx_output_set(1u, 1);
 }
-
 void qd_fx_tempo(int bpm)
 {
-    bpm = bpm < 20 ? 20 : bpm > 300 ? 300 : bpm;
-    xf_bpm = (uint16_t)bpm;
-    song.g[G_BPM] = (int16_t)bpm;
+    fx_bpm = bpm < 20 ? 20 : bpm > 300 ? 300 : bpm;
+    song.g[G_BPM] = (int16_t)fx_bpm;
 }
-
-void qd_fx_tempo_fx(int bpm)            /* P2.6g: the effects' tempo alone (the voices' song.g untouched) */
-{
-    bpm = bpm < 20 ? 20 : bpm > 300 ? 300 : bpm;
-    xf_bpm = (uint16_t)bpm;
-}
-
+void qd_fx_tempo_fx(int bpm) { fx_bpm = bpm < 20 ? 20 : bpm > 300 ? 300 : bpm; }
 void qd_fx_master_pot(int pot)
 {
     pot = pot < 0 ? 0 : pot > 1023 ? 1023 : pot;
-    song.master_q12 = fz_master_of_pot((uint32_t)pot);  /* (the chain eases it over the block) */
+    song.master_q12 = fz_master_of_pot((uint32_t)pot);
 }
-
 uint32_t qd_fx_master_q12(void) { return song.master_q12; }
+int qd_fx_route_block(int pos) { return pos & 3; }
+void qd_fx_chain_g(const int32_t g[3]) { (void)g; }
+int qd_fx_route_move(int block, int dir) { (void)block, (void)dir; return 0; }
 
-typedef char qd_rt_half_ok[XF_HALF && CR_FX_DELAY_DS == 2 && CR_FX_REVERB_DS == 2 ? 1 : -1];   /* (the delay's wet
-                                                         * is the half-rate xf.t[2..3], up-sampled here) */
-
-/* CHAIN: the delay alone, from `in`, its wet added into l / r (its own up-sampler) */
-static void qd_chain_delay(const int32_t *in, int32_t *l, int32_t *r)
-{
-    static const int32_t none[CTL];
-    const uint32_t f = xf_prep(in, none, CTL), nh = CTL >> 1;
-    uint32_t i;
-    int32_t any = 0;
-    if (!(f & 1u) && !qd_ud_live)
-        return;
-    for (i = 0; i < nh; i++)
-        xf.t[2][i] = xf.t[3][i] = 0;
-    if (f & 1u)
-        xf_delay(in, l, r, CTL);
-    for (i = 0; i < nh; i++)
-        any |= xf.t[2][i] | xf.t[3][i];
-    if (any)
-        qd_ud_live = 256u;
-    else if (qd_ud_live)
-        qd_ud_live = qd_ud_live > nh ? qd_ud_live - nh : 0u;
-    if (any || qd_ud_live) {
-        XF_CALL(xf_up)(&qd_ud[0], xf.t[2], l, nh);
-        XF_CALL(xf_up)(&qd_ud[1], xf.t[3], r, nh);
-    } else {
-        xf_hb_clear(&qd_ud[0]);
-        xf_hb_clear(&qd_ud[1]);
-    }
-}
-/* CHAIN: the reverb alone, from `in`, its wet added into l / r (xf.up, as in PARALLEL) */
-static void qd_chain_reverb(const int32_t *in, int32_t *l, int32_t *r)
-{
-    static const int32_t none[CTL];
-    const uint32_t f = xf_prep(none, in, CTL);
-    uint32_t i;
-    if (!(f & 6u))
-        return;
-    for (i = 0; i < (CTL >> 1); i++)
-        xf.t[2][i] = xf.t[3][i] = 0;
-    xf_reverb(in, l, r, CTL, (int)(f >> 1 & 1u), 0, 0, xf.t[2], xf.t[3], 1);
-}
-
-/* ChoralRoot's mix_block stages after the parts: PARALLEL the chorus's two taps into the mix, the delay and the reverb
- * into the mix, the master filter (first in the order: before them), the output chain; CHAIN the four in the order */
 void qd_fx_block(const int32_t *sc, const int32_t *sd, const int32_t *sr, int32_t *l, int32_t *r, int32_t *out)
 {
-    const uint8_t *o = qd_rt_ord();
-    int k, i;
-    if (qd_rt[0] != 1) {                                /* PARALLEL */
-        if (o[0] == QD_RT_FILTER)
-            xq_block(l, r, CTL);
-        xc_block(sc, l, r, CTL);
-        xf_block(sd, sr, l, r, CTL);
-        if (o[0] != QD_RT_FILTER)
-            xq_block(l, r, CTL);
-        out_master(out, l, r, (const int32_t *)0, CTL);
-        return;
-    }
-    {                                                   /* CHAIN */
-        int32_t wl[CTL], wr[CTL], in[CTL];
-        int folded = 0;
-        for (i = 0; i < CTL; i++)
-            wl[i] = wr[i] = 0;
-        for (k = 0; k < 4; k++) {
-            const int b = o[k];
-            const int32_t *bus = b == QD_RT_CHORUS ? sc : b == QD_RT_DELAY ? sd : sr;
-            const int32_t g = b >= 0 && b < 3 ? qd_cg[b] : 0;
-            if (b == QD_RT_FILTER) {
-                if (k == 3) {                           /* last: the master filter on everything */
-                    for (i = 0; i < CTL; i++)
-                        l[i] += wl[i], r[i] += wr[i];
-                    folded = 1;
-                    xq_block(l, r, CTL);
-                } else {
-                    xq_block(wl, wr, CTL);
-                }
-                continue;
-            }
-            for (i = 0; i < CTL; i++) {                 /* its bus and its share of the wet so far; the rest stays
-                                                         * (64-bit products, no division: a >> 12 before the gain
-                                                         * threw the samples' resolution away: static) */
-                in[i] = bus[i] + (int32_t)(((int64_t)((wl[i] + wr[i]) / 2) * g) >> 12);
-                wl[i] = (int32_t)(((int64_t)wl[i] * (4096 - g)) >> 12);
-                wr[i] = (int32_t)(((int64_t)wr[i] * (4096 - g)) >> 12);
-            }
-            if (b == QD_RT_CHORUS)
-                xc_block(in, wl, wr, CTL);
-            else if (b == QD_RT_DELAY)
-                qd_chain_delay(in, wl, wr);
-            else
-                qd_chain_reverb(in, wl, wr);
-        }
-        if (!folded)
-            for (i = 0; i < CTL; i++)
-                l[i] += wl[i], r[i] += wr[i];
-    }
+    chorus(sc, l, r);
+    echo(sd, l, r);
+    room(sr, l, r);
+    crush(l, r);
+    robot(l, r);
+    warp(l, r);
+    glitch(l, r);
+    tv(l, r);
     out_master(out, l, r, (const int32_t *)0, CTL);
-}
-
-int qd_fx_route_block(int pos) { return qd_rt_ord()[pos & 3]; }
-int qd_fx_route_move(int block, int dir)
-{
-    uint8_t o[4];
-    int i, j, p = 0, q;
-    for (i = 0; i < 4; i++) {
-        o[i] = qd_rt_ord()[i];
-        if (o[i] == block)
-            p = i;
-    }
-    if (qd_rt[0] != 1 && block != QD_RT_FILTER)         /* (PARALLEL: the effects' order is not heard) */
-        return 0;
-    q = qd_rt[0] != 1 ? (dir < 0 ? 0 : p ? p : 3) : p + (dir < 0 ? -1 : 1);   /* (PARALLEL: already after stays) */
-    q = q < 0 ? 0 : q > 3 ? 3 : q;
-    if (q == p)
-        return 0;
-    for (; p < q; p++)
-        o[p] = o[p + 1];
-    for (; p > q; p--)
-        o[p] = o[p - 1];
-    o[q] = (uint8_t)block;
-    for (i = 0; i < 24; i++) {
-        for (j = 0; j < 4 && QD_RT_ORD[i][j] == o[j]; j++)
-            ;
-        if (j == 4) {
-            qd_rt[1] = (int16_t)i;
-            return 1;
-        }
-    }
-    return 0;
-}
-
-/* ---------------------------------------------------------------- P1.4b: the parameters */
-typedef char qd_fxp_ok[QD_FXP_DTIME == XP_DTIME && QD_FXP_RSIZE == XP_RSIZE && QD_FXP_CWIDTH == XP_CWIDTH &&
-                       QD_FXP_FON == XP_FON && QD_FXP_CRATE == XP_N ? 1 : -1];
-
-int qd_fx_get(int id)
-{
-    if (id >= 0 && id < XP_N)
-        return xfp[id];
-    if (id >= QD_FXP_RMODE && id <= QD_FXP_RSPARE2)
-        return qd_rt[id - QD_FXP_RMODE];
-    return id == QD_FXP_CRATE ? song.g[G_CRATE] : id == QD_FXP_CDEPTH ? song.g[G_CDEPTH] : 0;
-}
-
-void qd_fx_range(int id, int *min, int *max, int *def)
-{
-    int lo = 0, hi = 127, d = 0;
-    if (id >= 0 && id < XP_N)
-        lo = XFP[id].min, hi = XFP[id].max, d = XFP[id].def;
-    else if (id >= QD_FXP_RMODE && id <= QD_FXP_RSPARE2)   /* the routing: PARALLEL / CHAIN, the 24 orders, DRY */
-        hi = id == QD_FXP_RMODE ? 1 : id == QD_FXP_ORDER ? 23 : 127, d = id == QD_FXP_RDRY ? 127 : id > QD_FXP_RDRY ? 64 : 0;
-    else
-        d = id == QD_FXP_CRATE ? 40 : 60;               /* (params.c GP) */
-    if (min)
-        *min = lo;
-    if (max)
-        *max = hi;
-    if (def)
-        *def = d;
-}
-
-void qd_fx_set(int id, int v)
-{
-    int lo, hi;
-    if (id < 0 || id >= QD_NFXP)
-        return;
-    qd_fx_range(id, &lo, &hi, 0);
-    v = v < lo ? lo : v > hi ? hi : v;
-    if (id < XP_N)
-        xfp[id] = (int16_t)v;
-    else if (id >= QD_FXP_RMODE)
-        qd_rt[id - QD_FXP_RMODE] = (int16_t)v;
-    else
-        song.g[id == QD_FXP_CRATE ? G_CRATE : G_CDEPTH] = (int16_t)v;
-}
-
-static const char *fx_hz(char *buf, uint32_t hz)
-{
-    if (hz < 1000u)
-        snprintf(buf, 16, "%u Hz", (unsigned)hz);
-    else
-        snprintf(buf, 16, "%u.%u kHz", (unsigned)(hz / 1000u), (unsigned)(hz % 1000u / 100u));
-    return buf;
-}
-
-int qd_fx_chorus_hz100(void)
-{
-    return (int)(((uint64_t)LFO_INC[song.g[G_CRATE] & 127] * 275625u) >> 33);   /* (a block's step, 44100 / 32 blocks a
-                                                         * second; x 100: 137812.5) */
 }
 
 const char *qd_fx_text(int id, int v, char *buf)
 {
-    static const char *const DIV[XF_NDIV] = {"1/32", "1/16T", "1/32.", "1/16", "1/8T", "1/16.", "1/8", "1/4T", "1/8.",
-                                             "1/4", "1/2T", "1/4.", "1/2"};   /* (cr_ui.c CU_XDIV) */
-    static const char *const RATIO[4] = {"1:1", "3:4", "2:3", "1:2"};
     buf[0] = 0;
-    switch (id) {
-    case QD_FXP_DTIME: snprintf(buf, 16, "%u ms", (unsigned)xf_ms((uint32_t)v)); break;
-    case QD_FXP_DDIV: snprintf(buf, 16, "%s", DIV[(unsigned)v % XF_NDIV]); break;
-    case QD_FXP_DSPREAD: {
-        const int x = ((254 - v) * 100 + 127) / 254;
-        snprintf(buf, 16, "x%d.%02d", x / 100, x % 100);
-        break;
+    if (id < 0 || id >= QD_NFXP)
+        return buf;
+    if (FXV[id].list) {                                 /* (into buf: the view copies from it) */
+        strcpy(buf, v >= FXV[id].min && v <= FXV[id].max ? FXV[id].list[v - FXV[id].min] : "?");
+        return buf;
     }
-    case QD_FXP_DRATIO: snprintf(buf, 16, "%s", RATIO[v & 3]); break;
-    case QD_FXP_DSYNC: strcpy(buf, v ? "TEMPO" : "FREE"); break;
-    case QD_FXP_DMODE: strcpy(buf, v ? "PING" : "STEREO"); break;   /* (ChoralRoot's "Ping-pong": a cell's width) */
+    switch (id) {
+    case QD_FXP_DTIME: {
+        char t[12];
+        strcpy(buf, itoa_(t, (220 + v * 172) * 10 / 221));
+        strcat(buf, " MS");
+        return buf;
+    }
+    case QD_FXP_RBFREQ: {
+        char t[12];
+        strcpy(buf, itoa_(t, (int)(20.f * ex2((float)v * (6.6f / 127.f)))));
+        strcat(buf, " HZ");
+        return buf;
+    }
+    case QD_FXP_GPTCH:
+    case QD_FXP_WFB: {
+        const int c = id == QD_FXP_GPTCH ? v - 12 : v - 64;
+        if (c > 0)
+            buf[0] = '+', buf[1] = 0;
+        itoa_(buf + (c > 0), c);
+        return buf;
+    }
     case QD_FXP_RDECAY:
         if (v >= 127) {
-            strcpy(buf, "INF");
-        } else {
-            const uint32_t ms = xf_rt_ms((uint32_t)v);
-            if (ms < 10000u)
-                snprintf(buf, 16, "%u.%u s", (unsigned)(ms / 1000u), (unsigned)(ms % 1000u / 100u));
-            else
-                snprintf(buf, 16, "%u s", (unsigned)(ms / 1000u));
+            strcpy(buf, "HOLD");
+            return buf;
         }
-        break;
-    case QD_FXP_RPRE: snprintf(buf, 16, "%u ms", (unsigned)xf_pre_ms((uint32_t)v)); break;
-    case QD_FXP_RLOW: fx_hz(buf, xf_lowcut_hz((uint32_t)v)); break;
-    case QD_FXP_FLOW:
-        if (v <= 0)
-            strcpy(buf, "OFF");
-        else
-            fx_hz(buf, xq_low_hz((uint32_t)v));
-        break;
-    case QD_FXP_FHIGH:
-        if (v >= 127)
-            strcpy(buf, "OFF");
-        else
-            fx_hz(buf, xq_high_hz((uint32_t)v));
-        break;
-    case QD_FXP_FSLOPE: strcpy(buf, v ? "12 dB" : "6 dB"); break;
-    case QD_FXP_FON: strcpy(buf, v ? "ON" : "OFF"); break;
-    case QD_FXP_CRATE: {
-        const uint32_t h = (uint32_t)(((uint64_t)LFO_INC[v & 127] * 275625u) >> 33);
-        snprintf(buf, 16, "%u.%02u Hz", (unsigned)(h / 100u), (unsigned)(h % 100u));
-        break;
+        return itoa_(buf, v);
+    case QD_FXP_XBITS:
+        return itoa_(buf, v);
+    default:
+        return itoa_(buf, v);
     }
-    case QD_FXP_CDEPTH:
-    case QD_FXP_RDRY:
-    case QD_FXP_RSPARE1:
-    case QD_FXP_RSPARE2: snprintf(buf, 16, "%d%%", (v * 100 + 63) / 127); break;
-    case QD_FXP_RMODE: strcpy(buf, v ? "CHAIN" : "PARALLEL"); break;
-    case QD_FXP_ORDER: {                                /* the chain's letters, C D R F */
-        int k;
-        for (k = 0; k < 4; k++)
-            buf[2 * k] = "CDRF"[QD_RT_ORD[v >= 0 && v < 24 ? v : 0][k]], buf[2 * k + 1] = ' ';
-        buf[7] = 0;
-        break;
-    }
-    default: snprintf(buf, 16, "%d", v); break;
-    }
-    return buf;
 }
-
-int qd_fx_delay_ms(void)
-{
-    if (xfp[XP_DSYNC]) {
-        const uint32_t bpm = xf_bpm ? xf_bpm : 120u;
-        return (int)(60000u * XF_DIV[(uint32_t)xfp[XP_DDIV] % XF_NDIV] / (48u * bpm));
-    }
-    return (int)xf_ms((uint32_t)xfp[XP_DTIME]);
-}
-
-int qd_fx_reverb_ms(void) { return xfp[XP_RDECAY] >= 127 ? -1 : (int)xf_rt_ms((uint32_t)xfp[XP_RDECAY]); }
+int qd_fx_delay_ms(void) { return (int)(echo_len(0) * 1000u / 22050u); }
+int qd_fx_chorus_hz100(void) { return (int)(100.f * 0.05f * ex2((float)P[QD_FXP_CRATE] * (8.f / 127.f))); }
+int qd_fx_reverb_ms(void) { return P[QD_FXP_RDECAY] >= 127 ? -1 : 300 + P[QD_FXP_RDECAY] * 30; }

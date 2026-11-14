@@ -170,7 +170,7 @@ static void demo_a02(qd_pattern_t *p)
     chord(p, 2, 12, 50, 55, 59, 62, 86, LS2, 3);        /* G/D */
     chord(p, 2, 14, 50, 55, 59, 0, 74, L2, 0);
     qd_step_set_cond(p, 2, 14, QD_COND_N1ST);
-    lk(p, 2, 14, QD_QP_FREQ, 7000);
+    lk(p, 2, 14, QD_QP_FREQ, 1800);
     /* LEAD: 24 steps (a bar and a half against the others' two), ratchets and chance */
     l->limit = 2;
     qd_track_set_length(p, 3, 24);                      /* page 1 1..16, page 2 1..8 */

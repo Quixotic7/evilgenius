@@ -927,11 +927,13 @@ enum { QD_FXC_NONE = -1, QD_FXC_SEND = -2, QD_FXC_TIME = -3, QD_FXC_SPREAD = -4 
 #define QD_FXC_SENDX(fx) (-10 - (fx))  /* P1.5b, the overview: the selected track's send into effect fx (0..2) */
 #define QD_FXC_DRY (-20)                /* 2026-10-26: the selected track's DRY / WET (mix.h dry; SENDS' KNOB 4, ROUTING's
                                          * KNOB 2 and ALGORITHM) */
-#define QD_FX_NPAGE 8
+#define QD_FX_NPAGE 11
 /* P1.5b: the effects (the page's group): 0 DELAY 1 REVERB 2 CHORUS 3 MASTER, 4 the OVERVIEW (the sends), 5 ROUTING;
  * the black keys B1..B6: OVERVIEW, DELAY, REVERB, CHORUS, MASTER, ROUTING (QD_FX_KEY) */
-enum { QD_FXG_DELAY, QD_FXG_REVERB, QD_FXG_CHORUS, QD_FXG_MASTER, QD_FXG_OVER, QD_FXG_ROUTE, QD_NFXG };
-#define QD_FX_NKEY 6
+enum { QD_FXG_DELAY, QD_FXG_REVERB, QD_FXG_CHORUS, QD_FXG_MASTER, QD_FXG_OVER, QD_FXG_ROUTE,
+       QD_FXG_CRUSH, QD_FXG_ROBOT, QD_FXG_WARP, QD_FXG_GLITCH, QD_FXG_TV, QD_NFXG };   /* (EvilGenius: the retro rooms;
+                                         * DELAY is ECHO, REVERB ROOM; MASTER and ROUTING kept as names, no page) */
+#define QD_FX_NKEY 9
 extern const uint8_t QD_FX_KEY[QD_FX_NKEY];
 typedef struct {
     const char *name;

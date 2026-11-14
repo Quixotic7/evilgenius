@@ -52,10 +52,10 @@ extern "C" {
 #define QDS_RESERVE 6u                     /* blank sectors kept ahead by default (qd_store_set_reserve: the largest
                                             * record's sectors and one more) */
 #if QD_PKG_BLE
-#define QDS_MAGIC 0x4246325au              /* "Z2FB": the Bluetooth package's stores (2026-10-27: a layout of their own,
+#define QDS_MAGIC 0x31424745u              /* EvilGenius "EGB1" (FIZZ was "Z2FB": the Bluetooth package's stores (2026-10-27: a layout of their own,
                                             * persist.h; each package reads the other's sectors as not its own) */
 #else
-#define QDS_MAGIC 0x5346325au              /* "Z2FS" */
+#define QDS_MAGIC 0x31534745u              /* EvilGenius "EGS1" (FIZZ was "Z2FS": never read here) */
 #endif
 #define QDS_DELETED 0xFFFEu                /* a tombstone's length */
 

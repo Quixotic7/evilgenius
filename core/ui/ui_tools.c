@@ -1,549 +1,567 @@
 /* SPDX-License-Identifier: MPL-2.0
  * This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0. If a copy of the MPL was not
  * distributed with this file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-/* T1: TOOLS' screens (ui.h ui_tools_t; mockups/fizz-tools.html, screens 1, 2, 5, 6, 9, 11, 12, 13). Built through
- * ui_layer.c (it includes this file). Text only for the values, the tool's name popped on a switch, the scope's
- * takeover; everything else is a picture: the ring of steps (ROTATE), the mirror (REVERSE), the polygon of hits
- * (EUCLID), the pages (LENGTH), the lane at the foot (solid kept, ring new, faded going). */
+/* EvilGenius: TOOLS, the agent's puzzle terminal (FIZZ's T1 screens, ui.h ui_tools_t, redrawn on the 120 x 120 grid;
+ * the model is FIZZ's). Built through ui_layer.c (it includes this file). The head: the ten tools as 7 x 7 glyphs, the
+ * chosen one in reverse video; a change pending (an orange light) or drawn only (the undo arrow crossed out); the
+ * track's number in reverse video (PATTERN: a dotted box); the scope's picture. Under it one picture a tool, then the
+ * eight pages and the lane at the foot (the edited page as it will be: solid kept, outlined new, raster-ghosted going):
+ *   ROTATE    the sixteen steps as a ring of floor tiles, the agent running round it on the playing one; the offset
+ *             big in KNOB 1's blue, its sweep inside the ring
+ *   REVERSE   the steps as bars (their notes' heights) about the mirror
+ *   RANDOM    a scrambled terminal (its hex the seed's), the die showing the seed; the four amounts as shafts in
+ *             KNOB 1..4's colours (density, notes, velocity, chance)
+ *   EUCLID    the robot's patrol: the ring, the hits its posts (KNOB 1's blue polygon), the robot on the playing
+ *             position; hits big (KNOB 1), the length (KNOB 2), the rotation's mark (KNOB 3), the landing (KNOB 4)
+ *   GRIDS     the pocket computer's map: nine rooms, the marker at X (KNOB 1) and Y (KNOB 2), chaos (KNOB 4) a cloud,
+ *             the density (KNOB 3) a shaft; the three drums (PATTERN: the tracks they go to)
+ *   HUMANIZE / QUANTIZE  the steps off their grid lines, the ghosts behind; the knobs' amounts as bars
+ *   LENGTH    the eight pages, the steps big, halving and doubling
+ *   STRETCH   two tapes (the loop as it was, as it is) and the pull between them; the factor or the pages it fits
+ *   CLIP      punch cards: COPY, PASTE, CLEAR, what they act on
+ * And the popup (a tool's name, the scope's takeover, a message, RANDOM's knob named). */
 #include "../seq/tools.h"
 
 static const char *const TL_NAME[QD_TL_N] = {"ROTATE", "REVERSE", "RANDOM", "EUCLID", "GRIDS", "HUMANIZE", "QUANTIZE",
                                                 "LENGTH", "STRETCH", "CLIP"};
 static const char *const TL_SCOPE[QD_TS_N] = {"SELECTED", "PAGE", "TRACK", "PATTERN"};
 
-static void tl_alpha(float a)                           /* (a part of the alpha now; qd_restore after) */
+#define TL_TOP 13                                       /* the picture's area (120-space) */
+#define TL_BOT 86
+#define TL_LX(i) (4 + (i) * 7)                          /* the lane's (and the steps') columns: 6 wide, 7 apart */
+
+static int tl_g(float v) { return (int)floorf(v * 0.5f + 0.25f); }   /* (a 240-space argument to the grid) */
+static int tl_rnd(float v) { return (int)floorf(v + 0.5f); }
+
+/* a small bitmap: rows of '#' (lit) / '.', top-left x, y, each cell sc x sc (runs of a row one rectangle) */
+static void tl_bits(const char *const *rows, int nr, int x, int y, int sc, qd_rgb c)
 {
-    qd_save();
-    qd_alpha(qd_get_alpha() * a);
-}
-static void tl_line(float x0, float y0, float x1, float y1, qd_rgb c, float lw)
-{
-    const float p[4] = {x0, y0, x1, y1};
-    ui_P(p, 2, c, lw, 0, QD_NONE);
+    int r, i;
+    for (r = 0; r < nr; r++)
+        for (i = 0; rows[r][i]; i++)
+            if (rows[r][i] == '#') {
+                int n = 1;
+                while (rows[r][i + n] == '#')
+                    n++;
+                px_rect(x + i * sc, y + r * sc, n * sc, sc, c);
+                i += n - 1;
+            }
 }
 
-/* each tool as a little picture, centred at x, y */
+/* a ghost (what goes): every other row, the C64's raster half tone */
+static void tl_ghost(int x, int y, int w, int h, qd_rgb c)
+{
+    int j;
+    for (j = 1; j < h; j += 2)
+        px_hline(x, y + j, w, c);
+    px_hline(x, y, w, c);
+}
+
+/* the division sign (the font has none): 5 wide, 5 tall at sc 1 */
+static void tl_div(int x, int y, int sc, qd_rgb c)
+{
+    px_rect(x, y + 2 * sc, 5 * sc, sc, c);
+    px_rect(x + 2 * sc, y, sc, sc, c);
+    px_rect(x + 2 * sc, y + 4 * sc, sc, sc, c);
+}
+
+/* ---------------------------------------------------------------- the tools' glyphs, 7 x 7 */
+static const char *const TL_ICON[QD_TL_N][7] = {
+    {"..###.#", ".#...##", "#...###", "#......", "#.....#", ".#...#.", "..###.."},   /* ROTATE: a turning arrow */
+    {"....#..", "#######", "....#..", ".......", "..#....", "#######", "..#...."},   /* REVERSE: arrows both ways */
+    {"#######", "#.....#", "#.#...#", "#..#..#", "#...#.#", "#.....#", "#######"},   /* RANDOM: a die */
+    {"...#...", "..#.#..", ".#...#.", ".#...#.", "#.....#", "#######", "......."},   /* EUCLID: a polygon of hits */
+    {"#######", "#..#..#", "#..#.##", "#######", "#..#..#", "#..#..#", "#######"},   /* GRIDS: the map, the marker */
+    {".......", ".#.....", "#.#..#.", "...#.#.", "....#..", ".......", "#######"},   /* HUMANIZE: a wobble, the grid */
+    {"...#...", ".#.#...", ".#.#.#.", ".#.#.#.", ".#.#.#.", "#######", "......."},   /* QUANTIZE: bars on their lines */
+    {"###.#.#", "#.#....", "#.#...#", "#.#....", "#.#...#", "###.#.#", "......."},   /* LENGTH: a page, a dotted one */
+    {"#.....#", "#.....#", "#.#.#.#", "#######", "#.#.#.#", "#.....#", "#.....#"},   /* STRETCH: pulled apart */
+    {".##.##.", "#.###.#", "#.....#", "#.###.#", "#.....#", "#.##..#", "#######"},   /* CLIP: a clipboard */
+};
+static void tl_icon(int i, int x, int y, qd_rgb c)        /* top-left x, y */
+{
+    if (i >= 0 && i < QD_TL_N)
+        tl_bits(TL_ICON[i], 7, x, y, 1, c);
+}
+
+/* each tool as a little picture, centred at x, y (240-space, FIZZ's call) */
 void ui_tools_icon(int i, float x, float y, int on)
 {
-    const qd_rgb col = on ? UI_K3 : UI_G2;
-    const float lw = on ? 1.8f : 1.5f;
-    switch (i) {
-    case QD_TL_ROTATE: {                                /* a turning arrow */
-        const float ex = x + cosf(1.9f) * 6.f, ey = y + sinf(1.9f) * 6.f;
-        const float h[6] = {ex + 3.5f, ey - 1.f, ex, ey, ex + 0.5f, ey - 4.f};
-        qd_arc(x, y, 6.f, -2.6f, 1.9f, col, lw);
-        ui_P(h, 3, col, lw, 0, QD_NONE);
-        break;
-    }
-    case QD_TL_REVERSE: {                               /* two arrows the other way round */
-        const float a[6] = {x + 2.f, y - 6.f, x + 5.f, y - 3.f, x + 2.f, y};
-        const float b[6] = {x - 2.f, y, x - 5.f, y + 3.f, x - 2.f, y + 6.f};
-        tl_line(x - 7.f, y - 3.f, x + 5.f, y - 3.f, col, lw);
-        ui_P(a, 3, col, lw, 0, QD_NONE);
-        tl_line(x + 7.f, y + 3.f, x - 5.f, y + 3.f, col, lw);
-        ui_P(b, 3, col, lw, 0, QD_NONE);
-        break;
-    }
-    case QD_TL_RANDOM:                                  /* a die */
-        ui_RR(x - 7.f, y - 7.f, 14.f, 14.f, 3.f, col, lw, QD_NONE);
-        ui_O(x - 3.f, y - 3.f, 1.4f, QD_NONE, 1.f, col);
-        ui_O(x + 3.f, y + 3.f, 1.4f, QD_NONE, 1.f, col);
-        ui_O(x, y, 1.4f, QD_NONE, 1.f, col);
-        break;
-    case QD_TL_EUCLID: {                                /* a ring, three hits */
-        int k;
-        ui_O(x, y, 6.5f, col, lw * 0.8f, QD_NONE);
-        for (k = 0; k < 3; k++) {
-            const float a = -UI_PI / 2.f + (float)k * UI_TAU / 3.f;
-            ui_O(x + cosf(a) * 6.5f, y + sinf(a) * 6.5f, 2.f, QD_NONE, 1.f, col);
-        }
-        break;
-    }
-    case QD_TL_GRIDS:                                   /* the map, a dot */
-        ui_RR(x - 7.f, y - 7.f, 14.f, 14.f, 2.f, col, lw * 0.8f, QD_NONE);
-        tl_line(x, y - 7.f, x, y + 7.f, col, 1.f);
-        tl_line(x - 7.f, y, x + 7.f, y, col, 1.f);
-        ui_O(x + 3.f, y - 3.f, 2.2f, QD_NONE, 1.f, col);
-        break;
-    case QD_TL_HUMANIZE: {                              /* a wobble over the grid */
-        float p[30];
-        int u;
-        for (u = -7; u <= 7; u++)
-            p[(u + 7) * 2] = x + (float)u, p[(u + 7) * 2 + 1] = y + sinf((float)u * 1.3f) * 2.5f + (u % 3 ? 0.f : 1.5f);
-        ui_P(p, 15, col, lw, 0, QD_NONE);
-        tl_line(x - 7.f, y + 6.f, x + 7.f, y + 6.f, col, 1.f);
-        break;
-    }
-    case QD_TL_QUANTIZE:                                /* HUMANIZE's opposite: three bars standing on their lines */
-        tl_line(x - 7.f, y + 6.f, x + 7.f, y + 6.f, col, 1.f);
-        ui_RR(x - 7.f, y - 4.f, 3.f, 9.f, 1.f, QD_NONE, 1.f, col);
-        ui_RR(x - 1.5f, y - 6.f, 3.f, 11.f, 1.f, QD_NONE, 1.f, col);
-        ui_RR(x + 4.f, y - 2.f, 3.f, 7.f, 1.f, QD_NONE, 1.f, col);
-        break;
-    case QD_TL_STRETCH:                                 /* 2026-10-25: a span pulled out between two bars */
-        tl_line(x - 8.f, y - 6.f, x - 8.f, y + 6.f, col, lw);
-        tl_line(x + 8.f, y - 6.f, x + 8.f, y + 6.f, col, lw);
-        ui_RR(x - 5.f, y - 2.f, 10.f, 4.f, 2.f, QD_NONE, 1.f, col);
-        break;
-    case QD_TL_CLIP:                                    /* a clipboard */
-        ui_RR(x - 6.f, y - 6.f, 12.f, 14.f, 2.f, col, lw * 0.8f, QD_NONE);
-        ui_RR(x - 3.f, y - 8.5f, 6.f, 4.f, 1.f, QD_NONE, 1.f, col);
-        tl_line(x - 3.f, y + 1.f, x + 3.f, y + 1.f, col, 1.f);
-        tl_line(x - 3.f, y + 4.f, x + 2.f, y + 4.f, col, 1.f);
-        break;
-    default: {                                          /* LENGTH: a page, and a dashed one after it */
-        static const float D[2] = {2.f, 2.f};
-        ui_RR(x - 8.f, y - 4.f, 7.f, 8.f, 1.5f, col, lw * 0.8f, QD_NONE);
-        qd_save();
-        qd_dash(D, 2);
-        ui_RR(x + 1.f, y - 4.f, 7.f, 8.f, 1.5f, col, lw * 0.8f, QD_NONE);
-        qd_restore();
-        break;
-    }
-    }
+    tl_icon(i, tl_g(x) - 3, tl_g(y) - 3, on ? UI_K3 : UI_G2);
 }
 
-/* the scope: PAGE one block, TRACK a long lane, PATTERN the lanes */
-void ui_tools_scope_icon(int sc, float x, float y, qd_rgb col, float s)
+/* the scope, 13 x 7 at sc 1 (centred at cx, cy): SELECTED a few steps picked out of a row, PAGE one block, TRACK a long
+ * lane, PATTERN the lanes */
+static void tl_scope_icon(int sc, int cx, int cy, qd_rgb col, int s)
 {
-    qd_save();
-    qd_translate(x, y);
-    qd_scale(s, s);
-    if (sc == QD_TS_SEL) {                              /* a few steps picked out of a row */
-        ui_RR(-11.f, -3.f, 6.f, 6.f, 1.f, QD_NONE, 1.f, col);
-        ui_RR(-3.f, -3.f, 6.f, 6.f, 1.f, UI_G2, 1.2f, QD_NONE);
-        ui_RR(5.f, -3.f, 6.f, 6.f, 1.f, QD_NONE, 1.f, col);
+    const int x0 = cx - 6 * s, y0 = cy - 3 * s;
+    if (sc == QD_TS_SEL) {
+        px_rect(x0, y0 + 2 * s, 3 * s, 3 * s, col);
+        px_box(x0 + 5 * s, y0 + 2 * s, 3 * s, 3 * s, UI_G2);
+        px_rect(x0 + 10 * s, y0 + 2 * s, 3 * s, 3 * s, col);
     } else if (sc == QD_TS_PAGE) {
-        ui_RR(-5.f, -6.f, 10.f, 12.f, 1.5f, col, 1.6f, col);
-        tl_line(-11.f, 0.f, -7.f, 0.f, UI_G2, 1.4f);
-        tl_line(7.f, 0.f, 11.f, 0.f, UI_G2, 1.4f);
+        px_rect(x0 + 4 * s, y0, 5 * s, 7 * s, col);
+        px_rect(x0, y0 + 3 * s, 3 * s, s, UI_G2);
+        px_rect(x0 + 10 * s, y0 + 3 * s, 3 * s, s, UI_G2);
     } else if (sc == QD_TS_TRACK) {
-        ui_RR(-11.f, -4.f, 22.f, 8.f, 1.5f, col, 1.6f, col);
+        px_rect(x0, y0 + s, 13 * s, 5 * s, col);
     } else {
         static const uint8_t TR[4] = {0, 1, 3, 4};
         int k;
         for (k = 0; k < 4; k++)
-            ui_RR(-11.f, -7.f + (float)k * 4.f, 22.f, 3.f, 1.f, QD_NONE, 1.f, k == 1 ? col : UI_TRACK_PAL[TR[k]]);
+            px_rect(x0, y0 + 2 * k * s, 13 * s, s, k == 1 ? col : UI_TRACK_PAL[TR[k]]);
     }
-    qd_restore();
+}
+void ui_tools_scope_icon(int sc, float x, float y, qd_rgb col, float s)
+{
+    tl_scope_icon(sc, tl_g(x), tl_g(y), col, s >= 1.6f ? 2 : 1);
 }
 
+/* ---------------------------------------------------------------- the head */
 static void tl_head(const ui_tools_t *v)
 {
     int i;
-    for (i = 0; i < QD_TL_N; i++) {                     /* (ten: 16 px apart, at 80 %) */
-        const float x = 9.f + (float)i * 16.f;
-        qd_save();
-        qd_translate(x, 14.f);
-        qd_scale(0.8f, 0.8f);
-        ui_tools_icon(i, 0.f, 0.f, i == v->tool);
-        qd_restore();
-        if (i == v->tool)
-            tl_line(x - 6.5f, 27.f, x + 6.5f, 27.f, UI_K3, 2.f);
+    for (i = 0; i < QD_TL_N; i++) {                     /* (ten, 8 apart; the chosen in reverse video) */
+        const int x = 1 + i * 8;
+        if (i == v->tool) {
+            px_rect(x - 1, 1, 9, 9, UI_K3);
+            tl_icon(i, x, 2, UI_BG);
+        } else {
+            tl_icon(i, x, 2, UI_G2);
+        }
     }
     if (v->nolive) {                                    /* drawn only: no undo (the arrow crossed out) */
-        ui_icon(UI_IC_UNDO, 167.f, 14.f, 1.f, UI_KSEL);
-        tl_line(161.f, 20.f, 173.f, 8.f, UI_KSEL, 1.6f);
-    } else if (v->pending) {                            /* a change pending (heard and seen) */
-        tl_alpha(0.6f + 0.4f * sinf(v->t * 8.f));
-        ui_O(167.f, 14.f, 3.f, QD_NONE, 1.f, UI_K4);
-        qd_restore();
+        ui_icon(UI_IC_UNDO, 170.f, 11.f, 1.f, UI_KSEL);
+        px_line(82, 9, 88, 2, UI_KSEL);
+    } else if (v->pending) {                            /* a change pending (heard and seen): a light, beating */
+        const int big = (int)(v->t * 4.f) & 1;
+        px_rect(83, 4, 3, 3, UI_K4);
+        if (big)
+            px_box(82, 3, 5, 5, UI_K4);
     }
-    if (v->scope != QD_TS_PATTERN) {
+    if (v->scope != QD_TS_PATTERN) {                    /* the track's number, reverse video */
         char n[12];
-        ui_RR(177.f, 5.f, 18.f, 18.f, 2.f, v->tcol, 1.4f, QD_NONE);
-        ui_T(ui_itoa(n, v->track), 186.f, 19.f, 13.f, 600, 0.f, v->tcol, QD_CENTER);
+        px_rect(91, 1, 9, 9, v->tcol);
+        px_ctext(96, 3, ui_itoa(n, v->track), UI_BG, PX_FS, 1);
     } else {
-        static const float D[2] = {2.f, 2.f};
-        qd_save();
-        qd_dash(D, 2);
-        ui_RR(177.f, 5.f, 18.f, 18.f, 2.f, UI_G1, 1.4f, QD_NONE);
-        qd_restore();
+        px_dots(91, 1, 9, UI_G1, 2);
+        px_dots(91, 9, 9, UI_G1, 2);
+        px_vdots(91, 3, 6, UI_G1, 2);
+        px_vdots(99, 3, 6, UI_G1, 2);
     }
-    ui_tools_scope_icon(v->scope, 219.f, 14.f, UI_K3, 1.f);
+    tl_scope_icon(v->scope, 110, 5, UI_K3, 1);
+    px_dots(0, 11, 120, UI_G3, 2);
 }
 
-static float tl_noteh(const ui_tools_t *v, int i, float span)   /* a step's note as a height 0..span */
+/* ---------------------------------------------------------------- the foot: the pages, the lane */
+static int tl_noteh(const ui_tools_t *v, int i, int span)   /* a step's note as a height 0..span */
 {
-    return v->note[i] && v->hi > v->lo ? span * (float)(v->note[i] - v->lo) / (float)(v->hi - v->lo) : 0.f;
+    return v->note[i] && v->hi > v->lo ? span * (v->note[i] - v->lo) / (v->hi - v->lo) : 0;
 }
 
-/* the lane at the foot: the page as it will be */
+/* the eight pages over the lane: the one shown tall in the track's colour, the looped ones grey, the others dark */
+static void tl_pages(const ui_tools_t *v)
+{
+    int p;
+    for (p = 0; p < 8; p++) {
+        const int x = 4 + p * 14;
+        if (p == v->page)
+            px_rect(x, 89, 13, 4, v->tcol);
+        else
+            px_rect(x, 90, 13, 2, (v->loop >> p) & 1 ? UI_G2 : UI_G3);
+    }
+}
+
+/* the lane: the page as it will be (kept solid, new outlined white, going a ghost), the playhead red under it, the
+ * selected steps marked yellow over it */
 static void tl_lane(const ui_tools_t *v, int heights)
 {
-    const float y = 206.f;
-    const float pulse = 0.6f + 0.4f * sinf(v->t * 6.f);
     int i;
     for (i = 0; i < 16; i++) {
-        const float x = 8.f + (float)i * 14.f, h = heights ? 8.f + tl_noteh(v, i, 10.f) : 18.f;
-        if (!((v->inr >> i) & 1u)) {                    /* (a step that does not play: a dot) */
-            ui_O(x + 6.5f, y + 16.f, 1.2f, QD_NONE, 1.f, UI_G3);
-        } else if (v->on[i] && v->was[i]) {
-            ui_RR(x, y + 18.f - h, 13.f, h, 2.f, QD_NONE, 1.f, v->tcol);
-        } else if (v->on[i]) {
-            tl_alpha(pulse);
-            ui_RR(x, y + 18.f - h, 13.f, h, 2.f, UI_K3, 1.8f, QD_NONE);
-            qd_restore();
-        } else if (v->was[i]) {                         /* (a ghost: what it was) */
-            tl_alpha(0.32f);
-            ui_RR(x, y + 18.f - h, 13.f, h, 2.f, QD_NONE, 1.f, v->tcol);
-            qd_restore();
-        } else {
-            ui_RR(x, y + 14.f, 13.f, 4.f, 1.f, QD_NONE, 1.f, i % 4 ? UI_G3 : UI_G2);
-        }
-    }
-    if (v->play >= 0)
-        tl_line(8.f + (float)v->play * 14.f + 6.f, y + 22.f, 8.f + (float)v->play * 14.f + 6.f, y + 26.f, UI_RED, 2.4f);
-    for (i = 0; i < 16; i++)                            /* the selected steps: a mark over each */
+        const int x = TL_LX(i), h = heights ? 5 + tl_noteh(v, i, 7) : 12, y = 112 - h;
+        if (!((v->inr >> i) & 1u))                      /* (a step that does not play: a speck) */
+            px_rect(x + 2, 110, 2, 2, UI_G3);
+        else if (v->on[i] && v->was[i])
+            px_rect(x, y, 6, h, v->tcol);
+        else if (v->on[i])
+            px_box(x, y, 6, h, UI_K3);
+        else if (v->was[i])
+            tl_ghost(x, y, 6, h, v->tcol);
+        else
+            px_rect(x, 109, 6, 3, i % 4 ? UI_G3 : UI_G2);
         if ((v->sel >> i) & 1)
-            ui_RR(8.f + (float)i * 14.f + 3.f, y - 7.f, 7.f, 3.f, 1.f, QD_NONE, 1.f, UI_KSEL);
-}
-
-/* the ring both ROTATE and EUCLID draw: n points round it (n > 32: the hits only), on[i] a hit in col; here: the one
- * playing (bigger) */
-#define TL_CX 120.f
-#define TL_CY 106.f
-#define TL_R 64.f
-static void tl_ring(int n, const uint8_t *on, qd_rgb col, int here)
-{
-    int i;
-    ui_O(TL_CX, TL_CY, TL_R, UI_G3, 1.5f, QD_NONE);
-    for (i = 0; i < n; i++) {
-        const float a = -UI_PI / 2.f + (float)i * UI_TAU / (float)n, x = TL_CX + cosf(a) * TL_R, y = TL_CY + sinf(a) * TL_R;
-        if (on[i]) {                                    /* (no glows: the owner's, for the frame rate) */
-            ui_O(x, y, n > 32 ? 3.f : i == here ? 9.5f : 7.f, QD_NONE, 1.f, col);
-        } else if (n <= 32) {
-            ui_O(x, y, 2.6f, QD_NONE, 1.f, i == 0 ? UI_K3 : UI_G2);
-        }
+            px_rect(x + 1, 96, 4, 2, UI_KSEL);
     }
+    if (v->play >= 0 && v->play < 16)
+        px_rect(TL_LX(v->play) + 1, 114, 4, 2, PX_LRED);
 }
 
-/* ROTATE: the page as a ring of steps; the sweep and the offset in KNOB 1's blue */
+/* ---------------------------------------------------------------- ROTATE: the ring of floor tiles */
+#define TL_RCX 60
+#define TL_RCY 55
+static void tl_ell(int i, int n, int rx, int ry, int *x, int *y)   /* point i of n round an ellipse, from the top */
+{
+    const float a = -UI_PI / 2.f + (float)i * UI_TAU / (float)n;
+    *x = TL_RCX + tl_rnd(cosf(a) * (float)rx);
+    *y = TL_RCY + tl_rnd(sinf(a) * (float)ry);
+}
+static void tl_tile(int cx, int y, qd_rgb c)           /* a floor tile, 12 wide: the girder, its underside */
+{
+    px_rect(cx - 6, y, 12, 2, c);
+    px_dots(cx - 5, y + 2, 11, c, 2);
+}
 static void tl_rotate(const ui_tools_t *v)
 {
     char s[16];
-    int off = v->rot;
-    tl_ring(16, v->on, v->tcol, v->play);
+    int i, x, y, off = v->rot;
+    for (i = 0; i < 16; i++) {                          /* the tiles: a trig in the track's colour, the first white */
+        tl_ell(i, 16, 46, 24, &x, &y);
+        tl_tile(x, y - 1, v->on[i] ? v->tcol : i == 0 ? UI_K3 : UI_G2);
+    }
     off = off > 16 ? 16 : off < -16 ? -16 : off;        /* (the sweep: at most a turn) */
-    if (off)
-        qd_arc(TL_CX, TL_CY, TL_R - 22.f, -UI_PI / 2.f + (off < 0 ? (float)off * UI_TAU / 16.f : 0.f),
-               -UI_PI / 2.f + (off > 0 ? (float)off * UI_TAU / 16.f : 0.f), UI_K1, 3.f);
+    for (i = 0; i <= (off < 0 ? -off : off) * 6; i++) {
+        tl_ell(off < 0 ? -i : i, 96, 31, 13, &x, &y);
+        px_pset(x, y, UI_K1);
+    }
+    if (off) {                                          /* (its end: a block) */
+        tl_ell(off * 6, 96, 31, 13, &x, &y);
+        px_rect(x - 1, y - 1, 3, 3, UI_K1);
+    }
     s[0] = v->rot > 0 ? '+' : 0, s[1] = 0;
     ui_itoa(s + (v->rot > 0), v->rot);
-    ui_T(s, TL_CX, TL_CY + 15.f, 40.f, 700, 0.f, UI_K1, QD_CENTER);
+    px_ctext(TL_RCX, TL_RCY - 7, s, UI_K1, PX_FB, 2);
+    if (v->play >= 0 && v->play < 16) {                 /* the agent on the playing tile, running round */
+        const int p = v->play, fr = PXS_AGENT_RUN1 + (int)(v->t * 10.f) % 3;
+        tl_ell(p, 16, 46, 24, &x, &y);
+        px_sprite(x - 4, y - 17, fr, p >= 4 && p < 12);
+    } else {                                            /* (stopped: waiting on the first) */
+        tl_ell(0, 16, 46, 24, &x, &y);
+        px_sprite(x - 4, y - 17, PXS_AGENT_STAND, 0);
+    }
     tl_lane(v, 0);
 }
 
-/* REVERSE: the steps as bars (their notes' heights) about the mirror line */
+/* ---------------------------------------------------------------- REVERSE: the bars about the mirror */
 static void tl_reverse(const ui_tools_t *v)
 {
-    static const float D[2] = {3.f, 4.f};
-    const float cy = 108.f;
+    const qd_rgb mc = v->flip ? UI_K4 : UI_K3;
+    const int cy = 59;
     int i;
-    qd_save();
-    qd_dash(D, 2);
-    tl_line(120.f, 40.f, 120.f, 176.f, v->flip ? UI_K4 : UI_K3, 1.4f);
-    qd_restore();
+    px_vdots(59, TL_TOP + 1, TL_BOT - TL_TOP - 1, mc, 2);
+    px_sprite(49, 15, PXS_AGENT_STAND, 0);              /* (the agent and his reflection) */
+    px_sprite(61, 15, PXS_AGENT_STAND, 1);
+    px_rect(45, 31, 29, 2, UI_G2);
+    px_dots(46, 33, 28, UI_G2, 2);
     for (i = 0; i < 16; i++) {
-        const float x = 14.f + (float)i * 13.6f, h = 18.f + tl_noteh(v, i, 50.f);
-        if (v->on[i]) {
-            ui_RR(x - 6.f, cy - h / 2.f, 12.f, h, 3.f, QD_NONE, 1.f, v->tcol);
-        } else {
-            ui_O(x, cy, 2.2f, QD_NONE, 1.f, UI_G2);
-        }
+        const int x = TL_LX(i), h = 8 + tl_noteh(v, i, 26);
+        if (v->on[i])
+            px_rect(x, cy - h / 2, 6, h, v->tcol);
+        else
+            px_rect(x + 2, cy - 1, 2, 2, UI_G2);
     }
     tl_lane(v, 1);
 }
 
-/* EUCLID: the ring and its polygon of hits; hits big (KNOB 1), the length (KNOB 2), the rotation's tick (KNOB 3), the
- * landing's three pictures (KNOB 4) */
-static void tl_euclid(const ui_tools_t *v)
+/* ---------------------------------------------------------------- RANDOM: the scrambled terminal */
+static void tl_shaft(int x, int y, int w, int h, int num, int den, qd_rgb col)   /* a meter filled num / den from the foot */
 {
-    const int n = v->len < 1 ? 1 : v->len > QD_NSTEP ? QD_NSTEP : v->len;
-    uint8_t hit[QD_NSTEP];
-    float poly[2 * 64];
-    char s[12];
-    int i, np = 0, m;
-    for (i = 0; i < n; i++)
-        if ((hit[i] = (uint8_t)qd_tl_euclid_hit(i, v->hits, n, v->erot)) != 0) {
-            const float a = -UI_PI / 2.f + (float)i * UI_TAU / (float)n;
-            if (np < 64)
-                poly[np * 2] = TL_CX + cosf(a) * TL_R, poly[np * 2 + 1] = TL_CY + sinf(a) * TL_R;
-            np++;
+    int f = den > 0 ? (h - 2) * (num < 0 ? 0 : num > den ? den : num) / den : 0;
+    px_box(x, y, w, h, UI_G3);
+    if (f > 0)
+        px_rect(x + 1, y + h - 1 - f, w - 2, f, col);
+}
+static void tl_random(const ui_tools_t *v)
+{
+    static const char HEX[] = "0123456789ABCDEF";
+    static const uint8_t PIP[6][6] = {{4}, {0, 8}, {0, 4, 8}, {0, 2, 6, 8}, {0, 2, 4, 6, 8}, {0, 2, 3, 5, 6, 8}};
+    static const qd_rgb COL[4] = {UI_K1, UI_K2, UI_K3, UI_K4};
+    static const int MAX[4] = {100, 12, 64, 100};
+    const int face = (v->seed >> 3) % 6;
+    int k, r, c;
+    px_rbox(3, 14, 48, 38, UI_K3, PX_LGREY);            /* the terminal: its bezel, its screen */
+    px_rect(6, 17, 42, 28, UI_BG);
+    for (r = 0; r < 4; r++)                             /* (the scramble: the seed's hex) */
+        for (c = 0; c < 10; c++) {
+            const uint32_t h = (uint32_t)(v->seed + 1) * 2654435761u ^ (uint32_t)(r * 16 + c) * 40503u;
+            char ch[2] = {HEX[(h >> 13) & 15u], 0};
+            if (((h >> 7) & 7u) == 0u)
+                continue;
+            px_text(7 + c * 4, 18 + r * 7, ch, (h >> 21) & 3u ? PX_GREEN : PX_LGREEN, PX_FS, 1);
         }
-    if (np > 2 && np <= 64) {
-        tl_alpha(0.10f);
-        ui_P(poly, np, QD_NONE, 2.f, 1, UI_K1);
-        qd_restore();
-        ui_P(poly, np, UI_K1, 2.f, 1, QD_NONE);
-    }
-    tl_ring(n, hit, UI_K1, v->epos);
-    if (v->epos >= 0) {
-        const float a = -UI_PI / 2.f + (float)v->epos * UI_TAU / (float)n;
-        tl_line(TL_CX, TL_CY, TL_CX + cosf(a) * (TL_R - 14.f), TL_CY + sinf(a) * (TL_R - 14.f), UI_RED, 2.f);
-    }
-    if (v->erot) {
-        const float a = -UI_PI / 2.f - (float)v->erot * UI_TAU / (float)n;
-        ui_O(TL_CX + cosf(a) * (TL_R + 12.f), TL_CY + sinf(a) * (TL_R + 12.f), 3.f, QD_NONE, 1.f, UI_K3);
-    }
-    ui_T(ui_itoa(s, v->hits), TL_CX, TL_CY + 6.f, 40.f, 700, 0.f, UI_K1, QD_CENTER);
-    ui_T(ui_itoa(s, n), TL_CX, TL_CY + 30.f, 18.f, 600, 0.f, UI_K2, QD_CENTER);
-    for (m = 0; m < QD_EU_N; m++) {
-        const float x = 196.f, y = 50.f + (float)m * 22.f;
-        const qd_rgb col = m == v->emode ? UI_K4 : UI_G2;
-        ui_RR(x, y, 14.f, 14.f, 2.f, col, 1.6f, m == QD_EU_NEW && m == v->emode ? col : QD_NONE);
-        if (m == QD_EU_ADD) {
-            tl_line(x + 7.f, y + 3.f, x + 7.f, y + 11.f, col, 1.8f);
-            tl_line(x + 3.f, y + 7.f, x + 11.f, y + 7.f, col, 1.8f);
-        } else if (m == QD_EU_MASK) {
-            ui_RR(x + 4.f, y + 4.f, 6.f, 6.f, 1.f, QD_NONE, 1.f, col);
+    px_rect(20, 52, 14, 2, UI_G1);                      /* (its foot) */
+    px_rect(14, 54, 26, 2, UI_G2);
+    px_rbox(18, 60, 17, 17, UI_K3, UI_K3);             /* the die: the seed's face */
+    for (k = 0; k <= face; k++)
+        px_rect(20 + (PIP[face][k] % 3) * 5, 62 + (PIP[face][k] / 3) * 5, 3, 3, UI_BG);
+    for (k = 0; k < 4; k++) {                           /* the amounts, what each sets under it */
+        const int x = 57 + k * 16, cx = x + 5, y = 80;
+        tl_shaft(x, TL_TOP + 2, 11, 60, v->r[k], MAX[k], COL[k]);
+        if (k == 0) {                                   /* (trigs) */
+            px_rect(cx - 5, y - 2, 3, 4, COL[0]);
+            px_box(cx - 1, y - 2, 3, 4, UI_G3);
+            px_rect(cx + 3, y - 2, 3, 4, COL[0]);
+        } else if (k == 1) {                            /* (a note) */
+            ui_icon(UI_IC_NOTE + 2, (float)(2 * cx + 1), (float)(2 * y - 1), 1.f, COL[1]);
+        } else if (k == 2) {                            /* (a wedge) */
+            int j;
+            for (j = 0; j < 7; j++)
+                px_vline(cx - 3 + j, y + 2 - j * 5 / 6, j * 5 / 6 + 1, COL[2]);
+        } else {                                        /* (a pie) */
+            px_circle(cx, y, 3, COL[3], QD_NONE);
+            px_rect(cx, y - 3, 3, 4, COL[3]);
         }
     }
     tl_lane(v, 0);
 }
 
-static void tl_div(float x, float y, float s, qd_rgb col)   /* a division sign, drawn (the font has none) */
+/* ---------------------------------------------------------------- EUCLID: the robot's patrol */
+#define TL_ECX 50
+#define TL_ECY 51
+#define TL_ER 28
+static void tl_ring_xy(int i, int n, int r, int *x, int *y)
 {
-    tl_line(x - 4.f * s, y, x + 4.f * s, y, col, 1.6f * s);
-    ui_O(x, y - 4.f * s, 1.2f * s, QD_NONE, 1.f, col);
-    ui_O(x, y + 4.f * s, 1.2f * s, QD_NONE, 1.f, col);
+    const float a = -UI_PI / 2.f + (float)i * UI_TAU / (float)n;
+    *x = TL_ECX + tl_rnd(cosf(a) * (float)r);
+    *y = TL_ECY + tl_rnd(sinf(a) * (float)r);
+}
+static void tl_euclid(const ui_tools_t *v)
+{
+    const int n = v->len < 1 ? 1 : v->len > QD_NSTEP ? QD_NSTEP : v->len;
+    int poly[2 * 64], i, np = 0, m, x, y;
+    char s[12];
+    for (i = 0; i < n; i++)                             /* the hits' polygon (its corners the posts) */
+        if (qd_tl_euclid_hit(i, v->hits, n, v->erot) && np < 64) {
+            tl_ring_xy(i, n, TL_ER, &poly[2 * np], &poly[2 * np + 1]);
+            np++;
+        }
+    px_circle(TL_ECX, TL_ECY, TL_ER, UI_G3, QD_NONE);
+    if (np > 2)
+        px_poly(poly, np, 1, UI_K1, QD_NONE);
+    else if (np == 2)
+        px_line(poly[0], poly[1], poly[2], poly[3], UI_K1);
+    for (i = 0; i < n; i++) {
+        const int hit = qd_tl_euclid_hit(i, v->hits, n, v->erot);
+        tl_ring_xy(i, n, TL_ER, &x, &y);
+        if (hit)
+            px_rect(x - (n > 32 ? 0 : 1), y - (n > 32 ? 0 : 1), n > 32 ? 1 : 3, n > 32 ? 1 : 3, UI_K1);
+        else if (n <= 32)
+            px_rect(x, y, 1, 1, i == 0 ? UI_K3 : UI_G2);
+    }
+    if (v->erot) {                                      /* the rotation's mark, outside the ring (KNOB 3) */
+        tl_ring_xy(-v->erot, n, TL_ER + 5, &x, &y);
+        px_rect(x - 1, y - 1, 2, 2, UI_K3);
+    }
+    px_ctext(TL_ECX, TL_ECY - 11, ui_itoa(s, v->hits), UI_K1, PX_FB, 2);
+    px_ctext(TL_ECX, TL_ECY + 6, ui_itoa(s, n), UI_K2, PX_FB, 1);
+    if (v->epos >= 0) {                                 /* the robot on its round (lit on a post) */
+        const int hit = qd_tl_euclid_hit(v->epos % n, v->hits, n, v->erot);
+        tl_ring_xy(v->epos % n, n, TL_ER, &x, &y);
+        px_sprite(x - 5, y - 6, hit ? PXS_ROBOT2 : PXS_ROBOT1, 0);
+    } else {                                            /* (stopped: parked by the ring) */
+        px_sprite(TL_ECX + TL_ER + 2, TL_ECY + TL_ER - 10, PXS_ROBOT1, 1);
+    }
+    for (m = 0; m < QD_EU_N; m++) {                     /* the landing (KNOB 4): NEW, ADD (a plus), MASK (an inner box) */
+        const int bx = 104, by = 20 + m * 13, on = m == v->emode;
+        const qd_rgb col = on ? UI_K4 : UI_G2;
+        if (m == QD_EU_NEW && on)
+            px_rect(bx, by, 9, 9, col);
+        else
+            px_box(bx, by, 9, 9, col);
+        if (m == QD_EU_ADD) {
+            px_vline(bx + 4, by + 2, 5, col);
+            px_hline(bx + 2, by + 4, 5, col);
+        } else if (m == QD_EU_MASK) {
+            px_rect(bx + 3, by + 3, 3, 3, col);
+        }
+    }
+    tl_lane(v, 0);
 }
 
-/* LENGTH: the eight pages (looped filled, a new one outlined, one leaving faded), the steps big, x2 / /2 */
+/* ---------------------------------------------------------------- GRIDS: the pocket computer's map */
+static void tl_grids(const ui_tools_t *v)
+{
+    const int X = 4, Y = 15, S = 66, mx = X + 2 + v->r[0] * (S - 5) / 255, my = Y + 2 + (255 - v->r[1]) * (S - 5) / 255;
+    int a, b, p;
+    px_box(X, Y, S, S, UI_G2);
+    for (a = 0; a < 3; a++) {                           /* the nine rooms, the corridors between them */
+        const int c = X + 9 + a * 24;
+        px_vdots(c + 1, Y + 12, S - 22, UI_G3, 2);
+        px_dots(X + 12, c - X + Y + 1, S - 22, UI_G3, 2);
+        for (b = 0; b < 3; b++)
+            px_box(c - 1, Y + 8 + b * 24, 5, 4, UI_G2);
+    }
+    px_vline(mx, Y + 1, S - 2, UI_K1);
+    px_hline(X + 1, my, S - 2, UI_K2);
+    for (b = 0; b < 12 && v->r[3]; b++) {               /* (the cloud: fixed points, its size the chaos) */
+        const float an = (float)b * 2.39996f;
+        const float rr = 4.5f + (float)v->r[3] / 255.f * 17.f * (0.3f + 0.7f * (float)((b * 7) % 12) / 11.f);
+        const int cx = mx + tl_rnd(cosf(an) * rr), cy = my + tl_rnd(sinf(an) * rr);
+        if (cx > X && cx < X + S - 1 && cy > Y && cy < Y + S - 1)
+            px_pset(cx, cy, UI_KSEL);
+    }
+    px_rect(mx - 2, my - 2, 5, 5, UI_K3);               /* (the marker) */
+    px_pset(mx, my, UI_BG);
+    tl_shaft(75, Y, 10, S, v->r[2], 255, UI_K3);        /* the density (KNOB 3) */
+    for (p = 0; p < 3; p++) {                           /* the drums: LOW, MID, HIGH (the part's lit) */
+        static const int R[3] = {6, 4, 3};
+        const int y = 25 + p * 22, on = v->scope == QD_TS_PATTERN ? v->gtr[p] >= 0 : p == v->part;
+        const qd_rgb col = on ? UI_K4 : UI_G2;
+        px_circle(103, y, R[p], col, on ? col : QD_NONE);
+        if (p == 2)
+            px_hline(98, y - 5, 11, col);
+        if (v->scope == QD_TS_PATTERN && v->gtr[p] >= 0) {   /* (the track it goes to) */
+            char n[12];
+            px_text(112, y - 2, ui_itoa(n, v->gtr[p] + 1), UI_TRACK_PAL[v->gtr[p] & 7], PX_FS, 1);
+        }
+    }
+    tl_lane(v, 0);
+}
+
+/* ---------------------------------------------------------------- HUMANIZE and QUANTIZE */
+static void tl_hbar(int x, int y, int w, int num, int den, qd_rgb col)   /* a bar filled num / den */
+{
+    const int f = den > 0 ? (w - 2) * (num < 0 ? 0 : num > den ? den : num) / den : 0;
+    px_box(x, y, w, 7, UI_G3);
+    if (f > 0)
+        px_rect(x + 1, y + 1, f, 5, col);
+}
+static void tl_timing(const ui_tools_t *v)
+{
+    const int q = v->tool == QD_TL_QUANTIZE, base = 81, by = 100;
+    char s[12];
+    int i, k;
+    for (i = 0; i < 16; i++) {                          /* the steps' lines; QUANTIZE: the grid's ticks in each */
+        const int x = TL_LX(i) + 3;
+        px_vline(x, TL_TOP + 3, base - TL_TOP - 3, i % 4 ? UI_G3 : UI_G2);
+        for (k = 1; q && k <= v->r[1]; k++)
+            px_vline(TL_LX(i) + 3 + 7 * k / (v->r[1] + 1), base - 3, 3, UI_K2);
+    }
+    for (i = 0; i < 16; i++)
+        if (v->on[i]) {
+            const int x = TL_LX(i) + 3, dx = v->micro[i] * 7 / 24, h = 3 + v->vel[i] * 58 / 127;
+            if (v->micro0[i] != v->micro[i] || v->vel0[i] != v->vel[i]) {   /* (the ghost: as it was, outlined) */
+                const int h0 = 3 + v->vel0[i] * 58 / 127;
+                px_box(x + v->micro0[i] * 7 / 24 - 1, base - h0, 3, h0, UI_G1);
+            }
+            px_rect(x + dx - 1, base - h, 3, h, v->tcol);
+            if (dx)
+                px_hline(dx < 0 ? x + dx : x, base + 2, dx < 0 ? -dx + 1 : dx + 1, UI_K1);
+        }
+    if (!q) {                                           /* the jitters: KNOB 1 the timing, KNOB 2 the velocity */
+        tl_hbar(4, by, 40, v->r[0], 12, UI_K1);
+        px_text(46, by + 1, ui_itoa(s, v->r[0]), UI_K1, PX_FS, 1);
+        tl_hbar(62, by, 40, v->r[1], 40, UI_K2);
+        px_text(104, by + 1, ui_itoa(s, v->r[1]), UI_K2, PX_FS, 1);
+        return;
+    }
+    tl_hbar(4, by, 34, v->r[0], 100, UI_K1);            /* the amount (KNOB 1), the grid (KNOB 2: a step cut in its
+                                                         * parts), the velocity's (KNOB 3) */
+    px_box(45, by - 1, 29, 9, UI_K2);
+    for (k = 1; k <= v->r[1]; k++)
+        px_vline(45 + 29 * k / (v->r[1] + 1), by - 1, 9, UI_K2);
+    tl_hbar(82, by, 34, v->r[2], 100, UI_K3);
+}
+
+/* ---------------------------------------------------------------- LENGTH: the pages */
 static void tl_length(const ui_tools_t *v)
 {
     char s[12];
     int p;
-    for (p = 0; p < 8; p++) {
-        const float x = 12.f + (float)p * 27.f, y = 70.f;
-        const int now = (v->loop >> p) & 1, was = (v->loop0 >> p) & 1;
-        if (now && was) {
-            ui_RR(x, y, 23.f, 60.f, 3.f, QD_NONE, 1.f, v->tcol);
-        } else if (now) {
-            ui_RR(x, y, 23.f, 60.f, 3.f, UI_K3, 1.8f, QD_NONE);
-        } else if (was) {
-            tl_alpha(0.22f);
-            ui_RR(x, y, 23.f, 60.f, 3.f, QD_NONE, 1.f, v->tcol);
-            qd_restore();
-        } else {
-            ui_RR(x, y, 23.f, 60.f, 3.f, UI_G3, 1.4f, QD_NONE);
-        }
+    for (p = 0; p < 8; p++) {                           /* (looped solid, new outlined white, going a ghost) */
+        const int x = 5 + p * 14, y = 16, H = 56, now = (v->loop >> p) & 1, was = (v->loop0 >> p) & 1;
+        char d[2] = {(char)('1' + p), 0};
+        if (now && was)
+            px_rect(x, y, 12, H, v->tcol);
+        else if (now)
+            px_box(x, y, 12, H, UI_K3);
+        else if (was)
+            tl_ghost(x, y, 12, H, v->tcol);
+        else
+            px_box(x, y, 12, H, UI_G3);
+        px_ctext(x + 6, y + 2, d, now && was ? UI_BG : now ? UI_K3 : UI_G2, PX_FS, 1);
     }
-    ui_T(ui_itoa(s, v->count), 120.f, 182.f, 40.f, 700, 0.f, UI_K3, QD_CENTER);
-    {   /* the two ways: halving left, doubling right (the way taken bright) */
-        const qd_rgb l = v->lpow < 0 ? UI_K3 : UI_G1, r = v->lpow > 0 ? UI_K3 : UI_G1;
-        const float a[6] = {40.f, 168.f, 32.f, 174.f, 40.f, 180.f}, b[6] = {200.f, 168.f, 208.f, 174.f, 200.f, 180.f};
-        ui_P(a, 3, l, 2.4f, 0, QD_NONE);
-        ui_P(b, 3, r, 2.4f, 0, QD_NONE);
-        tl_div(54.f, 174.f, 1.f, l);
-        ui_T("2", 61.f, 180.f, 14.f, 600, 0.f, l, QD_LEFT);
-        ui_T("\xc3\x97" "2", 188.f, 180.f, 14.f, 600, 0.f, r, QD_RIGHT);
+    px_ctext(60, 82, ui_itoa(s, v->count), UI_K1, PX_FB, 3);
+    {   /* KNOB 1's two ways: halving left, doubling right (the way taken lit) */
+        const qd_rgb l = v->lpow < 0 ? UI_K1 : UI_G2, r = v->lpow > 0 ? UI_K1 : UI_G2;
+        px_text(4, 89, "\xe2\x86\x90", l, PX_FB, 1);
+        tl_div(13, 90, 1, l);
+        px_text(19, 89, "2", l, PX_FB, 1);
+        px_text(94, 89, "\xc3\x97" "2", r, PX_FB, 1);
+        px_rtext(116, 89, "\xe2\x86\x92", r, PX_FB, 1);
     }
 }
 
-/* T2: a stripe meter (vertical, u 0..1 filled from the foot), shared by RANDOM and GRIDS */
-static void tl_meter(float x, float y, float w, float h, float u, qd_rgb col)
-{
-    u = u < 0.f ? 0.f : u > 1.f ? 1.f : u;
-    ui_RR(x, y, w, h, 3.f, UI_G3, 1.4f, QD_NONE);
-    if (u > 0.f)
-        ui_RR(x + 3.f, y + h - 3.f - (h - 6.f) * u, w - 6.f, (h - 6.f) * u, 2.f, QD_NONE, 1.f, col);
-}
-
-/* RANDOM: the die (its face the seed's), the four amounts as stripe meters in their knobs' colours (KNOB 1 how many,
- * KNOB 2 the notes, KNOB 3 the velocity, KNOB 4 the chance) */
-static void tl_random(const ui_tools_t *v)
-{
-    static const int8_t PIP[6][6][2] = {{{0, 0}}, {{-1, -1}, {1, 1}}, {{-1, -1}, {0, 0}, {1, 1}},
-                                        {{-1, -1}, {1, -1}, {-1, 1}, {1, 1}}, {{-1, -1}, {1, -1}, {0, 0}, {-1, 1}, {1, 1}},
-                                        {{-1, -1}, {1, -1}, {-1, 0}, {1, 0}, {-1, 1}, {1, 1}}};
-    static const qd_rgb COL[4] = {UI_K1, UI_K2, UI_K3, UI_K4};
-    static const float MAX[4] = {100.f, 12.f, 64.f, 100.f};
-    const int face = (v->seed >> 3) % 6;
-    int k;
-    ui_RR(36.f, 74.f, 52.f, 52.f, 10.f, UI_K3, 3.f, QD_NONE);
-    for (k = 0; k <= face; k++)
-        ui_O(62.f + 13.5f * (float)PIP[face][k][0], 100.f + 13.5f * (float)PIP[face][k][1], 4.2f, QD_NONE, 1.f, UI_K3);
-    for (k = 0; k < 4; k++) {                           /* (under each, what it sets: trigs, a note, a wedge, a pie) */
-        const float x = 134.f + (float)k * 28.f, y = 160.f;
-        tl_meter(124.f + (float)k * 28.f, 58.f, 20.f, 88.f, (float)v->r[k] / MAX[k], COL[k]);
-        if (k == 0) {
-            ui_RR(x - 8.f, y - 3.f, 4.f, 6.f, 1.f, QD_NONE, 1.f, COL[0]);
-            ui_RR(x - 2.f, y - 3.f, 4.f, 6.f, 1.f, UI_G3, 1.f, QD_NONE);
-            ui_RR(x + 4.f, y - 3.f, 4.f, 6.f, 1.f, QD_NONE, 1.f, COL[0]);
-        } else if (k == 1) {
-            ui_O(x - 2.f, y + 4.f, 3.f, QD_NONE, 1.f, COL[1]);
-            tl_line(x + 0.8f, y + 4.f, x + 0.8f, y - 7.f, COL[1], 1.6f);
-            tl_line(x + 0.8f, y - 7.f, x + 4.5f, y - 4.f, COL[1], 1.6f);
-        } else if (k == 2) {
-            const float w[6] = {x - 8.f, y + 5.f, x + 8.f, y + 5.f, x + 8.f, y - 6.f};
-            ui_P(w, 3, QD_NONE, 1.f, 1, COL[2]);
-        } else {
-            const float pie[8] = {x, y, x, y - 6.f, x + 6.f, y, x, y + 6.f};
-            ui_O(x, y, 6.f, COL[3], 1.4f, QD_NONE);
-            ui_P(pie, 4, QD_NONE, 1.f, 1, COL[3]);
-        }
-    }
-    tl_lane(v, 0);
-}
-
-/* HUMANIZE and QUANTIZE: the steps off their grid lines (each its micro-timing), their heights the velocities; where a
- * change moves one, its ghost (as it was) faded behind it. HUMANIZE: the two jitters (KNOB 1 timing, KNOB 2 velocity)
- * as bars under them. QUANTIZE: the grid's lines (KNOB 2, in its green: ticks in each step) at the foot, the amount
- * (KNOB 1) and the velocity's (KNOB 3) as bars, the grid as a step cut in its parts between them */
-static void tl_hbar(float x, float y, float u, qd_rgb col)
-{
-    ui_RR(x, y, 70.f, 10.f, 4.f, UI_G3, 1.4f, QD_NONE);
-    if (u > 0.f)
-        ui_RR(x + 2.f, y + 2.f, 66.f * (u > 1.f ? 1.f : u), 6.f, 3.f, QD_NONE, 1.f, col);
-}
-static void tl_timing(const ui_tools_t *v)
-{
-    const int q = v->tool == QD_TL_QUANTIZE;
-    int i, k;
-    for (i = 0; i < 16; i++) {
-        const float x = 16.f + (float)i * 13.6f;
-        tl_line(x, 44.f, x, 176.f, i % 4 ? UI_G3 : UI_G2, 1.f);
-        for (k = 1; q && k <= v->r[1]; k++) {           /* (the grid's lines within the step: ticks) */
-            const float gx = x + 13.6f * (float)k / (float)(v->r[1] + 1);
-            tl_line(gx, 176.f, gx, 171.f, UI_K2, 1.f);
-        }
-    }
-    for (i = 0; i < 16; i++)
-        if (v->on[i]) {
-            const float x = 16.f + (float)i * 13.6f, dx = (float)v->micro[i] * 0.55f, h = 10.f + (float)v->vel[i];
-            ui_RR(x + dx - 3.5f, 176.f - h, 7.f, h, 2.5f, QD_NONE, 1.f, v->tcol);
-            if (v->micro0[i] != v->micro[i] || v->vel0[i] != v->vel[i]) {   /* (the ghost: as it was, outlined) */
-                const float h0 = 10.f + (float)v->vel0[i];
-                tl_alpha(0.7f);
-                ui_RR(x + (float)v->micro0[i] * 0.55f - 3.5f, 176.f - h0, 7.f, h0, 2.5f, UI_G1, 1.4f, QD_NONE);
-                qd_restore();
-            }
-            if (v->micro[i])
-                tl_line(x, 182.f, x + dx, 182.f, UI_K1, 2.4f);
-        }
-    if (!q) {
-        tl_hbar(40.f, 196.f, (float)v->r[0] / 12.f, UI_K1);
-        tl_hbar(130.f, 196.f, (float)v->r[1] / 40.f, UI_K2);
-        return;
-    }
-    tl_hbar(8.f, 198.f, (float)v->r[0] / 100.f, UI_K1);
-    ui_RR(94.f, 196.f, 52.f, 14.f, 3.f, UI_K2, 1.6f, QD_NONE);   /* (a step, cut in its grid's parts) */
-    for (k = 1; k <= v->r[1]; k++) {
-        const float gx = 94.f + 52.f * (float)k / (float)(v->r[1] + 1);
-        tl_line(gx, 196.f, gx, 210.f, UI_K2, 1.6f);
-    }
-    tl_hbar(162.f, 198.f, (float)v->r[2] / 100.f, UI_K3);
-}
-
-/* GRIDS: the map's pad (its nine nodes), the dot at X (KNOB 1, blue) and Y (KNOB 2, green), chaos (KNOB 4) as a
- * yellow cloud round it; the density (KNOB 3) a tall stripe; the part LOW / MID / HIGH as three drums (B5 again: the
- * next). PATTERN: each drum under the track it goes to */
-static void tl_grids(const ui_tools_t *v)
-{
-    const float X = 14.f, Y = 38.f, S = 132.f, dx = X + S * (float)v->r[0] / 255.f, dy = Y + S * (1.f - (float)v->r[1] / 255.f);
-    int a, b, p;
-    ui_RR(X, Y, S, S, 6.f, UI_G2, 1.4f, QD_NONE);
-    for (a = 0; a < 3; a++)
-        for (b = 0; b < 3; b++)
-            ui_O(X + 8.f + (float)a * (S - 16.f) / 2.f, Y + 8.f + (float)b * (S - 16.f) / 2.f, 2.f, QD_NONE, 1.f, UI_G2);
-    tl_line(dx, Y + 4.f, dx, Y + S - 4.f, UI_K1, 1.2f);
-    tl_line(X + 4.f, dy, X + S - 4.f, dy, UI_K2, 1.2f);
-    for (b = 0; b < 12 && v->r[3]; b++) {               /* (the cloud: fixed points, its size the chaos) */
-        const float an = (float)b * 2.39996f, rr = 9.f + (float)v->r[3] / 255.f * 34.f * (0.3f + 0.7f * (float)((b * 7) % 12) / 11.f);
-        ui_O(dx + cosf(an) * rr, dy + sinf(an) * rr, 1.5f, QD_NONE, 1.f, UI_KSEL);
-    }
-    ui_O(dx, dy, 7.f, QD_NONE, 1.f, UI_K3);
-    tl_meter(160.f, 38.f, 22.f, 132.f, (float)v->r[2] / 255.f, UI_K3);
-    for (p = 0; p < 3; p++) {
-        static const float R[3] = {11.f, 8.f, 5.f};
-        const float y = 56.f + (float)p * 46.f;
-        const int on = v->scope == QD_TS_PATTERN ? v->gtr[p] >= 0 : p == v->part;
-        const qd_rgb col = on ? UI_K4 : UI_G2;
-        ui_O(210.f, y, R[p], col, 2.f, on ? col : QD_NONE);
-        if (p == 2)
-            tl_line(201.f, y - 7.f, 219.f, y - 7.f, col, 2.f);
-        if (v->scope == QD_TS_PATTERN && v->gtr[p] >= 0) {   /* (the track it goes to) */
-            char n[12];
-            ui_T(ui_itoa(n, v->gtr[p] + 1), 210.f, y + 26.f, 13.f, 600, 0.f, UI_TRACK_PAL[v->gtr[p] & 7], QD_CENTER);
-        }
-    }
-    tl_lane(v, 0);
-}
-
-/* STRETCH (2026-10-25): the loop as it was (grey ticks, its trigs) over the loop as it is (the track's colour), one time
- * line (TRACK and PATTERN: the eight pages across; PAGE and SELECTED: the page's sixteen steps), the fan between them
- * the squeeze or the spread; the factor big in KNOB 1's blue (/4 .. x1.5 .. x4) over its ladder's thirteen rungs, or the
- * pages it fits onto in KNOB 2's green */
-static float tl_tape(const uint8_t *on, const uint8_t *in, float y, float h, int page, qd_rgb col, float *x1)
+/* ---------------------------------------------------------------- STRETCH: two tapes */
+static int tl_sx(int s, int n) { return 4 + s * 112 / n; }
+/* a tape: the loop's steps on a strip of tape (its sprocket holes), its trigs marked; *x0, *x1 its ends */
+static void tl_tape(const uint8_t *on, const uint8_t *in, int y, int h, int page, qd_rgb col, int *x0, int *x1)
 {
     const int s0 = page >= 0 ? page * 16 : 0, n = page >= 0 ? 16 : 128;
-    const float sw = 224.f / (float)n;
     int s, first = -1, last = 0;
     for (s = 0; s < n; s++) {
         const int k = s0 + s;
-        if (!(in[k >> 3] >> (k & 7) & 1))
-            continue;
-        first = first < 0 ? s : first, last = s;
-        if (on[k >> 3] >> (k & 7) & 1)
-            ui_RR(8.f + (float)s * sw, y, sw > 3.f ? sw - 2.f : 1.3f, h, 0.6f, QD_NONE, 1.f, col);
+        if (in[k >> 3] >> (k & 7) & 1)
+            first = first < 0 ? s : first, last = s;
     }
     first = first < 0 ? 0 : first;
-    ui_RR(8.f + (float)first * sw, y + h + 3.f, (float)(last - first + 1) * sw, 3.f, 1.5f, QD_NONE, 1.f, col);
-    *x1 = 8.f + (float)(last + 1) * sw;
-    return 8.f + (float)first * sw;
+    *x0 = tl_sx(first, n), *x1 = tl_sx(last + 1, n);
+    px_rect(*x0, y, *x1 - *x0, h, PX_BROWN);
+    px_dots(*x0 + 1, y, *x1 - *x0 - 1, UI_BG, 3);       /* (its sprocket holes) */
+    px_dots(*x0 + 1, y + h - 1, *x1 - *x0 - 1, UI_BG, 3);
+    for (s = first; s <= last; s++) {
+        const int k = s0 + s, x = tl_sx(s, n), w = tl_sx(s + 1, n) - x;
+        if ((in[k >> 3] >> (k & 7) & 1) && (on[k >> 3] >> (k & 7) & 1))
+            px_rect(w > 3 ? x + 1 : x, y + 2, w > 3 ? w - 2 : 1, h - 4, col);
+    }
 }
 static void tl_stretch(const ui_tools_t *v)
 {
     const int page = v->scope <= QD_TS_PAGE ? v->page : -1, f = v->fit;
     const qd_rgb kc = f ? UI_K2 : UI_K1;
-    float b0, b1, a0, a1;
-    char s[12];
-    int k;
+    int b0, b1, a0, a1, k, tw, tx;
     for (k = 1; page < 0 && k < 8; k++) {               /* (the pages' bounds: notches by the tapes) */
-        tl_line(8.f + (float)k * 28.f, 36.f, 8.f + (float)k * 28.f, 40.f, UI_G2, 1.f);
-        tl_line(8.f + (float)k * 28.f, 160.f, 8.f + (float)k * 28.f, 164.f, UI_G2, 1.f);
+        px_vline(4 + k * 14, 14, 2, UI_G2);
+        px_vline(4 + k * 14, 78, 2, UI_G2);
     }
-    b0 = tl_tape(v->ton0, v->tin0, 42.f, 14.f, page, UI_G1, &b1);
-    a0 = tl_tape(v->ton, v->tin, 132.f, 22.f, page, v->tcol, &a1);
-    {
-        const float fan[8] = {b0, 62.f, b1, 62.f, a1, 128.f, a0, 128.f};
-        tl_alpha(0.14f);
-        ui_P(fan, 4, QD_NONE, 1.f, 1, kc);
-        qd_restore();
-        tl_line(b0, 62.f, a0, 128.f, kc, 1.4f);
-        tl_line(b1, 62.f, a1, 128.f, kc, 1.4f);
-    }
+    tl_tape(v->ton0, v->tin0, 16, 9, page, UI_G1, &b0, &b1);   /* as it was */
+    tl_tape(v->ton, v->tin, 63, 13, page, v->tcol, &a0, &a1);  /* as it is */
+    px_line(b0, 26, a0, 62, kc);                        /* the pull */
+    px_line(b1 - 1, 26, a1 - 1, 62, kc);
     if (f) {                                            /* (onto f pages: the number, a page beside it) */
-        ui_T(ui_itoa(s, f), 112.f, 110.f, 36.f, 700, 0.f, UI_K2, QD_CENTER);
-        ui_RR(132.f, 86.f, 14.f, 18.f, 2.f, UI_K2, 1.6f, QD_NONE);
-    } else if (!v->lpow) {
-        ui_T("\xc3\x97" "1", 120.f, 110.f, 36.f, 700, 0.f, UI_G2, QD_CENTER);
-    } else {                                            /* (the sign and the number centred together) */
-        static const char *const RN[7] = {"", "1.25", "1.33", "1.5", "2", "3", "4"};
+        char t[12];
+        ui_itoa(t, f);
+        tw = px_text_w(t, PX_FB, 2) + 10;
+        tx = 60 - tw / 2;
+        px_rect(tx - 3, 33, tw + 6, 18, UI_BG);
+        px_text(tx, 35, t, UI_K2, PX_FB, 2);
+        px_box(tx + tw - 7, 37, 7, 10, UI_K2);
+        px_hline(tx + tw - 5, 40, 3, UI_K2);
+    } else {                                            /* (the factor: the sign and the number centred together) */
+        static const char *const RN[7] = {"1", "1.25", "1.33", "1.5", "2", "3", "4"};
         const char *n = RN[v->lpow < 0 ? -v->lpow : v->lpow];
-        const float sw = v->lpow > 0 ? ui_TW("\xc3\x97", 36.f, 700, 0.f) : 18.f;
-        const float x0 = 120.f - (sw + 2.f + ui_TW(n, 36.f, 700, 0.f)) / 2.f;
-        if (v->lpow > 0)
-            ui_T("\xc3\x97", x0, 110.f, 36.f, 700, 0.f, UI_K1, QD_LEFT);
+        const qd_rgb c = v->lpow ? UI_K1 : UI_G2;
+        tw = 12 + px_text_w(n, PX_FB, 2);
+        tx = 60 - tw / 2;
+        px_rect(tx - 3, 33, tw + 6, 18, UI_BG);
+        if (v->lpow < 0)
+            tl_div(tx, 37, 2, c);
         else
-            tl_div(x0 + 8.f, 98.f, 2.f, UI_K1);
-        ui_T(n, x0 + sw + 2.f, 110.f, 36.f, 700, 0.f, UI_K1, QD_LEFT);
-    }
-    for (k = -6; !f && k <= 6; k++) {                   /* (KNOB 1's rung: a dot each, x1 a tall tick) */
-        const float x = 120.f + (float)k * 9.f;
-        const qd_rgb c = k == v->lpow ? UI_K1 : UI_G2;
-        if (!k)
-            ui_RR(x - 1.f, 169.f, 2.f, 10.f, 1.f, QD_NONE, 1.f, c);
-        else
-            ui_O(x, 174.f, k == v->lpow ? 3.4f : 2.2f, QD_NONE, 1.f, c);
+            px_text(tx - 2, 35, "\xc3\x97", c, PX_FB, 2);
+        px_text(tx + 12, 35, n, c, PX_FB, 2);
+        for (k = -6; k <= 6; k++) {                     /* (KNOB 1's rung: a dot each, x1 a tall tick) */
+            const int x = 60 + k * 5;
+            if (!k)
+                px_vline(x, 52, 5, k == v->lpow ? UI_K1 : UI_G2);
+            else if (k == v->lpow)
+                px_rect(x - 1, 53, 3, 3, UI_K1);
+            else
+                px_pset(x, 54, UI_G2);
+        }
     }
     tl_lane(v, 0);
 }
 
-/* CLIP (2026-10-25): COPY, PASTE, CLEAR, the one KNOB 1 picked big (what OCT+ or B10 does), its neighbours small, each
- * its word under it; under the big one what it acts on (the scope's picture, PAGE n or PATTERN; CLEAR: its scope).
- * PASTE with nothing copied grey; CLEAR waiting for its second press red, blinking */
+/* ---------------------------------------------------------------- CLIP: the punch cards */
 static const char *tl_clip_on(char *s, int sc, int act, int page)   /* what the action acts on */
 {
     if (sc == QD_TS_PATTERN || (act == QD_CL_CLEAR && sc != QD_TS_PAGE))
@@ -551,25 +569,37 @@ static const char *tl_clip_on(char *s, int sc, int act, int page)   /* what the 
     s[0] = 'P', s[1] = 'A', s[2] = 'G', s[3] = 'E', s[4] = ' ', s[5] = (char)('1' + (page & 7)), s[6] = 0;
     return s;
 }
-static void tl_clip_icon(int k, float x, float y, float sc, qd_rgb col)
+static void tl_card(int x, int y, int s, qd_rgb col)    /* a punch card, 11 x 7 at s 1: its corner cut, its holes */
 {
-    qd_save();
-    qd_translate(x, y);
-    qd_scale(sc, sc);
-    if (k == QD_CL_COPY) {                              /* two pages */
-        ui_RR(-9.f, -11.f, 13.f, 16.f, 2.f, col, 1.4f, QD_NONE);
-        ui_RR(-4.f, -6.f, 13.f, 16.f, 2.f, QD_NONE, 1.f, col);
-    } else if (k == QD_CL_PASTE) {                      /* the clipboard, a page going onto it */
-        const float h[6] = {-3.5f, 1.f, 0.f, 4.5f, 3.5f, 1.f};
-        ui_RR(-8.f, -9.f, 16.f, 20.f, 2.f, col, 1.4f, QD_NONE);
-        ui_RR(-4.f, -12.f, 8.f, 5.f, 1.5f, QD_NONE, 1.f, col);
-        tl_line(0.f, -4.f, 0.f, 4.f, col, 1.4f);
-        ui_P(h, 3, col, 1.4f, 0, QD_NONE);
-    } else {                                            /* a cross */
-        tl_line(-8.f, -8.f, 8.f, 8.f, col, 2.2f);
-        tl_line(8.f, -8.f, -8.f, 8.f, col, 2.2f);
+    int k;
+    px_rect(x, y, 11 * s, 7 * s, col);
+    px_rect(x, y, s, s, UI_BG);
+    for (k = 0; k < 4; k++) {
+        px_rect(x + (2 + 2 * k) * s, y + 2 * s, s, s, UI_BG);
+        px_rect(x + (3 + 2 * k) * s, y + 4 * s, s, s, UI_BG);
     }
-    qd_restore();
+}
+static void tl_clip_icon(int k, int cx, int cy, int s, qd_rgb col)
+{
+    if (k == QD_CL_COPY) {                              /* two cards */
+        px_box(cx - 3 * s, cy - 6 * s, 11 * s, 7 * s, col);
+        px_rect(cx - 7 * s, cy - 3 * s, 12 * s, 8 * s, UI_BG);
+        tl_card(cx - 6 * s, cy - 2 * s, s, col);
+    } else if (k == QD_CL_PASTE) {                      /* a card going down into the tray */
+        static const char *const AR[5] = {"..#..", "..#..", "#.#.#", ".###.", "..#.."};
+        tl_card(cx - 5 * s, cy - 9 * s, s, col);
+        tl_bits(AR, 5, cx - 2 * s, cy - s, s, col);
+        px_rect(cx - 7 * s, cy + 3 * s, s, 3 * s, col);
+        px_rect(cx + 6 * s, cy + 3 * s, s, 3 * s, col);
+        px_rect(cx - 7 * s, cy + 6 * s, 14 * s, s, col);
+    } else {                                            /* a card struck through */
+        int j;
+        px_box(cx - 6 * s, cy - 4 * s, 12 * s, 8 * s, col);
+        for (j = 0; j < s; j++) {
+            px_line(cx - 7 * s + j, cy - 6 * s, cx + 6 * s + j, cy + 5 * s, col);
+            px_line(cx + 6 * s + j, cy - 6 * s, cx - 7 * s + j, cy + 5 * s, col);
+        }
+    }
 }
 static void tl_clip(const ui_tools_t *v)
 {
@@ -578,41 +608,31 @@ static void tl_clip(const ui_tools_t *v)
     qd_rgb ac = UI_K3;
     char s[8];
     const char *nm = tl_clip_on(s, v->scope, v->act, v->page);
-    float x0;
-    int k;
+    int k, w;
     for (k = 0; k < QD_CL_N; k++) {
         const int ok = (v->act_ok >> k) & 1, on = k == v->act;
-        const qd_rgb col = !ok ? UI_G3 : on ? (k == QD_CL_CLEAR ? UI_RED : UI_K3) : UI_G2;
-        const float x = on ? 120.f : k < v->act ? 36.f : 204.f;
+        const qd_rgb col = !ok ? UI_G3 : on ? (k == QD_CL_CLEAR ? PX_LRED : UI_K3) : UI_G2;
+        const int x = on ? 60 : k < v->act ? 17 : 103;
         if (k < v->act - 1 || k > v->act + 1)
             continue;
-        ac = on ? col : ac;
-        if (on && v->armed)                             /* (CLEAR? the second press) */
-            tl_alpha(0.35f + 0.65f * (sinf(v->t * 18.f) > 0.f));
-        tl_clip_icon(k, x, 82.f, on ? 3.f : 1.6f, col);
-        if (on && v->armed)
-            qd_restore();
-        ui_T(CN[k], x, on ? 138.f : 116.f, 13.f, 600, 1.f, col, QD_CENTER);
-    }
-    x0 = 120.f - (30.f + ui_TW(nm, 15.f, 600, 1.f)) / 2.f;
-    ui_tools_scope_icon(sc, x0 + 11.f, 156.f, ac, 1.f);
-    ui_T(nm, x0 + 30.f, 161.f, 15.f, 600, 1.f, ac, QD_LEFT);
-    for (k = 0; k < QD_CL_N; k++)                       /* (KNOB 1's place among the three) */
-        ui_O(108.f + (float)k * 12.f, 176.f, 3.f, k == v->act ? QD_NONE : UI_G2, 1.2f, k == v->act ? UI_K1 : QD_NONE);
-    tl_lane(v, 0);
-}
-
-/* the eight pages over the lane: the one shown big in the track's colour, the looped ones grey, the others dark */
-static void tl_pages(const ui_tools_t *v)
-{
-    int p;
-    for (p = 0; p < 8; p++) {
-        const float x = 8.f + (float)p * 28.f;
-        if (p == v->page)
-            ui_RR(x, 186.f, 26.f, 8.f, 2.f, QD_NONE, 1.f, v->tcol);
+        if (on)
+            ac = col;
+        if (!on || !v->armed || ((int)(v->t * 6.f) & 1))   /* (CLEAR? waiting for the second press: blinking) */
+            tl_clip_icon(k, x, on ? 31 : 32, on ? 2 : 1, on && v->armed ? UI_RED : col);
+        if (on)
+            px_ctext(x, 49, CN[k], col, PX_FB, 1);
         else
-            ui_RR(x, 188.5f, 26.f, 3.f, 1.5f, QD_NONE, 1.f, (v->loop >> p) & 1 ? UI_G2 : UI_G3);
+            px_ctext(x, 42, CN[k], col, PX_FS, 1);
     }
+    w = 18 + px_text_w(nm, PX_FB, 1);                   /* what it acts on: the scope's picture, the name */
+    tl_scope_icon(sc, 60 - w / 2 + 6, 66, ac, 1);
+    px_text(60 - w / 2 + 18, 63, nm, ac, PX_FB, 1);
+    for (k = 0; k < QD_CL_N; k++)                       /* (KNOB 1's place among the three) */
+        if (k == v->act)
+            px_rect(55 + k * 5, 77, 3, 3, UI_K1);
+        else
+            px_pset(56 + k * 5, 78, UI_G2);
+    tl_lane(v, 0);
 }
 
 void ui_tools_draw(const ui_tools_t *v)
@@ -634,11 +654,21 @@ void ui_tools_draw(const ui_tools_t *v)
     }
 }
 
-/* the popup: a tool's name (kind 0), the scope's takeover (1: SELECTED / PAGE / TRACK / PATTERN, the chosen big), a
- * message (2: the tool's name and what happened). No frame: a dark band under the words (the caller's alpha fades it) */
+/* ---------------------------------------------------------------- the popup
+ * a tool's name (kind 0), the scope's takeover (1: SELECTED / PAGE / TRACK / PATTERN as the terminal's menu, the chosen
+ * in reverse video), a message (2: the tool's name and what happened), RANDOM's knob named (3). A dark band under the
+ * words (the caller's alpha fades it) */
 static const char *const TL_MSG[9] = {"KEPT", "REVERTED", "NO UNDO", "COPIED", "PASTED", "CLEAR?", "CLEARED",
                                        "TOO BIG", "FULL"};
-static const qd_rgb TL_MSGC[9] = {UI_K2, UI_K4, UI_KSEL, UI_K2, UI_K2, UI_RED, UI_K4, UI_KSEL, UI_KSEL};
+static const qd_rgb TL_MSGC[9] = {UI_K2, UI_K4, UI_KSEL, UI_K2, UI_K2, PX_LRED, UI_K4, UI_KSEL, UI_KSEL};
+static void tl_big(const char *s, int y, qd_rgb c)      /* a word as big as it fits: the 8 x 8 doubled, else the small
+                                                         * one tripled */
+{
+    if (px_text_w(s, PX_FB, 2) <= 116)
+        px_ctext(60, y, s, c, PX_FB, 2);
+    else
+        px_ctext(60, y - 1, s, c, PX_FS, 3);
+}
 void ui_tools_pop(int kind, int msg, int tool, int scope, int page)
 {
     int k;
@@ -646,26 +676,29 @@ void ui_tools_pop(int kind, int msg, int tool, int scope, int page)
                                                          * meters (owner-approved words) */
         static const char *const RN[4] = {"DENSITY", "NOTES", "VELOCITY", "CHANCE"};
         static const qd_rgb RC[4] = {UI_K1, UI_K2, UI_K3, UI_K4};
-        qd_fill_rect(0.f, 30.f, 240.f, 26.f, UI_BG);
-        ui_T(RN[msg & 3], 120.f, 50.f, 20.f, 700, 1.f, RC[msg & 3], QD_CENTER);
+        px_rect(0, 13, 120, 13, UI_BG);
+        px_ctext(60, 16, RN[msg & 3], RC[msg & 3], PX_FB, 1);
+        px_dots(0, 25, 120, RC[msg & 3], 2);
         return;
     }
     if (kind != 1) {                                    /* (the messages after NO UNDO: under the scope's name) */
         char s[8];
         const int cl = kind && msg > 2;                 /* (CLIP's: what it acted on, the band over its scope line) */
         msg = msg < 0 || msg > 8 ? 0 : msg;
-        qd_fill_rect(0.f, 84.f, 240.f, cl ? 98.f : 72.f, UI_BG);
-        ui_T(cl ? tl_clip_on(s, scope % QD_TS_N, msg == 5 || msg == 6 ? QD_CL_CLEAR : 0, page) : TL_NAME[tool % QD_TL_N],
-             120.f, 126.f, 34.f, 700, 2.f, UI_K3, QD_CENTER);
-        ui_T(kind ? TL_MSG[msg] : TL_SCOPE[scope % QD_TS_N], 120.f, 150.f, 20.f, 700, 1.f, kind ? TL_MSGC[msg] : UI_G1,
-             QD_CENTER);                                /* (the name alone: the scope it works on under it) */
-        return;
+        px_rect(0, 40, 120, cl ? 46 : 40, UI_BG);
+        px_dots(0, 40, 120, UI_G3, 2);
+        px_dots(0, cl ? 85 : 79, 120, UI_G3, 2);
+        tl_big(cl ? tl_clip_on(s, scope % QD_TS_N, msg == 5 || msg == 6 ? QD_CL_CLEAR : 0, page) : TL_NAME[tool % QD_TL_N],
+               46, UI_K3);
+        px_ctext(60, 66, kind ? TL_MSG[msg] : TL_SCOPE[scope % QD_TS_N], kind ? TL_MSGC[msg] : UI_G1, PX_FB, 1);
+        return;                                         /* (the name alone: the scope it works on under it) */
     }
-    qd_fill_rect(0.f, 30.f, 240.f, 210.f, UI_BG);
+    px_rect(0, 13, 120, 107, UI_BG);
     for (k = 0; k < QD_TS_N; k++) {
-        const int on = k == scope;
-        const float y = 62.f + (float)k * 46.f;
-        ui_tools_scope_icon(k, 52.f, y - 6.f, on ? UI_K3 : UI_G2, 1.8f);
-        ui_T(TL_SCOPE[k], 96.f, y + 2.f, on ? 26.f : 16.f, on ? 700 : 500, 0.f, on ? UI_K3 : UI_G2, QD_LEFT);
+        const int on = k == scope, y = 25 + k * 24;
+        if (on)                                         /* (the chosen: reverse video) */
+            px_rect(36, y - 6, 80, 13, UI_K3);
+        px_text(40, y - 3, TL_SCOPE[k], on ? UI_BG : UI_G2, PX_FB, 1);
+        tl_scope_icon(k, 18, y, on ? UI_K3 : UI_G2, 2);
     }
 }

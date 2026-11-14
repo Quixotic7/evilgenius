@@ -27,7 +27,7 @@ const check = (ok, msg) => { checks++; if (!ok) { fails++; console.log(`  FAIL $
   const b = Uint8Array.from({ length: 96 }, (_, i) => (i * 37 + 11) & 255);
   check(Array.from(unpack7(pack7(b))).join() === Array.from(b).join() && pack7(b).length === 110, "pack7 / unpack7");
   const id = identity();
-  check(id.join() === [0xf0, 0x7d, 0x46, 0x5a, 1, 1, 0x7f, 0xf7].join(), "identity()'s bytes");
+  check(id.join() === [0xf0, 0x7d, 0x45, 0x47, 1, 1, 0x7f, 0xf7].join(), "identity()'s bytes");
   const pk = usbPackets(id);
   check(pk.length === 3 && (pk[2] & 15) === 6 && (pk[0] & 15) === 4, "usbPackets: CIN 4 4 6");
 }

@@ -6,8 +6,8 @@
 #include <stdint.h>
 #include "plat.h"
 
-#define APP_NAME "FIZZ"
-#define APP_SPLASH_RGB RGB(255, 168, 40)     /* the cola's amber */
+#define APP_NAME "EVILGENIUS"
+#define APP_SPLASH_RGB RGB(112, 109, 235)    /* the C64's light blue */
 #define APP_TAGLINE ""
 #define APP_BLOCK 256u                       /* frames per audio half: 5.8 ms (FIZZ's sound made in the interrupt: a
                                               * main-loop lock may hold it up to ~5 ms before a half is late) */
@@ -22,7 +22,7 @@ extern uint8_t fz_fb_hi[][240];
 #define APP_CANVAS_AT ((uint16_t *)(void *)fz_fb_hi)
 #endif
 #define APP_BIG_FONT FONT_B                  /* (FONT_L's 20 KB of flash saved; the splash's name in B, 16 rows) */
-#define APP_SYSEX                            /* FIZZ's SysEx (7D 46 5A: LIST, DUMP, STORE, LABELS ..) */
+#define APP_SYSEX                            /* FIZZ's SysEx (7D 45 47: LIST, DUMP, STORE, LABELS ..) */
 #define APP_USB_CMD                          /* the data blob written over USB (firmware/tools/fizz_xdata.py) */
 #define FM1B_UAC_RING_POOL 1                 /* USB audio in's 2 KB ring in the pool (FIZZ's RAM is full: BUDGET.md) */
 #if QD_PKG_BLE

@@ -112,7 +112,7 @@ static double au_rms(uint32_t ms)                       /* E4: the audio's level
 /* P1.6d: the LABELS now (a request, its reply parsed: the 49 labels) */
 static void labels(char lb[49][12])
 {
-    static const uint8_t LREQ0[9] = {0xF0, 0x7D, 0x46, 0x5A, 0x01, 0x20, 0x00, 0x60, 0xF7};
+    static const uint8_t LREQ0[9] = {0xF0, 0x7D, 0x45, 0x47, 0x01, 0x20, 0x00, 0x60, 0xF7};
     static uint8_t r[4096];
     int n, i, o;
     run(60);
@@ -208,10 +208,10 @@ int main(int argc, char **argv)
     CHECK(bpm() == b0 + 4, "no clock for 700 ms: the knob's tempo again (%d -> %d)", b0, bpm());
     btap(FM1P_B_OCTDN);
 
-    {   /* P1.5r: SysEx through midi_in / midi_out_take: the identity (F0 7D 46 5A 01 01 7F F7 as USB-MIDI packets),
+    {   /* P1.5r: SysEx through midi_in / midi_out_take: the identity (F0 7D 45 47 01 01 7F F7 as USB-MIDI packets),
          * its reply "FIZZ <version>"; the panel's names */
-        static const uint32_t ID[3] = {4u | 0xF0u << 8 | 0x7Du << 16 | 0x46u << 24,
-                                       4u | 0x5Au << 8 | 0x01u << 16 | 0x01u << 24, 6u | 0x7Fu << 8 | 0xF7u << 16};
+        static const uint32_t ID[3] = {4u | 0xF0u << 8 | 0x7Du << 16 | 0x45u << 24,
+                                       4u | 0x47u << 8 | 0x01u << 16 | 0x01u << 24, 6u | 0x7Fu << 8 | 0xF7u << 16};
         uint8_t r[64];
         char want[64];
         uint32_t pkt;
@@ -351,7 +351,7 @@ int main(int argc, char **argv)
     }
 
     {   /* P1.6l: LABELS through midi_in, subscribed: the reply, then GLO held: a reply by itself (SELECT TRACK) */
-        static const uint8_t LREQ[9] = {0xF0, 0x7D, 0x46, 0x5A, 0x01, 0x20, 0x01, 0x5F, 0xF7};
+        static const uint8_t LREQ[9] = {0xF0, 0x7D, 0x45, 0x47, 0x01, 0x20, 0x01, 0x5F, 0xF7};
         static uint8_t r[4096];
         int n, n2;
         btap(FM1P_B_HOME);
@@ -373,7 +373,7 @@ int main(int argc, char **argv)
         run(80);
         sx_out(r, sizeof r);
         {
-            static const uint8_t UNSUB[9] = {0xF0, 0x7D, 0x46, 0x5A, 0x01, 0x20, 0x00, 0x60, 0xF7};
+            static const uint8_t UNSUB[9] = {0xF0, 0x7D, 0x45, 0x47, 0x01, 0x20, 0x00, 0x60, 0xF7};
             sx_in(UNSUB, 9);
             run(5);
             sx_out(r, sizeof r);
@@ -384,7 +384,7 @@ int main(int argc, char **argv)
          * group, PRESETS an ARP;
          * the LABELS reply says so (ALGORITHM GROUP, PRESETS EFFECT, KNOB 1 PATTERN, B1 ARP); W1 held (through the
          * group); F1 tapped closes it */
-        static const uint8_t LREQ0[9] = {0xF0, 0x7D, 0x46, 0x5A, 0x01, 0x20, 0x00, 0x60, 0xF7};
+        static const uint8_t LREQ0[9] = {0xF0, 0x7D, 0x45, 0x47, 0x01, 0x20, 0x00, 0x60, 0xF7};
         static uint8_t r[4096];
         char lb[49][12];
         int n, i, o, ok;
@@ -584,7 +584,7 @@ int main(int argc, char **argv)
             sx_out(r, sizeof r);
         }
         {
-            static const uint8_t DALL[10] = {0xF0, 0x7D, 0x46, 0x5A, 0x01, 0x22, 0x00, 0x00, 0x00, 0x5E};
+            static const uint8_t DALL[10] = {0xF0, 0x7D, 0x45, 0x47, 0x01, 0x22, 0x00, 0x00, 0x00, 0x5E};
             uint8_t dall[11];
             memcpy(dall, DALL, 10);
             dall[10] = 0xF7;
@@ -613,7 +613,7 @@ int main(int argc, char **argv)
 
     {   /* E4: the MOD WHEEL through midi_in: INIT (DUMPed from the factory presets) with one slot MW -> LEVEL -127, STORE6d
          * with LOAD onto track 1; a note held on channel 1 and CC 1 ramped 0 -> 127 -> 0: the level down, then back */
-        static const uint8_t DF[11] = {0xF0, 0x7D, 0x46, 0x5A, 0x01, 0x22, 0x01, 0x00, 0x01, 0x5C, 0xF7};
+        static const uint8_t DF[11] = {0xF0, 0x7D, 0x45, 0x47, 0x01, 0x22, 0x01, 0x00, 0x01, 0x5C, 0xF7};
         static const int EXT_MIN[12] = {0, 0, 0, 0, 0, 0, 0, -64, 0, 0, 0, 0}, EXT_DEF[12] = {0, 127, 0, 32, 0, 0, 0, 0, 0,
                                                                                               0, 0, 1};
         static uint8_t r[2048], f[256];
@@ -625,7 +625,7 @@ int main(int argc, char **argv)
         sx_in(DF, 11);
         run(20);
         n = sx_out(r, sizeof r);
-        for (i = 0; i + 140 <= n; i++)                   /* the DUMP's frame: F0 7D 46 5A 01 10 .. (version 5's) */
+        for (i = 0; i + 140 <= n; i++)                   /* the DUMP's frame: F0 7D 45 47 01 10 .. (version 5's) */
             if (r[i] == 0xF0 && r[i + 5] == 0x10) {
                 const uint8_t *p7 = r + i + 6 + 22;
                 int o = 0, q = 0;

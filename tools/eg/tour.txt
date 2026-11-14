@@ -1,0 +1,839 @@
+# EvilGenius / FIZZ: every screen, from a real state (tools/eg/tour.c). The names are the mock-ups'.
+wait 300
+shot 00-idle Idle: the logo at power-on
+tap HOME
+wait 300
+play
+wait 1500
+shot 03-edit HOME: EDIT (the default view), the mode's picture over the page's row
+tap HOME
+wait 400
+shot 04-geek HOME: GEEK OUT, METERS
+knob SELECT 1
+wait 300
+shot 05-geek-num GEEK OUT: NUMBERS
+knob SELECT 2
+wait 300
+shot 06-geek-scope GEEK OUT: SCOPE
+tap HOME
+wait 400
+shot 01-roll HOME: PIANO ROLL (NOTE), the demo playing
+tap HOME
+wait 400
+shot 02-steps HOME: STEPS, the track's eight pages
+tap HOME
+wait 300
+tap HOME
+wait 300
+tap HOME
+wait 300
+# back on the PIANO ROLL: the modes' lanes
+tapkey B2
+wait 300
+shot 07-lane-vel Step view, B2: VEL lane
+tapkey B3
+wait 300
+shot 08-lane-len B3: LEN lane
+tapkey B4
+wait 300
+shot 09-lane-micro B4: MICRO lane
+tapkey B5
+wait 300
+shot 10-lane-ratch B5: RATCH lane
+tapkey B6
+wait 300
+shot 11-lane-chnc B6: CHANCE lane
+tapkey B7
+wait 300
+shot 12-lane-cond B7: COND lane
+tapkey B8
+wait 300
+shot 13-lane-func B8: FUNC lane
+tapkey B9
+wait 300
+shot 14-lane-trig B9: TRIG lane
+tapkey B10
+wait 300
+shot 15-lane-sound B10: SOUND lane
+tapkey B1
+wait 300
+# the EDIT view: each mode's picture over the page's row (PIANO ROLL -> STEPS -> EDIT)
+tap HOME
+wait 200
+tap HOME
+wait 200
+tapkey B2
+wait 300
+shot 60-edit-vel EDIT view, VEL: the agent's somersault
+tapkey B3
+wait 300
+shot 61-edit-len EDIT view, LEN: the lift platform
+tapkey B4
+wait 300
+shot 62-edit-micro EDIT view, MICRO
+tapkey B5
+wait 300
+shot 63-edit-ratch EDIT view, RATCH: the robot's bolts
+tapkey B6
+wait 300
+shot 64-edit-chnc EDIT view, CHANCE: the security panel
+tapkey B7
+wait 300
+shot 65-edit-cond EDIT view, COND
+tapkey B8
+wait 300
+shot 66-edit-func EDIT view, FUNC
+tapkey B9
+wait 300
+shot 67-edit-trig EDIT view, TRIG: three terminals
+tapkey B10
+wait 300
+shot 68-edit-sound EDIT view, SOUND: the floppy
+tapkey B9
+wait 300
+tapkey B9
+wait 300
+shot 69-edit-slide EDIT view, SLIDE
+tapkey B1
+wait 300
+key W5 down
+wait 400
+shot 70-edit-held-note EDIT view, W5 held: STEP 5 NOTE
+key W5 up
+wait 300
+tap HOME
+wait 200
+tap HOME
+wait 200
+# a held step
+key W5 down
+wait 400
+shot 16-held-note W5 held: STEP 5 NOTE, the scale degrees on the black keys
+key W5 up
+tapkey B2
+key W5 down
+wait 400
+knob K1 4
+wait 100
+shot 17-held-vel W5 held in VEL, KNOB 1 turned: the value and the strip
+key W5 up
+tapkey B3
+key W5 down
+wait 400
+shot 18-held-len W5 held in LEN
+key W5 up
+tapkey B5
+key W5 down
+wait 400
+shot 19-held-ratch W5 held in RATCH
+key W5 up
+tapkey B1
+wait 1200
+# a mode key held: the track default
+key B2 down
+wait 500
+shot 20-default-vel B2 held: VEL's TRACK DEFAULT
+key B2 up
+wait 1200
+# ALGORITHM: the step cursor (the latch)
+knob ALGO 3
+wait 300
+shot 21-latch-cursor ALGORITHM turned: the step lock on, step 3 selected
+knob ALGO -6
+wait 1200
+# F1 / F2 / F3
+down OCT-
+wait 300
+shot 22-f1 F1 (OCT-) held: pages, copy, clear
+up OCT-
+wait 400
+down OCT+
+wait 300
+shot 23-f2 F2 (OCT+) held: pick up / drop
+up OCT+
+wait 400
+down OCT-
+down OCT+
+wait 100
+up OCT-
+up OCT+
+wait 300
+shot 24-f3 F3 (both): range and rate
+tap OCT-
+wait 400
+# B11 held: the pages, B11 click: the keys
+key B11 down
+wait 500
+shot 25-b11 B11 held: the pages picture
+key B11 up
+wait 300
+tapkey B11
+wait 300
+shot 26-stepkeys B11 click: the white keys play (the step keyboard)
+tapkey B11
+wait 300
+# SHIFT
+down GLO
+wait 300
+shot 27-shift GLO (SHIFT) held: the shortcuts
+up GLO
+tap GLO
+wait 100
+tap GLO
+wait 400
+# SEL: OVERVIEW; held: the track settings
+tap SEL
+wait 400
+shot 28-overview SEL: OVERVIEW, the six tracks
+tap SEL
+wait 300
+down SEL
+wait 700
+up SEL
+wait 300
+shot 29-track-settings SEL held: track settings
+tap OCT-
+wait 300
+tap HOME
+wait 300
+# SEQ held: patterns; SEQ tap: TOOLS
+down SEQ
+wait 500
+shot 30-patterns SEQ held: the patterns
+up SEQ
+tap SEQ
+wait 300
+tap HOME
+wait 300
+tap SEQ
+wait 400
+shot 31-tools SEQ: TOOLS
+tap HOME
+wait 300
+# ENV: MIX
+tap ENV
+wait 400
+shot 32-mix ENV: the mixer, faders
+tap ENV
+wait 400
+shot 33-mix-sends ENV again: the sends
+tap HOME
+wait 300
+# FX
+tap FX
+wait 400
+shot 34-fx-sends FX: SENDS
+tap FX
+wait 400
+shot 35-fx-chorus FX: CHORUS
+tap FX
+wait 400
+shot 36-fx-delay FX: DELAY
+tap HOME
+wait 300
+# FX held + ALGORITHM: the track
+down FX
+knob ALGO 1
+wait 300
+shot 37-track-pick FX held + ALGORITHM: choose the track
+up FX
+wait 1300
+# EDIT: the sound editor
+tap EDIT
+wait 400
+shot 38-snd EDIT: the sound editor, its first page
+tapkey B4
+wait 400
+shot 39-snd-filter EDIT, B4: FILTER
+tapkey B5
+wait 400
+shot 40-snd-amp EDIT, B5: AMP
+key W5 down
+wait 300
+knob K1 3
+wait 100
+shot 41-snd-lock EDIT with W5 held, KNOB 1 turned: a lock on the step
+key W5 up
+tap HOME
+wait 300
+# ARP: MIDI FX
+tap ARP
+wait 400
+shot 42-mfx ARP: MIDI FX
+tap HOME
+wait 300
+# REC: the keyboard page
+tap REC
+wait 300
+key W1 down
+key W3 down
+wait 200
+shot 43-keys REC: the keyboard page, two keys held
+key W1 up
+key W3 up
+tap HOME
+wait 300
+# the octave: on the keyboard page, OCT+
+tap REC
+wait 300
+tap OCT+
+wait 150
+shot 44-octave REC, OCT+: the keyboard's octave as a lift
+wait 1300
+tap OCT-
+wait 1300
+tap HOME
+wait 300
+# PRESETS: the browser
+knob PRESETS 1
+wait 300
+shot 45-browse PRESETS: the library browser
+tap OCT-
+wait 400
+# a takeover: KNOB 1 with nothing held (the track default)
+knob K1 2
+wait 100
+shot 46-takeover KNOB 1 with nothing held: the track default's takeover
+wait 1400
+# SAVE: the typewriter
+tap SAVE
+wait 400
+shot 47-save SAVE: the typewriter
+tap HOME
+wait 300
+down GLO
+tap SAVE
+up GLO
+wait 400
+shot 48-project SHIFT+SAVE: the project
+tap HOME
+wait 300
+# HOME held: settings
+down HOME
+wait 700
+up HOME
+wait 300
+shot 49-settings HOME held: the global settings
+tap OCT-
+wait 300
+# LFO held: the latch mode
+down LFO
+wait 600
+shot 50-lmode LFO held: the latch mode
+up LFO
+wait 300
+# REC settings
+down GLO
+tap REC
+up GLO
+wait 300
+shot 51-rec-settings SHIFT+REC: record settings
+tap OCT-
+wait 300
+# batch 2: the takeovers
+tap HOME
+wait 300
+tap REC
+wait 300
+knob K1 -3
+wait 100
+shot 80-tk-cutoff Keyboard page, KNOB 1: CUTOFF takeover
+wait 1300
+knob K2 -2
+wait 100
+shot 81-tk-decay KNOB 2: DECAY
+wait 1300
+knob K3 3
+wait 100
+shot 82-tk-pw KNOB 3: PULSE WIDTH
+wait 1300
+knob K4 4
+wait 100
+shot 83-tk-reso KNOB 4: RESONANCE
+wait 1300
+tap HOME
+wait 300
+down OCT-
+down OCT+
+wait 100
+up OCT-
+up OCT+
+wait 200
+knob PRESETS 2
+wait 100
+shot 84-tk-tempo F3, PRESETS: the tempo
+wait 1300
+knob ALGO 2
+wait 100
+shot 85-tk-swing F3, ALGORITHM: the swing
+wait 1300
+tap OCT-
+wait 300
+down GLO
+tapkey B6
+wait 400
+tapkey B6
+wait 400
+tapkey B6
+wait 100
+shot 86-tk-tap SHIFT + B6: tap tempo
+up GLO
+wait 3000
+down GLO
+tap OCT-
+up GLO
+wait 100
+shot 87-undo SHIFT + F1: undo
+wait 1500
+knob SELECT 1
+wait 100
+shot 88-tk-page SELECT: the page
+wait 1500
+# batch 2: the sound editor, SID TONE's pages
+tap HOME
+wait 300
+tap EDIT
+wait 300
+shot 90-snd-start EDIT: the first page (OSC 1)
+tapkey B2
+wait 200
+shot 91-snd-osc2 B2 again: OSC 2
+tapkey B3
+wait 200
+shot 92-snd-env1 B3: ENV 1
+tapkey B3
+wait 200
+shot 93-snd-env2 B3 again: ENV 2 (linked)
+tapkey B4
+wait 200
+shot 94-snd-filter B4: FILTER
+tapkey B4
+wait 200
+shot 95-snd-fenv B4 again: F ENV
+tapkey B4
+wait 200
+shot 96-snd-chip B4 again: CHIP
+tapkey B5
+wait 200
+knob K1 1
+wait 100
+shot 97-snd-word B5: VOX WORD, KNOB 1 picks INTRUDER
+tapkey B5
+wait 200
+shot 98-snd-digi B5 again: DIGI ($D418)
+tapkey B1
+wait 200
+shot 99-snd-port B1: PORT
+tapkey B1
+wait 200
+shot 100-snd-voice B1 again: VOICE
+tapkey B1
+wait 200
+shot 101-snd-mod B1 again: MOD
+tapkey B1
+wait 200
+shot 102-snd-amp B1 again: AMP
+tapkey B1
+wait 200
+shot 103-snd-crush B1 again: CRUSH
+tapkey B6
+wait 200
+shot 104-snd-lfo B6: LFO 1
+tapkey B6
+wait 200
+shot 105-snd-lfowave B6 again: LFO 1 WAVE
+tapkey B4
+wait 200
+key B4 down
+wait 600
+shot 106-snd-fpop B4 held: the filter's modes
+key B4 up
+wait 300
+key W5 down
+wait 300
+knob K1 -20
+wait 100
+shot 107-snd-lock W5 held, KNOB 1: CUTOFF locked on step 5
+key W5 up
+wait 300
+tap HOME
+wait 300
+# batch 2: the mixer, the retro rooms
+play
+wait 500
+tap ENV
+wait 400
+shot 110-mix ENV: the mix, lift shafts
+tap ENV
+wait 300
+shot 111-mix-sends ENV again: the sends
+tap HOME
+wait 300
+tap FX
+wait 400
+shot 112-fx-sends FX: SENDS, the villain listening
+tapkey B2
+wait 300
+shot 113-fx-chorus B2: CHORUS
+tapkey B3
+wait 300
+shot 114-fx-echo B3: ECHO
+tapkey B4
+wait 300
+shot 115-fx-room B4: ROOM
+tapkey B5
+knob K4 20
+wait 300
+shot 116-fx-crush B5: CRUSH, MIX up
+tapkey B6
+knob K4 20
+wait 300
+shot 117-fx-robot B6: ROBOT, MIX up
+tapkey B7
+knob K4 20
+wait 300
+shot 118-fx-warp B7: WARP, MIX up
+tapkey B8
+knob K4 20
+wait 300
+shot 119-fx-glitch B8: GLITCH, MIX up
+tapkey B9
+knob K4 20
+wait 300
+shot 120-fx-tv B9: TV, MIX up
+tap HOME
+wait 300
+# batch 3: the MIDI FX pages (ui_mfx.c), the demo playing
+tap ARP
+wait 400
+shot 130-mfx-off ARP: MIDI FX, the track on no group (OFF)
+knob ALGO 1
+wait 300
+shot 130b-mfx-groups ALGORITHM turned: the routing map, the track wired to group 1
+wait 1600
+shot 131-mfx-empty Group 1, slot 1 empty: the ten effects orbiting
+knob PRESETS 1
+wait 150
+shot 131b-mfx-roll PRESETS turned: the types' rolodex (ARP)
+wait 1600
+tapkey B11
+wait 200
+key W1 down
+key W3 down
+key W5 down
+wait 700
+shot 132-mfx-arp ARP, three keys held: the walk as lift platforms, the agent running
+key W1 up
+key W3 up
+key W5 up
+tapkey B11
+wait 300
+knob SELECT 1
+wait 300
+knob SELECT 1
+wait 300
+tapkey W3
+knob K1 1
+tapkey W6
+knob K1 7
+tapkey W8
+knob K1 2
+wait 400
+shot 132b-mfx-arp-mod ARP page 3: the MOD lane (a rest, a chord, a tie)
+knob SELECT 1
+wait 300
+tapkey W2
+knob K1 7
+tapkey W4
+knob K1 -5
+tapkey W5
+knob K1 12
+wait 400
+shot 132c-mfx-arp-tr ARP page 4: the TRANSPOSE lane
+knob SELECT 1
+wait 300
+tapkey B2
+knob PRESETS 2
+wait 1600
+knob K1 -6
+wait 400
+shot 133-mfx-chance CHANCE (70 %): the robot over the trapdoor
+tapkey B3
+knob PRESETS 3
+wait 1600
+knob K2 2
+knob K3 -10
+wait 400
+shot 134-mfx-repeat REPEAT (FADE down): the robot pacing the hits
+tapkey B4
+knob PRESETS 4
+wait 1800
+shot 135-mfx-harm HARM: the voices out of the keybed
+tapkey B5
+knob PRESETS 5
+wait 1600
+knob K1 5
+wait 900
+shot 136-mfx-transpose TRANSPOSE (SEMI up, OCT +1): the agent riding the two lifts
+tapkey B6
+knob PRESETS 6
+wait 2000
+shot 136b-mfx-scaler SCALER: a note off the scale sliding onto it
+tapkey B7
+knob PRESETS 7
+wait 1600
+knob K1 4
+knob K3 6
+wait 400
+shot 137-mfx-random RANDOM: the die, PITCH, VEL, LENGTH
+tapkey B8
+knob PRESETS 8
+wait 2000
+shot 137b-mfx-chord CHORD: the chord's keys struck
+knob PRESETS 1
+wait 2300
+shot 138-mfx-mono MONO: four lanes into one
+tapkey B2
+knob PRESETS 8
+wait 2200
+shot 138b-mfx-selector SELECTOR: the lever throwing notes to the next slots
+tapkey B10
+wait 400
+shot 139-mfx-bypass B10: the slot bypassed (its picture half-toned)
+tapkey B10
+tapkey B9
+wait 200
+shot 139b-mfx-armed B9: removal armed (the red X)
+tapkey B1
+wait 300
+down OCT-
+tapkey B4
+wait 400
+shot 139c-mfx-f1 F1 + B4: the copy lifted, where it goes
+up OCT-
+wait 300
+key W5 down
+wait 300
+knob ALGO 2
+wait 200
+shot 139d-mfx-step W5 held, ALGORITHM: step 5's MIDI FX (group 1)
+key W5 up
+wait 1500
+key B3 down
+wait 400
+knob K1 2
+wait 200
+shot 139e-mfx-drag B3 held + KNOB 1: the slot carried along the rail, the others making room
+key B3 up
+wait 400
+down GLO
+tap ARP
+up GLO
+wait 1800
+shot 139f-mfx-route-off SHIFT + ARP: the track's MIDI FX bypassed (OFF in the head)
+down GLO
+tap ARP
+up GLO
+wait 1800
+tap HOME
+wait 300
+# batch 3: idle, through its loop
+reset
+wait 4300
+shot 00b-idle-drop Idle at 4.3 s: the title's letters dropping in
+wait 1700
+shot 00c-idle-title Idle at 6 s: the title, the agent, the robot
+wait 3400
+shot 00d-idle-fall Idle at 9.4 s: the letters falling away
+# batch 3: the keyboard page, live recording
+tap HOME
+wait 300
+tap REC
+wait 300
+tap REC
+wait 200
+play
+wait 300
+key W1 down
+wait 500
+key W1 up
+wait 200
+key W5 down
+key W8 down
+wait 600
+shot 120b-keys-live REC on the keyboard page, PLAY: live recording, the notes scrolling
+key W5 up
+key W8 up
+tap REC
+wait 200
+play
+wait 300
+tap HOME
+wait 300
+# batch 3: the library: browsing, LOADED, the typewriter typing, its ideas, the projects
+reset
+tap HOME
+wait 300
+knob PRESETS 2
+wait 250
+shot 45b-browse-next PRESETS turned twice: the next preset sounding, its floppy turning
+wait 600
+tap OCT+
+wait 150
+shot 45c-loaded OCT+: LOADED, the card flying into the track's box
+wait 450
+shot 45d-loaded2 LOADED: its name
+wait 1500
+tap HOME
+wait 300
+tap SAVE
+wait 400
+tapkey B3
+wait 80
+tapkey W5
+wait 100
+shot 47b-save-typing SAVE, B3 W5: typing, the letter flying up from its key
+wait 600
+knob PRESETS 1
+wait 300
+shot 47c-save-ideas PRESETS: the ideas, names to take
+tap HOME
+wait 300
+down GLO
+tap SAVE
+up GLO
+wait 300
+down GLO
+tap SAVE
+up GLO
+wait 400
+shot 48b-projects SHIFT+SAVE twice: the projects as floppies
+tap HOME
+wait 300
+# batch 3: the page takeover, from the STEPS view (HOME: EDIT, GEEK, ROLL, STEPS)
+reset
+tap HOME
+wait 300
+tap HOME
+wait 300
+tap HOME
+wait 300
+tap HOME
+wait 300
+knob SELECT 1
+wait 100
+shot 88b-tk-page STEPS, SELECT: the page takeover
+wait 1500
+# batch 4: SEQ TOOLS (the agent's puzzle terminal) and GEEK OUT (the machine-language monitor)
+reset
+tap HOME
+wait 300
+play
+wait 1200
+tap SEQ
+wait 1100
+knob K1 3
+wait 400
+shot 140-tools-rotate SEQ: TOOLS, ROTATE (B1), KNOB 1 +3: the ring of floor tiles turned
+tapkey B2
+wait 300
+tapkey B2
+wait 900
+shot 141-tools-reverse B2 twice: REVERSE, the result flipped
+tapkey B3
+wait 300
+knob K2 4
+wait 1300
+shot 142-tools-random B3: RANDOM, KNOB 2 up: the scrambled terminal
+tapkey B4
+wait 300
+knob K1 2
+knob K2 -4
+knob K3 1
+wait 1000
+shot 143-tools-euclid B4: EUCLID, hits, length, rotation: the robot's patrol
+tapkey B5
+wait 300
+knob K1 10
+knob K4 12
+wait 1000
+shot 144-tools-grids B5: GRIDS, X and CHAOS turned: the map
+tapkey B6
+wait 300
+tapkey B6
+wait 300
+knob K1 10
+knob K2 2
+wait 1000
+shot 145-tools-quantize B6 twice: QUANTIZE, its amount and grid
+tapkey B8
+wait 300
+knob K1 1
+wait 1000
+shot 146-tools-length B8: LENGTH, KNOB 1: x2
+tapkey B9
+wait 300
+knob K1 3
+wait 1000
+shot 147-tools-stretch B9: STRETCH, KNOB 1 x1.5: the tape pulled
+tapkey B10
+wait 1000
+shot 148-tools-clip B10: CLIP, COPY: the punch card
+knob K1 2
+wait 300
+tapkey B10
+wait 100
+shot 149-tools-clear B10 on CLEAR: CLEAR? armed, blinking
+wait 1500
+tap HOME
+wait 300
+reset
+tap HOME
+wait 300
+play
+wait 3000
+tap HOME
+wait 1300
+shot 150-geek-meters GEEK OUT: METERS (the host gives no figures: dim)
+knob SELECT 1
+wait 400
+shot 151-geek-numbers GEEK OUT: NUMBERS, the BASIC screen
+knob SELECT 1
+wait 400
+shot 152-geek-voices GEEK OUT: VOICES, a column a track
+knob SELECT 1
+wait 400
+shot 153-geek-scope GEEK OUT: SCOPE, the loudest track as a hard pixel line
+knob SELECT 1
+wait 400
+shot 154-geek-tracks GEEK OUT: TRACKS, the six tracks' lines
+tap HOME
+wait 300
+reset
+tap HOME
+wait 300
+play
+wait 1200
+tap SEQ
+wait 200
+shot 155-tools-pop-name SEQ: TOOLS opened, the tool's name popped (ROTATE, the scope under it)
+wait 1000
+tapkey B7
+wait 150
+shot 156-tools-pop-scope B7: the scope's takeover, the terminal's menu (PATTERN)
+wait 1300
+tapkey B6
+wait 1000
+knob K1 6
+knob K2 20
+wait 600
+shot 157-tools-humanize B6: HUMANIZE, both jitters turned: the ghosts behind
+tap OCT+
+wait 150
+shot 158-tools-pop-kept OCT+: KEPT
+wait 1000
+tapkey B3
+wait 1000
+knob K3 3
+wait 100
+shot 159-tools-pop-random B3 RANDOM, KNOB 3 turned: VELOCITY named over the meters

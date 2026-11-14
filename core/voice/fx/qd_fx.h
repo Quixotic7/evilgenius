@@ -1,13 +1,16 @@
 /* SPDX-License-Identifier: MPL-2.0
  * This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0. If a copy of the MPL was not
  * distributed with this file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-/* ChoralRoot's effects and output chain as a library (qd_fx.c over fz_out.c and the owner's cr_fx.c, v0.25.1): the stereo chorus (xc_block), the delay at half rate tempo-synced and the reverb (xf_block), the master
- * filter (xq_block: Off, as ChoralRoot's default), then Options > Output Clean (out_master: the trim, the DC blocker,
- * the look-ahead limiter, the knee, MASTER). DIST / DRIVE is not in P1.1.
- *
- * One instance (ChoralRoot's state is file-static: one per loaded core). One control block (32 frames) a call, in the
- * order ChoralRoot's mix_block runs them. Integer arithmetic: two runs give the same samples. Nothing calls the
- * OS. */
+/* EvilGenius's effects: the retro set, eight rooms (qd_fx.c), then FIZZ's output (fz_out.c: the trim, the DC blocker,
+ * the look-ahead limiter, MASTER).
+ *   the three sends (each track's, lockable on a step, as FIZZ's):  CHORUS (the PAL chorus), ECHO (a tempo echo whose
+ *                                                                    repeats darken and crumble), ROOM (a small reverb)
+ *   then on the whole mix, in order:                                 CRUSH (bits, sample rate), ROBOT (a ring
+ *                                                                    modulator), WARP (a comb / flanger), GLITCH (a
+ *                                                                    beat-repeat in tempo), TV (a small speaker, the
+ *                                                                    mains' hum, a little drive)
+ * One instance, one control block (32 frames) a call. Integer DSP but for the coefficients a block works out: two runs
+ * give the same samples. */
 #pragma once
 #include <stdint.h>
 
@@ -17,48 +20,45 @@ extern "C" {
 
 #define QD_FX_CTL 32
 
-/* power-on: ChoralRoot's defaults (the delay's and the reverb's xf_defaults, the chorus's rate 40 and depth 60
- * (params.c), Output Clean, the limiter at rest, 120 BPM, MASTER at pot 724: Felucca's 2048 of 4096) */
 void qd_fx_init(void);
-void qd_fx_tempo_fx(int bpm);           /* P2.6g: the effects' alone (a pipelined block's end on its own bpm) */
-void qd_fx_tempo(int bpm);              /* the tempo the synced delay follows (cr_fx.c xf_bpm, 20..300) */
-void qd_fx_master_pot(int pot);         /* MASTER, the pot 0..1023 (pot^2 / 256, Q12: fz_master_of_pot) */
+void qd_fx_tempo_fx(int bpm);
+void qd_fx_tempo(int bpm);
+void qd_fx_master_pot(int pot);
 uint32_t qd_fx_master_q12(void);
-/* P1.4b: the effects' own parameters (global: no sound or pattern load touches them), ChoralRoot's xfp[] (cr_fx.c XP_*,
- * in its order: the delay's nine, the reverb's seven, the chorus's width, the master filter's four) and the chorus's
- * rate and depth (song.g G_CRATE, G_CDEPTH). A change takes effect at the next block (cr_fx.c's own hashes) */
-enum { QD_FXP_DTIME, QD_FXP_DDIV, QD_FXP_DSPREAD, QD_FXP_DRATIO, QD_FXP_DFDBK, QD_FXP_DSYNC, QD_FXP_DMODE,
-       QD_FXP_DTONE, QD_FXP_DWOW, QD_FXP_RSIZE, QD_FXP_RDAMP, QD_FXP_RDECAY, QD_FXP_RPRE, QD_FXP_RMOD, QD_FXP_RLOW,
-       QD_FXP_RWIDTH, QD_FXP_CWIDTH, QD_FXP_FLOW, QD_FXP_FHIGH, QD_FXP_FSLOPE, QD_FXP_FON,
-       QD_FXP_CRATE, QD_FXP_CDEPTH,
-       /* P1.5b: the routing page (ChoralRoot has none: every one 0, its chain exactly): DELAY -> REVERB, CHORUS -> DELAY,
-        * CHORUS -> REVERB (0..127, the return fed into the other's send), the master filter's place (0 after the
-        * effects, ChoralRoot's; 1 before them, on the dry mix) */
-       QD_FXP_RMODE, QD_FXP_ORDER, QD_FXP_RDRY, QD_FXP_RSPARE1, QD_FXP_RSPARE2,   /* the routing (2026-10-26, after
-                                         * ChoralRoot 0.27's): the mode (0 PARALLEL, the buses as before; 1 CHAIN, one path),
-                                         * the order of the four blocks (QD_RT_ORD's index 0..23), and in CHAIN the DRY
-                                         * level (the dry mix straight to the output, 0..127; the owner, the same day:
-                                         * each effect is fed by its own send, the SENDS page's, not by an amount of its
-                                         * own); two values spare (the old chain amounts' slots) */
-       QD_NFXP };
-enum { QD_RT_CHORUS, QD_RT_DELAY, QD_RT_REVERB, QD_RT_FILTER, QD_RT_N };   /* the chain's blocks */
-int qd_fx_route_block(int pos);         /* the block at position 0..3 of the order */
-void qd_fx_chain_g(const int32_t g[3]);   /* 2026-10-26, CHAIN: how much of the wet made before it each effect takes
-                                         * (CHORUS, DELAY, REVERB; Q12: the tracks' sends, level-weighted) */
-int qd_fx_route_move(int block, int dir);   /* the block one place along (CHAIN; PARALLEL: the filter between its two
-                                         * places, before (dir < 0) or after (dir > 0) the buses); 1 moved */
+/* the effects' parameters (global: no sound or pattern load touches them; the SET record keeps them) */
+enum {
+    /* ECHO (the delay send): TIME free (1..127: 10 ms .. 1 s), DIV synced, SPREAD free / RATIO synced (the right side
+     * later), FEEDBACK, SYNC, MODE (STEREO / PING-PONG), LOFI (the repeats darker and coarser), WOW */
+    QD_FXP_DTIME, QD_FXP_DDIV, QD_FXP_DSPREAD, QD_FXP_DRATIO, QD_FXP_DFDBK, QD_FXP_DSYNC, QD_FXP_DMODE,
+    QD_FXP_DTONE, QD_FXP_DWOW,
+    /* ROOM (the reverb send): SIZE, DAMP, DECAY (127: held), PRE-DELAY, MOD, LOW CUT, WIDTH */
+    QD_FXP_RSIZE, QD_FXP_RDAMP, QD_FXP_RDECAY, QD_FXP_RPRE, QD_FXP_RMOD, QD_FXP_RLOW, QD_FXP_RWIDTH,
+    /* CHORUS (the chorus send): WIDTH, RATE, DEPTH */
+    QD_FXP_CWIDTH, QD_FXP_CRATE, QD_FXP_CDEPTH,
+    /* (FIZZ's routing: one path here, PARALLEL; kept as values for the stored set) */
+    QD_FXP_RMODE, QD_FXP_ORDER, QD_FXP_RDRY, QD_FXP_RSPARE1, QD_FXP_RSPARE2,
+    /* the rooms on the mix: each MIX 0 is off */
+    QD_FXP_XBITS, QD_FXP_XRATE, QD_FXP_XJIT, QD_FXP_XMIX,          /* CRUSH: bits 1..16, the rate, jitter, mix */
+    QD_FXP_RBFREQ, QD_FXP_RBWAVE, QD_FXP_RBLFO, QD_FXP_RBMIX,      /* ROBOT: the carrier, its wave, its wobble, mix */
+    QD_FXP_WTIME, QD_FXP_WFB, QD_FXP_WRATE, QD_FXP_WMIX,           /* WARP: the comb's time, feedback (+-), sweep, mix */
+    QD_FXP_GLEN, QD_FXP_GCHNC, QD_FXP_GPTCH, QD_FXP_GMIX,          /* GLITCH: the slice, chance, pitch a repeat, mix */
+    QD_FXP_TVTONE, QD_FXP_TVHUM, QD_FXP_TVDRV, QD_FXP_TVMIX,       /* TV: the speaker's tone, the hum, drive, mix */
+    QD_NFXP
+};
+enum { QD_RT_CHORUS, QD_RT_DELAY, QD_RT_REVERB, QD_RT_FILTER, QD_RT_N };
+int qd_fx_route_block(int pos);
+void qd_fx_chain_g(const int32_t g[3]);
+int qd_fx_route_move(int block, int dir);
 int qd_fx_get(int id);
-void qd_fx_set(int id, int v);          /* clamped to its range */
+void qd_fx_set(int id, int v);
 void qd_fx_range(int id, int *min, int *max, int *def);
-/* its value as ChoralRoot's FX pages read it ("250 ms", "1/8.", "x0.75", "3:4", "PING" (ping-pong), "2.4 s", "130 Hz",
- * "0.80 Hz", "OFF", a number); buf 16 bytes */
-const char *qd_fx_text(int id, int v, char *buf);
-int qd_fx_delay_ms(void);               /* the delay's left time now (free or synced at the tempo) */
-int qd_fx_chorus_hz100(void);           /* the chorus's rate in hundredths of a Hz */
-int qd_fx_reverb_ms(void);              /* the reverb's RT60 (-1: INF) */
-
-/* a block: sc, sd, sr the chorus, delay and reverb sends (mono), l, r the dry mix (ChoralRoot's mix_l / mix_r scale);
- * l and r are used as the block's scratch; out: QD_FX_CTL stereo frames, Q15 (|x| <= 32767), interleaved */
+const char *qd_fx_text(int id, int v, char *buf);   /* buf 16 bytes */
+const char *qd_fx_name(int id);         /* a value's label ("BITS", "FREQ") */
+int qd_fx_delay_ms(void);
+int qd_fx_chorus_hz100(void);
+int qd_fx_reverb_ms(void);
+/* what the screens draw: the glitch repeating (and how far into its slice, 0..1), the crush's held level */
+int qd_fx_glitch_on(float *pos);
 void qd_fx_block(const int32_t *sc, const int32_t *sd, const int32_t *sr, int32_t *l, int32_t *r, int32_t *out);
 
 #ifdef __cplusplus

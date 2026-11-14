@@ -34,19 +34,24 @@
  *        (ChoralRoot's FC_TIME, FC_SPREAD). FX held + ALGORITHM still chooses the track. */
 
 const qd_fxpage_t QD_FX_PAGES[QD_FX_NPAGE] = {
+    /* EvilGenius: the retro rooms. B1 the sends, B2..B4 the send effects (CHORUS, ECHO, ROOM), B5..B9 the rooms on the
+     * whole mix (each one's MIX 0: off) */
     {"SENDS", QD_FXG_OVER, UI_FXD_OVER, {QD_FXC_SENDX(2), QD_FXC_SENDX(0), QD_FXC_SENDX(1), QD_FXC_DRY}},
-    {"CHORUS", QD_FXG_CHORUS, UI_FXD_CHORUS, {QD_FXP_CRATE, QD_FXP_CDEPTH, QD_FXP_CWIDTH, QD_FXC_SEND}},   /* (2026-10-26:
-                                                         * the owner: the pages and B2..B4 in SENDS' order, C D R) */
-    {"DELAY", QD_FXG_DELAY, UI_FXD_DELAY, {QD_FXC_TIME, QD_FXC_SPREAD, QD_FXP_DFDBK, QD_FXC_SEND}},
-    {"DELAY 2", QD_FXG_DELAY, UI_FXD_DELAY2, {QD_FXP_DSYNC, QD_FXP_DMODE, QD_FXP_DTONE, QD_FXP_DWOW}},
-    {"REVERB", QD_FXG_REVERB, UI_FXD_REVERB, {QD_FXP_RSIZE, QD_FXP_RDAMP, QD_FXP_RDECAY, QD_FXC_SEND}},
-    {"REVERB 2", QD_FXG_REVERB, UI_FXD_REVERB2, {QD_FXP_RPRE, QD_FXP_RMOD, QD_FXP_RLOW, QD_FXP_RWIDTH}},
-    {"MASTER", QD_FXG_MASTER, UI_FXD_MASTER, {QD_FXP_FLOW, QD_FXP_FHIGH, QD_FXP_FSLOPE, QD_FXP_FON}},
-    {"ROUTING", QD_FXG_ROUTE, UI_FXD_ROUTE, {QD_FXP_RMODE, QD_FXC_DRY, QD_FXC_NONE, QD_FXC_NONE}},
+    {"CHORUS", QD_FXG_CHORUS, UI_FXD_CHORUS, {QD_FXP_CRATE, QD_FXP_CDEPTH, QD_FXP_CWIDTH, QD_FXC_SEND}},
+    {"ECHO", QD_FXG_DELAY, UI_FXD_DELAY, {QD_FXC_TIME, QD_FXC_SPREAD, QD_FXP_DFDBK, QD_FXC_SEND}},
+    {"ECHO 2", QD_FXG_DELAY, UI_FXD_DELAY2, {QD_FXP_DSYNC, QD_FXP_DMODE, QD_FXP_DTONE, QD_FXP_DWOW}},
+    {"ROOM", QD_FXG_REVERB, UI_FXD_REVERB, {QD_FXP_RSIZE, QD_FXP_RDAMP, QD_FXP_RDECAY, QD_FXC_SEND}},
+    {"ROOM 2", QD_FXG_REVERB, UI_FXD_REVERB2, {QD_FXP_RPRE, QD_FXP_RMOD, QD_FXP_RLOW, QD_FXP_RWIDTH}},
+    {"CRUSH", QD_FXG_CRUSH, UI_FXD_CRUSH, {QD_FXP_XBITS, QD_FXP_XRATE, QD_FXP_XJIT, QD_FXP_XMIX}},
+    {"ROBOT", QD_FXG_ROBOT, UI_FXD_ROBOT, {QD_FXP_RBFREQ, QD_FXP_RBWAVE, QD_FXP_RBLFO, QD_FXP_RBMIX}},
+    {"WARP", QD_FXG_WARP, UI_FXD_WARP, {QD_FXP_WTIME, QD_FXP_WFB, QD_FXP_WRATE, QD_FXP_WMIX}},
+    {"GLITCH", QD_FXG_GLITCH, UI_FXD_GLITCH, {QD_FXP_GLEN, QD_FXP_GCHNC, QD_FXP_GPTCH, QD_FXP_GMIX}},
+    {"TV", QD_FXG_TV, UI_FXD_TV, {QD_FXP_TVTONE, QD_FXP_TVHUM, QD_FXP_TVDRV, QD_FXP_TVMIX}},
 };
-const char *const QD_FX_NAME[QD_NFXG] = {"DELAY", "REVERB", "CHORUS", "MASTER", "SENDS", "ROUTING"};
-const uint8_t QD_FX_KEY[QD_FX_NKEY] = {QD_FXG_OVER, QD_FXG_CHORUS, QD_FXG_DELAY, QD_FXG_REVERB, QD_FXG_MASTER,
-                                       QD_FXG_ROUTE};
+const char *const QD_FX_NAME[QD_NFXG] = {"ECHO", "ROOM", "CHORUS", "MASTER", "SENDS", "ROUTING", "CRUSH", "ROBOT",
+                                         "WARP", "GLITCH", "TV"};
+const uint8_t QD_FX_KEY[QD_FX_NKEY] = {QD_FXG_OVER, QD_FXG_CHORUS, QD_FXG_DELAY, QD_FXG_REVERB, QD_FXG_CRUSH,
+                                       QD_FXG_ROBOT, QD_FXG_WARP, QD_FXG_GLITCH, QD_FXG_TV};
 
 int qd_fx_cell_id(int c)
 {
@@ -191,7 +196,7 @@ void qd_panel_black(qd_app_t *a, int b, int down)
         return;
     }
     if (u->latch == QD_LATCH_FX) {
-        static const int8_t BLK[QD_FX_NKEY] = {-1, QD_RT_CHORUS, QD_RT_DELAY, QD_RT_REVERB, QD_RT_FILTER, -1};
+        static const int8_t BLK[QD_FX_NKEY] = {-1, -1, -1, -1, -1, -1, -1, -1, -1};   /* (no ROUTING page)*/
         int p, first = -1, next = -1, g;
         if (b >= QD_FX_NKEY)
             return;
@@ -369,7 +374,7 @@ int qd_fx_knob(qd_app_t *a, int knob, int d)
     if (knob < QD_K_1)
         return 1;
     if (u->fx_bheld && pg->fx == QD_FXG_ROUTE) {        /* ROUTING, a block held: KNOB 1 moves it a place a detent */
-        static const int8_t BLK[QD_FX_NKEY] = {-1, QD_RT_CHORUS, QD_RT_DELAY, QD_RT_REVERB, QD_RT_FILTER, -1};
+        static const int8_t BLK[QD_FX_NKEY] = {-1, -1, -1, -1, -1, -1, -1, -1, -1};   /* (no ROUTING page)*/
         if (knob == QD_K_1)
             qd_fx_route_move(BLK[(u->fx_bheld - 1) % QD_FX_NKEY], d);
         u->fx_bused = 1;

@@ -1,107 +1,95 @@
 /* SPDX-License-Identifier: MPL-2.0
  * This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0. If a copy of the MPL was not
  * distributed with this file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-/* The octave takeover (P1.3c; PLAN.md §8b version 2.1, "octave feedback"): a change of NOTE's entry octave (OCT- /
- * OCT+ with a step held in NOTE), of the keyboard's octave, or of SOUND's bank of ten takes the whole screen for about
- * a second (the takeover's QD_TK_MS, then its 120 ms fade). The LINE look:
- *   - the number big in the middle (the octave, the keyboard's shift signed, the bank), at once (2026-10-26, the
- *     owner: the roll and the slide were too slow for playing)
- *   - under it the whole 88-key piano, still, with the keys in use lit: the entry octave's twelve (B1's note dotted in
- *     KNOB 1's colour), or the keybed's 27 keys F..G; for a bank, the pool as ticks in tens (the sounds there bright,
- *     the step's sound lock tall in SOUND's colour) with the bank's ten bracketed, sliding to it
- *   - at the foot OCT- and OCT+ with the distance from the centre as dots on the side that blinks (the LEDs' story:
- *     one dot slow, two faster, three or more fastest), the line under the number in grey
- * Nothing here reads a clock: the view gives the slide's progress (k) and the seconds since the change (t). */
+/* EvilGenius: the octave takeover (FIZZ's P1.3c, redrawn at 120 x 120). A change of NOTE's entry octave (OCT- / OCT+
+ * with a step held in NOTE), of the keyboard's octave, or of SOUND's bank of ten takes the screen for about a second.
+ *   - the octave as a lift: the shaft at the left, a floor for each octave (bank), the car at the one chosen
+ *   - the number big at the right, at once (the owner: no roll), the line under it (the note and key, the range)
+ *   - under them three octaves of keys, the keys in use lit (the entry octave's twelve, B1's note dotted in KNOB 1's
+ *     colour; or the keybed's 27 F .. G), the C's named under; for a bank, the pool as ticks in tens, the bank's ten
+ *     bracketed and numbered, sliding to it (the step's sound lock tall in SOUND's colour)
+ *   - at the foot the distance from the centre as dots on the side whose LED blinks (OCT- left, OCT+ right) */
 #include <math.h>
-#include "fz_math.h"                   /* (the drawing's own sinf .. atan2f: the flash diet) */
+#include "fz_math.h"
 
 #include "ui.h"
+#include "px.h"
 
-static const int WI[12] = {0, 0, 1, 1, 2, 3, 3, 4, 4, 5, 5, 6};
-static const int ISB[12] = {0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0};
+#define OC_BLACK(n) ((0x54au >> ((n) % 12)) & 1u)       /* C# D# F# G# A# */
 
-static void line2(float x0, float y0, float x1, float y1, qd_rgb col, float lw)
+/* three octaves of keys from the C c0, x0 .. x0 + 104; keys lo .. hi lit; mark a note with a dot in mcol */
+static void oc_keys(int x0, int y, int c0, int lo, int hi, int mark, qd_rgb mcol)
 {
-    const float p[4] = {x0, y0, x1, y1};
-    ui_P(p, 2, col, lw, 0, QD_NONE);
-}
-
-/* note n's white-key index from note 0 (a black key: the white key it sits after) */
-static int wx(int n) { return n / 12 * 7 + WI[n % 12]; }
-
-/* 2026-10-26 (the owner: the slide was slow): a full 88-key keyboard (A0 .. C8) across the screen, keys lo..hi (the
- * two octaves F .. G the keybed plays, or the entry octave) filled bright, the rest outlined grey; mark a note dotted in
- * mcol. Nothing moves */
-static void piano88(float y, float h, int lo, int hi, int mark, qd_rgb mcol)
-{
-    const float x0 = 6.f, kw = 228.f / 52.f, bh = h * 0.6f, bw = kw * 0.62f, w0 = (float)wx(21);
-    int n;
-    for (n = 21; n <= 108; n++) {                       /* the white keys */
-        const float x = x0 + ((float)wx(n) - w0) * kw;
-        const int in = n >= lo && n <= hi;
-        if (ISB[n % 12])
+    const int h = 22, bh = 13;
+    int n, w = 0;
+    for (n = c0; n < c0 + 36; n++) {                    /* the white keys: 4 wide, a gap */
+        if (OC_BLACK(n))
             continue;
-        ui_RR(x, y, kw - 0.6f, h, 1.f, in ? QD_NONE : UI_G3, 1.f, in ? UI_K3 : QD_NONE);
-        if (n % 12 == 0)                                /* a C: a grey tick at its foot */
-            line2(x + kw / 2.f, y + h + 3.f, x + kw / 2.f, y + h + 6.f, UI_G2, 1.f);
+        px_rect(x0 + w * 5, y, 4, h, n >= lo && n <= hi ? PX_WHITE : PX_DGREY);
+        if (n == mark)
+            px_rect(x0 + w * 5 + 1, y + h - 4, 2, 2, mcol);
+        if (n % 12 == 0) {                              /* a C: its name under */
+            char s[8];
+            s[0] = 'C';
+            ui_itoa(s + 1, n / 12 - 1);
+            px_text(x0 + w * 5, y + h + 2, s, n >= lo && n <= hi ? UI_G1 : UI_G2, PX_FS, 1);
+        }
+        w++;
     }
-    for (n = 21; n <= 108; n++) {                       /* the black keys over them */
-        const float x = x0 + ((float)(wx(n) + 1) - w0) * kw - bw / 2.f;
-        const int in = n >= lo && n <= hi;
-        if (!ISB[n % 12])
+    for (n = c0, w = 0; n < c0 + 36; n++) {             /* the black keys over the gaps */
+        if (!OC_BLACK(n)) {
+            w++;
             continue;
-        ui_RR(x, y - 1.f, bw, bh, 1.f, QD_NONE, 1.f, in ? UI_K3 : UI_G2);
-    }
-    if (mark >= 21 && mark <= 108) {
-        const float x = ISB[mark % 12] ? x0 + ((float)(wx(mark) + 1) - w0) * kw : x0 + ((float)wx(mark) + 0.5f - w0) * kw;
-        ui_O(x, ISB[mark % 12] ? y + bh - 6.f : y + h - 6.f, 2.4f, QD_NONE, 1.f, mcol);
+        }
+        px_rect(x0 + w * 5 - 2, y, 4, bh + 1, PX_BLACK);
+        px_rect(x0 + w * 5 - 1, y, 2, bh, n >= lo && n <= hi ? PX_LGREY : PX_BLACK);
+        if (n == mark)
+            px_rect(x0 + w * 5 - 1, y + bh - 3, 2, 2, mcol);
     }
 }
 
-/* the pool as ticks in tens, bank b's ten bracketed, centred on bank position pos (eased) */
-static void pool_strip(float pos, int bank, int nsound, int nbank, int sound, float y)
+/* the pool as ticks, a bank of ten 20 wide; centred on bank position pos (eased) */
+static void oc_pool(float pos, int bank, int nsound, int nbank, int sound, int y)
 {
-    const float bw = 50.f, tick = 4.6f, x0 = 120.f - (pos + 0.5f) * bw;
+    const int bw = 26, x0 = 60 - (int)floorf((pos + 0.5f) * (float)bw + 0.5f);
     int b, k;
-    char n[12];
-    qd_save();
-    qd_clip_rect(6.f, y - 22.f, 228.f, 60.f);
     for (b = 0; b < nbank && b < 13; b++) {
-        const float bx = x0 + (float)b * bw + 2.f;
+        const int bx = x0 + b * bw + 3;
+        char s[8];
         for (k = 0; k < 10; k++) {
-            const int snd = b * 10 + k + 1;
-            const float x = bx + 1.5f + (float)k * tick;
+            const int snd = b * 10 + k + 1, x = bx + k * 2;
             const int have = snd <= nsound, lock = snd == sound;
             const qd_rgb col = lock ? UI_MODE_COL[UI_F_SOUND] : !have ? UI_G3 : b == bank ? UI_K3 : UI_G2;
-            line2(x, lock ? y - 8.f : y, x, y + 16.f, col, lock ? 2.f : 1.3f);
+            if (x < 2 || x > 117)
+                continue;
+            px_rect(x, lock ? y - 5 : have ? y : y + 8, 1, lock ? 21 : have ? 16 : 8, col);
         }
-        (void)n;                                        /* (P1.3v: no 7 px numbers: the sub line names the bank) */
+        if (bx + 9 >= 4 && bx + 9 <= 115)
+            px_ctext(bx + 9, y + 20, ui_itoa(s, b + 1), b == bank ? UI_K3 : UI_G2, PX_FS, 1);
         if (b == bank) {                                /* the bank's bracket */
-            line2(bx - 1.f, y - 12.f, bx + 10.f * tick + 1.f, y - 12.f, UI_K3, 1.5f);
-            line2(bx - 1.f, y - 12.f, bx - 1.f, y - 8.f, UI_K3, 1.5f);
-            line2(bx + 10.f * tick + 1.f, y - 12.f, bx + 10.f * tick + 1.f, y - 8.f, UI_K3, 1.5f);
+            px_hline(bx - 2, y - 8, 23, UI_K3);
+            px_vline(bx - 2, y - 8, 4, UI_K3);
+            px_vline(bx + 20, y - 8, 4, UI_K3);
         }
     }
-    qd_restore();
 }
 
-/* the number's text: the octave, the keyboard's shift signed ("+1", "0", "-2" with a true minus), the bank 1-based */
-static void num_text(const ui_octave_t *v, int val, char *s)
+/* the lift: a floor for each value lo .. hi, the car at v */
+static void oc_lift(int lo, int hi, int v)
 {
-    char n[12];
-    s[0] = 0;
-    if (v->kind == UI_OCT_KEYS && val) {
-        const char *sign = val > 0 ? "+" : "\xe2\x88\x92";
-        int i = 0;
-        while (sign[i])
-            s[i] = sign[i], i++;
-        ui_itoa(n, val < 0 ? -val : val);
-        for (val = 0; n[val]; val++)
-            s[i++] = n[val];
-        s[i] = 0;
-        return;
+    const int x = 6, y0 = 16, y1 = 60, n = hi - lo;
+    int i;
+    px_vdots(x, y0 - 2, y1 - y0 + 6, UI_G2, 2);
+    px_vdots(x + 15, y0 - 2, y1 - y0 + 6, UI_G2, 2);
+    for (i = lo; i <= hi; i++) {
+        const int fy = n > 0 ? y1 - (i - lo) * (y1 - y0) / n : (y0 + y1) / 2;
+        px_hline(x + 2, fy, 2, i == v ? UI_K3 : UI_G3);
+        px_hline(x + 12, fy, 2, i == v ? UI_K3 : UI_G3);
+        if (i == v) {
+            px_rect(x + 3, fy - 2, 10, 3, PX_YELLOW);   /* the car */
+            px_hline(x + 3, fy + 1, 10, PX_ORANGE);
+        }
     }
-    ui_itoa(s, v->kind == UI_OCT_BANK ? val + 1 : val);
 }
 
 void ui_octave_draw(const ui_octave_t *v)
@@ -109,35 +97,43 @@ void ui_octave_draw(const ui_octave_t *v)
     static const char *const TITLE[3] = {"ENTRY OCTAVE", "KEYBOARD OCTAVE", "SOUND BANK"};
     const int kind = v->kind < 0 ? 0 : v->kind > 2 ? 2 : v->kind;
     const float k = v->k < 0.f ? 0.f : v->k > 1.f ? 1.f : v->k;
-    const int centre = 0;
     char s[16];
     int off, i;
 
-    ui_T(TITLE[kind], 8.f, 18.f, 12.f, 600, 0.8f, UI_K3, QD_LEFT);   /* (P1.3r: a pop-up: no track in its head) */
+    px_text(4, 3, TITLE[kind], UI_K3, PX_FS, 1);
+    px_dots(0, 11, 120, UI_G3, 2);
 
-    /* the number, at once (2026-10-26, the owner: no roll) */
-    num_text(v, v->value, s);
-    ui_T(s, 120.f, 112.f, 92.f, 200, 0.f, UI_K3, QD_CENTER);
-    ui_lab(v->sub, 120.f, 132.f, UI_G1, QD_CENTER);
+    /* the number, at once; the line under it */
+    if (kind == UI_OCT_KEYS && v->value) {
+        s[0] = v->value > 0 ? '+' : '-';
+        ui_itoa(s + 1, v->value < 0 ? -v->value : v->value);
+    } else {
+        ui_itoa(s, kind == UI_OCT_BANK ? v->value + 1 : v->value);
+    }
+    px_text_sh(72 - (px_text_w(s, PX_FB, 4) + 1) / 2, 17, s, UI_K3, UI_G3, PX_FB, 4);
+    px_ctext(68, 54, v->sub, UI_G1, PX_FS, 1);
 
-    /* the whole piano with the keys in use lit (NOTE: the entry octave, B1's note dotted; KEYS: the keybed's F .. G);
-     * the pool still slides to its bank */
+    /* the lift; the keys or the pool */
     if (kind == UI_OCT_NOTE) {                          /* octave o's C is MIDI 12 (o + 1) */
         const int c = 12 * (v->value + 1);
-        piano88(150.f, 40.f, c, c + 11, v->lo_note, UI_K1);
+        oc_lift(-1, 8, v->value);
+        oc_keys(8, 68, c - 12 < 0 ? 0 : c - 12, c, c + 11, v->lo_note, UI_K1);
     } else if (kind == UI_OCT_KEYS) {
-        piano88(150.f, 40.f, v->lo_note, v->lo_note + 26, -1, UI_K3);
+        oc_lift(-2, 2, v->value);
+        oc_keys(8, 68, v->lo_note - v->lo_note % 12, v->lo_note, v->lo_note + 26, -1, UI_K3);
     } else {
         const float pos = (float)v->from + (float)(v->value - v->from) * k;
-        pool_strip(pos, v->value, v->nsound, v->nbank, v->sound, 160.f);
+        oc_lift(0, v->nbank > 1 ? v->nbank - 1 : 0, v->value);
+        oc_pool(pos, v->value, v->nsound, v->nbank, v->sound, 74);
     }
 
-    /* OCT- / OCT+ and the distance from the centre: the dots on the side whose LED blinks */
-    off = kind == UI_OCT_NOTE ? v->value - 4 : v->value - centre;
-    for (i = 0; i < 3; i++) {                           /* (P1.3v: the dots alone, as the LEDs: no OCT- / OCT+ words) */
+    /* the distance from the centre: the dots on the side whose LED blinks (OCT- left, OCT+ right) */
+    off = kind == UI_OCT_NOTE ? v->value - 4 : v->value;
+    for (i = 0; i < 3; i++) {
         const int lit_l = off < 0 && i < -off, lit_r = off > 0 && i < off;
-        ui_O(52.f + (float)i * 9.f, 217.f, 2.4f, lit_l ? UI_K3 : UI_G3, 1.f, lit_l ? UI_K3 : QD_NONE);
-        ui_O(188.f - (float)i * 9.f, 217.f, 2.4f, lit_r ? UI_K3 : UI_G3, 1.f, lit_r ? UI_K3 : QD_NONE);
+        px_rect(42 - i * 6, 110, 3, 3, lit_l ? UI_K3 : UI_G3);
+        px_rect(76 + i * 6, 110, 3, 3, lit_r ? UI_K3 : UI_G3);
     }
+    px_ctext(60, 109, "OCT", UI_G2, PX_FS, 1);
     (void)v->t;
 }

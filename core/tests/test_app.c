@@ -186,12 +186,12 @@ static void t_presets(void)
         if (qd_pool_sounding(&A.pool, i))
             v = i;
     memcpy(before, A.model.t[0].patch, sizeof before);
-    qd_app_knob(&A, QD_K_PRESETS, 1);                   /* P1.5t: the library browser, on MARIMBA (preset 14) .. */
+    qd_app_knob(&A, QD_K_PRESETS, 1);                   /* P1.5t: the library browser, on ZAP (preset 9) .. */
     run(300, 0);                                        /* (no acceleration) */
-    qd_app_knob(&A, QD_K_PRESETS, 2);                   /* .. -> FEEDBACK (16), the track plays it */
+    qd_app_knob(&A, QD_K_PRESETS, 2);                   /* .. -> CHIP CHOIR (11), the track plays it */
     run(10, 0);
-    CHECK(A.ui.latch == QD_LATCH_BROWSE && A.model.t[0].preset == 16 &&
-              !strcmp(qd_track_sound_name(&A.model.t[0]), "FEEDBACK"),
+    CHECK(A.ui.latch == QD_LATCH_BROWSE && A.model.t[0].preset == 11 &&
+              !strcmp(qd_track_sound_name(&A.model.t[0]), "CHIP CHOIR"),
           "PRESETS: the browser; +2: track 1 plays %d (%s)", A.model.t[0].preset, qd_track_sound_name(&A.model.t[0]));
     CHECK(v >= 0 && !memcmp(A.pool.v[v].q.patch, before, sizeof before), "the sounding voice keeps its patch");
     qd_app_knob(&A, QD_K_PRESETS, 40);
@@ -915,19 +915,19 @@ static void t_clock(void)
     printf("  clock: MIDI START and 24 PPQN at 140 BPM drive the transport; STOP stops\n");
 }
 
-/* P1.3p: the word's solid pixels: the pixels of the band the word sits in (y 95 .. 145) drawn exactly in F's colour
- * (the knob blue, RGB565): the solid F fills dozens; its particles (tiny rings, anti-aliased) hardly any */
+/* EvilGenius: the title's pixels: the band EVIL sits in (y 80 .. 112) drawn in its light red (near it: the 8-bit
+ * frame's palette may round it) */
 static int word_px(void)
 {
     static uint16_t lcd[QD_W * QD_H];
-    const unsigned blue = (0x3fu * 31u + 127u) / 255u << 11 | (0x7du * 63u + 127u) / 255u << 5 |   /* as qd_end */
-                          (0xffu * 31u + 127u) / 255u;
     int x, y, n = 0;
     qd_app_frame(&A, lcd);
-    for (y = 95; y < 145; y++)
+    for (y = 80; y < 112; y++)
         for (x = 0; x < QD_W; x++) {
             const unsigned px = (unsigned)(lcd[y * QD_W + x] >> 8 | (lcd[y * QD_W + x] & 0xffu) << 8);
-            n += px == blue;
+            const int r = (int)((px >> 11) & 31u) * 255 / 31, g = (int)((px >> 5) & 63u) * 255 / 63,
+                      bl = (int)(px & 31u) * 255 / 31;
+            n += abs(r - 0xc4) + abs(g - 0x6c) + abs(bl - 0x71) < 48;
         }
     return n;
 }
@@ -976,14 +976,9 @@ static void t_fizz(void)
     n_hold = word_px();
     run(2900, 0);
     n_fizz = word_px();
-#ifdef QD_GFX_FB
-#define WORD_STRAY 8                                    /* (P2.6e: the 8-bit frame: a nearly opaque particle is the
-                                                         * ramp's top, the blue itself, more often) */
-#else
-#define WORD_STRAY 3
-#endif
-    CHECK(n_hold >= 40 && n_gather <= WORD_STRAY && n_fizz <= WORD_STRAY, "on the screen: the solid F at the hold (%d px in its blue), "
-          "not while gathering (%d) or dissolving (%d)", n_hold, n_gather, n_fizz);
+    CHECK(n_hold >= 40 && n_gather < n_hold && n_fizz < n_hold, "on the screen: the title whole at the hold (%d px of "
+          "EVIL's light red), only part of it while its letters drop in (%d) and fall away (%d)", n_hold, n_gather,
+          n_fizz);
     fresh();
     run(3000, 0);
     s1 = frame_hash();                                  /* stopped at 3 s */

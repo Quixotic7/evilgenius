@@ -1,43 +1,24 @@
 /* SPDX-License-Identifier: MPL-2.0
  * This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0. If a copy of the MPL was not
  * distributed with this file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-/* The layer maps (PLAN.md §8b, version 2.1; P1.3v: §9a's clarity rules): while F1, F2, F3, SEL or SEQ is held the
- * screen is its map; while SHIFT is held, the controls SHIFT changes. VISUAL maps: the keys drawn where they are on the
- * panel, each with an icon or a number for what it does in this layer (ui_keymap), lit or coloured by its state; no
- * sentences, no legends (the gestures are in PLAYING.md). Text: the layer's name, the page / pattern / track numbers
- * and names, the values (12 px or more).
- *   F1 · PAGES        the eight pages as eight cells (4 x 2): the number big, the sixteen steps as a 4 x 4 of dots (a
- *                     trig filled, outside start..end only a speck); the page edited outlined white, the loop grey,
- *                     the others dark; the playing page a red line under its number (blinking); a copied page dashed
- *                     (blinking). The W keys' step copy: a white key with COPY (or PASTE, green, once a step is
- *                     copied). The keys: B1..B8 the pages (white in the loop; green to paste a copied page), B9 CLEAR,
- *                     B10 COPY (lit: a page copied), B11 UNDO (dark with none)
- *   F2 · CUT & PASTE  the page's sixteen steps (a trig a dot; the last W pressed outlined with CUT orange or PASTE
- *                     green under it) and the hand: a card holding the step (its notes on a little keybed, a LOCK step
- *                     a padlock, an empty step an empty cell) or a dashed empty card; beside it, big, what the next W
- *                     does (CUT, or PASTE)
- *   F3 · RANGE & RATE the page edited as sixteen cells with its start..end bracketed over them (the W held first
- *                     outlined, blinking) and its numbers under them, the range big and the rate big as a note value
- *                     with its dot or T mark, the tempo and swing; the keys: B1..B7 the note values as notes, B8
- *                     normal, B9 dotted, B10 triplet, the track's lit. Latched: a back arrow top right (OCT-)
- *   SEL · TRACKS      the eight tracks as speakers: the selected one boxed white, a muted one grey with an orange
- *                     cross, a soloed one an S in a yellow ring (blinking), the waves lit by a trig; the keys: B1..B8
- *                     the tracks (lit: selected, dark: muted), B11 CLEAR (bright while a mute or solo is set)
- *   SEQ · PATTERNS    (ui_patterns_draw) the queued pattern big (else the playing one) with PLAY / STOP, a line
- *                     emptying to the change, the bank's sixteen as dots, the banks A..D (B1..B4), the launch mode
- *   SHIFT             (2026-11-10, take A2) the same over every page: the track band (its number boxed in its colour,
- *                     its kind, its name big; the six under S), six tiles (P root, A scale, PLAY tempo / swing, F1
- *                     undo, F2 redo, REC's MODE, SEL the track settings), the black keys' shortcuts at the foot */
+/* EvilGenius: the layer maps, SEQ's patterns, SHIFT, the settings menus, the latch mode (FIZZ's ui_layer.c, redrawn on
+ * the 120 x 120 grid; the models are FIZZ's). While F1, F2, F3 or B11 is held the screen is its map, so it explains
+ * itself: the black keys drawn where they are on the panel (ui_keymap), each with an icon or a number.
+ *   F1 / B11  the eight pages as rooms of the tower: each one's number, its steps as a grid of lights, the edited one
+ *             white, the loop's grey, the rest dark blue, the playing one's number underlined red
+ *   F2        the hand: the step picked up, as a card; the next W's act (cut / paste) big beside it
+ *   F3        the page's sixteen shafts under its range's bracket, the range and the rate big, the tempo
+ *   SEL       the six tracks as speakers: a muted one crossed, a soloed one's S
+ * And SEQ's patterns (the pattern big, the bank as a keypad of sixteen), SHIFT (the track and its shortcuts), the
+ * menus (REC, SETTINGS, the track's: a row a knob, its badge, its value big in its colour, a little picture). */
 #include <math.h>
-#include "fz_math.h"                   /* (the drawing's own sinf .. atan2f: the flash diet) */
+#include "fz_math.h"
 #include <string.h>
 
 #include "ui.h"
+#include "px.h"
 
-#define SOLO_COL 0xffd23fu
-
-static const char *const DOT = " \xc2\xb7 ";          /* " · " */
-static const char *const DASH = "\xe2\x80\x93";        /* "–" */
+static const char *const DOT = " \xc2\xb7 ";
 
 static char *cat(char *d, const char *s)
 {
@@ -50,14 +31,8 @@ static char *cat(char *d, const char *s)
     return d;
 }
 
-static void line2(float x0, float y0, float x1, float y1, qd_rgb col, float lw)
-{
-    const float p[4] = {x0, y0, x1, y1};
-    ui_P(p, 2, col, lw, 0, QD_NONE);
-}
-
 static const char *const NUM[8] = {"1", "2", "3", "4", "5", "6", "7", "8"};
-#define KM_Y 202.f                                      /* the key map's top, its height */
+#define KM_Y 202.f
 #define KM_H 30.f
 
 static void keys_clear(ui_kkey_t k[11])
@@ -69,7 +44,14 @@ static void keys_clear(ui_kkey_t k[11])
     }
 }
 
-/* ---------------------------------------------------------------- F1: the pages */
+/* a head for the maps: the title left, [n] the track right (ui_head_track), a rule under it */
+static void map_head(const char *t, int track, const char *name)
+{
+    ui_head_track(t, track, name, UI_K3);
+    px_dots(0, 11, 120, UI_G3, 2);
+}
+
+/* ---------------------------------------------------------------- F1 / B11: the pages as the tower's rooms */
 static void page_row(const ui_layer_t *v)
 {
     uint16_t trig = 0;
@@ -83,38 +65,32 @@ static void f1(const ui_layer_t *v)
 {
     ui_kkey_t k[11];
     int p, i;
-
     for (p = 0; p < 8; p++) {
-        const float x = 8.f + (float)(p % 4) * 57.f, y = 30.f + (float)(p / 4) * 66.f, w = 53.f, h = 60.f;
+        const int x = 3 + (p % 4) * 29, y = 14 + (p / 4) * 33, w = 27, h = 31;
         const int ed = p == v->page, in = (v->loop >> p) & 1, cp = p == v->page_copied;
         const int st = v->pstart[p] > 15 ? 15 : v->pstart[p];
         const int en = v->pend[p] < st ? st : v->pend[p] > 15 ? 15 : v->pend[p];
-        const qd_rgb tc = ed ? UI_K3 : in ? UI_G1 : UI_G2;
-        if (cp) {                                       /* the page copied: dashed, blinking */
-            static const float DSH[2] = {3.f, 3.f};
-            qd_save();
-            qd_dash(DSH, 2);
-            ui_RR(x, y, w, h, 5.f, v->blink ? UI_K3 : UI_G1, 1.5f, QD_NONE);
-            qd_restore();
-        } else {
-            ui_RR(x, y, w, h, 5.f, ed ? UI_K3 : in ? UI_G1 : UI_G3, ed ? 1.5f : 1.f, QD_NONE);
-        }
-        ui_T(NUM[p], x + 8.f, y + 24.f, 20.f, ed ? 500 : 400, 0.f, tc, QD_LEFT);
-        for (i = 0; i < 16; i++) {                      /* its steps, a beat a row (outside its range: specks) */
-            const float dx = x + 27.f + (float)(i % 4) * 7.5f, dy = y + 14.f + (float)(i / 4) * 10.5f;
+        const qd_rgb fc = cp ? (v->blink ? UI_K2 : UI_G2) : ed ? UI_K3 : in ? UI_G1 : UI_G3;
+        px_box(x, y, w, h, fc);
+        if (ed)
+            px_box(x + 1, y + 1, w - 2, h - 2, fc);
+        px_text(x + 3, y + 3, NUM[p], ed ? UI_K3 : in ? UI_G1 : UI_G2, PX_FB, 1);
+        for (i = 0; i < 16; i++) {                      /* its steps, a beat a row */
+            const int dx = x + 12 + (i % 4) * 3, dy = y + 3 + (i / 4) * 3;
             if (i < st || i > en)
-                ui_O(dx, dy, 0.9f, QD_NONE, 1.f, UI_G3);
-            else if (v->trig[p][i])
-                ui_O(dx, dy, 2.2f, QD_NONE, 1.f, ed ? UI_K3 : in ? UI_G1 : UI_G2);
+                continue;
+            if (v->trig[p][i])
+                px_rect(dx, dy, 2, 2, ed ? UI_K3 : in ? UI_G1 : UI_G2);
             else
-                ui_O(dx, dy, 1.6f, ed || in ? UI_G2 : UI_G3, 1.f, QD_NONE);
+                px_pset(dx, dy, UI_G3);
         }
-        if (v->f1_copied && v->f1_src >= 0 && v->f1_src / 16 == p) {   /* P1.6h: F1's copy came from here: ringed */
+        if (v->f1_copied && v->f1_src >= 0 && v->f1_src / 16 == p) {   /* F1's copy came from here */
             const int j = v->f1_src % 16;
-            ui_O(x + 27.f + (float)(j % 4) * 7.5f, y + 14.f + (float)(j / 4) * 10.5f, 4.2f, UI_K2, 1.4f, QD_NONE);
+            px_box(x + 11 + (j % 4) * 3, y + 2 + (j / 4) * 3, 4, 4, UI_K2);
         }
-        if (p == v->play_page)                          /* playing: a red line under its number, blinking */
-            line2(x + 8.f, y + 31.f, x + 21.f, y + 31.f, v->blink ? UI_RED : 0xa01c2au, 2.f);
+        if (p == v->play_page)
+            px_rect(x + 3, y + 12, 7, 1, v->blink ? PX_LRED : UI_RED);
+        px_sprite(x + 9, y + h - 4, PXS_LIFT, 0);      /* the room's floor */
     }
     keys_clear(k);
     for (p = 0; p < 8; p++) {
@@ -122,34 +98,33 @@ static void f1(const ui_layer_t *v)
         k[p].col = v->page_copied >= 0 ? UI_K2 : (v->loop >> p) & 1 ? UI_K3 : UI_G1;
         k[p].lit = p == v->page && v->page_copied < 0;
     }
-    page_row(v);                                        /* 2026-11-13 (owner): the page edited's steps at the foot, as
-                                                         * B11's and the step keyboard's row */
-    if (v->b11)                                         /* 2026-11-10: B11 held: the pages only (no key numbers) */
+    page_row(v);
+    if (v->b11)
         return;
-    k[8].icon = UI_IC_CLEAR, k[8].col = UI_K4;          /* (the W keys' copy: the row; F1's black keys above it) */
+    k[8].icon = UI_IC_CLEAR, k[8].col = UI_K4;
     k[9].icon = UI_IC_COPY, k[9].lit = v->page_copied >= 0;
     k[10].icon = UI_IC_UNDO, k[10].dim = !v->can_undo;
     ui_keymap(k, 164.f, KM_H);
 }
 
-/* ---------------------------------------------------------------- F2: Form's pick-up / drop */
+/* ---------------------------------------------------------------- F2: the hand */
 void ui_step_card(float x, float y, float w, float h, int full, int type, int nnote, const uint8_t *note)
 {
-    if (!full) {                                        /* empty-handed: a dashed card */
-        static const float DSH[2] = {3.f, 3.f};
-        qd_save();
-        qd_dash(DSH, 2);
-        ui_RR(x, y, w, h, 6.f, UI_G2, 1.2f, QD_NONE);
-        qd_restore();
+    const int gx = (int)(x * 0.5f), gy = (int)(y * 0.5f), gw = (int)(w * 0.5f), gh = (int)(h * 0.5f);
+    if (!full) {
+        int i;
+        for (i = 0; i < gw; i += 3)
+            px_pset(gx + i, gy, UI_G2), px_pset(gx + i, gy + gh - 1, UI_G2);
+        for (i = 0; i < gh; i += 3)
+            px_pset(gx, gy + i, UI_G2), px_pset(gx + gw - 1, gy + i, UI_G2);
         return;
     }
-    ui_RR(x, y, w, h, 6.f, UI_K3, 1.5f, QD_NONE);
-    if (type == 0) {                                    /* an empty step: an empty cell */
-        ui_icon(UI_IC_KEY, x + w / 2.f, y + h / 2.f, 2.4f * (w < 100.f ? w / 120.f : 1.f), UI_G1);
-    } else if (type == 2) {                             /* a LOCK step: a padlock */
-        const float s = w < 100.f ? 3.f * w / 120.f : 3.f;
-        ui_lock(x + w / 2.f - 3.5f * s, y + h / 2.f - 4.f * s, UI_LOCK_COL, s);
-    } else {                                            /* its notes on a little keybed */
+    px_rbox(gx, gy, gw, gh, UI_K3, PX_DGREY);
+    if (type == 0) {
+        ui_icon(UI_IC_KEY, x + w / 2.f, y + h / 2.f, 2.f, UI_G1);
+    } else if (type == 2) {
+        px_rect(gx + gw / 2 - 4, gy + gh / 2 - 3, 8, 6, UI_LOCK_COL);
+    } else {
         qd_rgb fill[128];
         int i, lo = 127;
         for (i = 0; i < 128; i++)
@@ -158,85 +133,68 @@ void ui_step_card(float x, float y, float w, float h, int full, int type, int nn
             fill[note[i] & 127] = UI_K3;
             lo = note[i] < lo ? note[i] : lo;
         }
-        ui_keyboard(x + 8.f, y + 10.f, w - 16.f, h - 20.f, lo >= 5 ? lo - (lo + 7) % 12 : 0, fill);   /* from the F at
-                                                         * or below (the FM-1's keys start on F; under F0, C0) */
+        ui_keyboard(x + 8.f, y + 10.f, w - 16.f, h - 20.f, lo >= 5 ? lo - (lo + 7) % 12 : 0, fill);
     }
 }
-static void hand_card(const ui_layer_t *v, float x, float y, float w, float h)
-{
-    ui_step_card(x, y, w, h, v->hand, v->clip_type, v->clip_nnote, v->clip_note);
-}
-
-static float cx16(int i) { return 9.f + (float)i * 13.5f + (float)(i / 4) * 2.f; }
 
 static void f2(const ui_layer_t *v)
 {
     const int next_paste = v->hand_loaded && v->hand;
-    page_row(v);                                        /* 2026-11-13 (owner): the page's steps at the foot (B11's row) */
-    if (v->last_w >= 0 && v->last_w < 16)               /* what the last W did, over its step */
-        ui_icon(v->last_act == 1 ? UI_IC_CUT : UI_IC_PASTE, 19.5f + (float)v->last_w * 13.f +
-                (float)(v->last_w / 4) * 2.7f, KM_Y - 8.f, 1.1f, v->last_act == 1 ? UI_K4 : UI_K2);
-    hand_card(v, 40.f, 60.f, 120.f, 100.f);
-    ui_icon(next_paste ? UI_IC_PASTE : UI_IC_CUT, 194.f, 110.f, 2.6f, next_paste ? UI_K2 : UI_K4);   /* the next W */
+    page_row(v);
+    if (v->last_w >= 0 && v->last_w < 16)
+        ui_icon(v->last_act == 1 ? UI_IC_CUT : UI_IC_PASTE, (float)(2 * (9 + v->last_w * 6 + (v->last_w / 4) * 2)),
+                KM_Y - 10.f, 1.f, v->last_act == 1 ? UI_K4 : UI_K2);
+    ui_step_card(32.f, 48.f, 120.f, 100.f, v->hand, v->clip_type, v->clip_nnote, v->clip_note);
+    px_sprite_sc(84, 44, PXS_AGENT_STAND, 0, 2, QD_NONE);   /* the agent carrying it */
+    ui_icon(next_paste ? UI_IC_PASTE : UI_IC_CUT, 206.f, 70.f, 2.f, next_paste ? UI_K2 : UI_K4);
 }
 
-/* ---------------------------------------------------------------- F3: the page's range and the rate */
+/* ---------------------------------------------------------------- F3: the range and the rate */
+static int sx16(int i) { return 4 + i * 7 + (i / 4); }
+
 static void f3(const ui_layer_t *v)
 {
     const int pg = v->page < 0 ? 0 : v->page > 7 ? 7 : v->page;
     const int st = v->pstart[pg] > 15 ? 15 : v->pstart[pg];
     const int en = v->pend[pg] < st ? st : v->pend[pg] > 15 ? 15 : v->pend[pg];
-    const float top = 48.f, h = 44.f;
     ui_kkey_t k[11];
     char s[64], n[12];
-    float x0, x1;
     int i;
-
     s[0] = 0;
     cat(cat(s, "PAGE "), NUM[pg]);
-    ui_lab(s, 9.f, 38.f, UI_G1, QD_LEFT);
-    for (i = 0; i < 16; i++) {                          /* the steps: in the range bright, out dark */
+    px_text(4, 14, s, UI_G1, PX_FS, 1);
+    for (i = 0; i < 16; i++) {                          /* the shafts: in the range bright, out dark */
         const int in = i >= st && i <= en, an = i == v->anchor;
-        const qd_rgb oc = an ? (v->blink ? UI_K3 : UI_G1) : in ? UI_G1 : 0x1c1c22u;
-        ui_RR(cx16(i), top, 12.f, h, 3.f, oc, an ? 1.5f : 1.f, QD_NONE);
+        const qd_rgb oc = an ? (v->blink ? UI_K3 : UI_G1) : in ? UI_G1 : UI_G3;
+        px_box(sx16(i), 26, 6, 20, oc);
         if (in && v->trig[pg][i])
-            ui_O(cx16(i) + 6.f, top + h - 10.f, 2.2f, QD_NONE, 1.f, UI_G1);
+            px_rect(sx16(i) + 2, 41, 2, 2, UI_G1);
     }
-    x0 = cx16(st) + 1.f, x1 = cx16(en) + 11.f;          /* the bracket over the range: KNOB 3's green start, KNOB 4's
-                                                         * orange end */
-    line2(x0, top - 5.f, x1, top - 5.f, UI_K3, 1.5f);
-    line2(x0, top - 5.f, x0, top - 1.f, UI_K[2 - 1], 1.5f);
-    line2(x1, top - 5.f, x1, top - 1.f, UI_K[4 - 1], 1.5f);
-    ui_T(ui_itoa(n, st + 1), cx16(st) + 6.f, top + h + 15.f, 12.f, 600, 0.f, UI_K[2 - 1], QD_CENTER);
+    px_hline(sx16(st), 23, sx16(en) + 6 - sx16(st), UI_K3);   /* the bracket: KNOB 3's start, KNOB 4's end */
+    px_vline(sx16(st), 23, 3, UI_K2);
+    px_vline(sx16(en) + 5, 23, 3, UI_K4);
+    px_text(sx16(st) + 1, 48, ui_itoa(n, st + 1), UI_K2, PX_FS, 1);
     if (en != st)
-        ui_T(ui_itoa(n, en + 1), cx16(en) + 6.f, top + h + 15.f, 12.f, 600, 0.f, UI_K[4 - 1], QD_CENTER);
-
-    s[0] = 0;                                           /* the range big */
-    cat(cat(cat(s, ui_itoa(n, st + 1)), DASH), ui_itoa(n, en + 1));
-    ui_T(s, 12.f, 152.f, 36.f, 200, 0.f, UI_K3, QD_LEFT);
-    {   /* the rate big: the note value in KNOB 1's blue, its dot or T in KNOB 2's green */
+        px_rtext(sx16(en) + 5, 48, ui_itoa(n, en + 1), UI_K4, PX_FS, 1);
+    s[0] = 0;
+    cat(cat(cat(s, ui_itoa(n, st + 1)), "-"), ui_itoa(n, en + 1));
+    px_text(4, 62, s, UI_K3, PX_FB, 1);
+    {   /* the rate: its note value in KNOB 1's colour, the dot or T in KNOB 2's */
         const char *val = v->rate_val_name ? v->rate_val_name : "1/16";
-        const float mark = v->rate_type ? 14.f : 0.f, xr = 228.f - mark;
-        ui_T(val, xr, 152.f, 36.f, 200, 0.f, UI_K1, QD_RIGHT);
+        const int xr = 116 - (v->rate_type ? 6 : 0);
+        px_rtext(xr, 58, val, UI_K1, PX_FB, 2);
         if (v->rate_type == 1)
-            ui_O(xr + 6.f, 148.f, 3.4f, QD_NONE, 1.f, UI_K2);
+            px_rect(xr + 2, 70, 3, 3, UI_K2);
         else if (v->rate_type == 2)
-            ui_T("T", xr + 7.f, 134.f, 16.f, 500, 0.f, UI_K2, QD_CENTER);
+            px_text(xr + 2, 58, "T", UI_K2, PX_FS, 1);
     }
-    s[0] = 0;                                           /* P1.3h: the tempo and swing, live (lit after a turn) */
+    s[0] = 0;
     cat(cat(cat(s, v->ext ? "EXT " : ""), ui_itoa(n, v->bpm)), " BPM");
     cat(cat(cat(s, DOT), ui_itoa(n, v->swing)), "%");
-    {
-        const float w = ui_TW(s, 14.f, 500, 0.5f);
-        if (v->tempo_hot > 0.f) {
-            qd_save();
-            qd_alpha(v->tempo_hot);
-            ui_RR(120.f - w / 2.f - 6.f, 170.f, w + 12.f, 20.f, 5.f, UI_KSEL, 1.f, QD_NONE);
-            qd_restore();
-        }
-        ui_T(s, 120.f, 185.f, 14.f, 500, 0.5f, v->tempo_hot > 0.f ? UI_KSEL : UI_K3, QD_CENTER);
-    }
-    keys_clear(k);                                      /* B1..B7 the note values, B8 normal, B9 dotted, B10 triplet */
+    if (v->tempo_hot > 0.f)
+        px_box(60 - px_text_w(s, PX_FS, 1) / 2 - 3, 84, px_text_w(s, PX_FS, 1) + 6, 9, UI_KSEL);
+    px_ctext(60, 86, s, v->tempo_hot > 0.f ? UI_KSEL : UI_K3, PX_FS, 1);
+    keys_clear(k);
     for (i = 0; i < 7; i++) {
         k[i].icon = UI_IC_NOTE + i;
         k[i].col = UI_K1;
@@ -250,60 +208,40 @@ static void f3(const ui_layer_t *v)
     ui_keymap(k, KM_Y, KM_H);
 }
 
-/* ---------------------------------------------------------------- SEL: the tracks (s17's speakers) */
-static void speaker(float x, float y, qd_rgb col, int on, int mute)
+/* ---------------------------------------------------------------- SEL: the tracks */
+static void speaker(int x, int y, qd_rgb c, int on, int mute)
 {
-    const float a[8] = {x - 10.f, y - 5.f, x - 4.f, y - 5.f, x - 4.f, y + 5.f, x - 10.f, y + 5.f};
-    const float b[8] = {x - 4.f, y - 5.f, x + 3.f, y - 11.f, x + 3.f, y + 11.f, x - 4.f, y + 5.f};
-    int i;
-    ui_P(a, 4, col, 1.3f, 1, QD_NONE);
-    ui_P(b, 4, col, 1.3f, 0, QD_NONE);
+    px_rect(x - 6, y - 2, 3, 5, c);
+    px_line(x - 3, y - 2, x + 1, y - 6, c);
+    px_line(x - 3, y + 2, x + 1, y + 6, c);
+    px_vline(x + 1, y - 6, 13, c);
     if (mute) {
-        line2(x + 8.f, y - 5.f, x + 16.f, y + 5.f, UI_K4, 1.5f);
-        line2(x + 16.f, y - 5.f, x + 8.f, y + 5.f, UI_K4, 1.5f);
+        px_line(x + 4, y - 3, x + 9, y + 3, UI_K4);
+        px_line(x + 9, y - 3, x + 4, y + 3, UI_K4);
         return;
     }
-    for (i = 0; i < 2; i++) {
-        qd_save();
-        qd_alpha(on ? 1.f : 0.35f + 0.1f * (float)i);
-        qd_arc(x + 3.f, y, i ? 12.f : 7.f, -0.75f, 0.75f, col, 1.3f);
-        qd_restore();
-    }
-}
-
-/* a name as big as fits in w (12 px, squeezed no narrower than 0.7) */
-static void name_fit(const char *s, float cx, float y, float w, qd_rgb col)
-{
-    const float tw = ui_TW(s, 12.f, 600, 0.5f);
-    if (tw <= w) {
-        ui_T(s, cx, y, 12.f, 600, 0.5f, col, QD_CENTER);
-        return;
-    }
-    qd_save();
-    qd_translate(cx, y);
-    qd_scale(w / tw < 0.7f ? 0.7f : w / tw, 1.f);
-    ui_T(s, 0.f, 0.f, 12.f, 600, 0.5f, col, QD_CENTER);
-    qd_restore();
+    px_vline(x + 4, y - 2, 5, on ? c : UI_G3);
+    px_vline(x + 7, y - 4, 9, on ? c : UI_G3);
 }
 
 static void tracks(const ui_layer_t *v)
 {
     ui_kkey_t k[11];
     int i;
-
-    for (i = 0; i < UI_NTRACK; i++) {                   /* (six tracks: three a row, 80 px each) */
-        const float x = 40.f + (float)(i % 3) * 80.f, y = 56.f + (float)(i / 3) * 72.f;
+    for (i = 0; i < UI_NTRACK; i++) {
+        const int x = 20 + (i % 3) * 40, y = 30 + (i / 3) * 36;
         const int mute = (v->mute >> i) & 1, solo = (v->solo >> i) & 1, sel = i == v->sel;
+        const qd_rgb tc = mute ? UI_G2 : UI_TRACK_PAL[i & 7];
         if (sel)
-            ui_RR(x - 36.f, y - 24.f, 72.f, 70.f, 6.f, UI_K3, 1.5f, QD_NONE);
-        speaker(x - 2.f, y, mute ? UI_G2 : UI_K3, v->flash[i] != 0, mute);
-        ui_T(NUM[i], x, y + 28.f, 12.f, 600, 0.f, mute ? UI_G2 : UI_K3, QD_CENTER);
-        name_fit(v->tname[i] ? v->tname[i] : "", x, y + 42.f, 68.f, mute ? UI_G2 : sel ? UI_K3 : UI_G1);
-        if (ui_track_kind(i + 1) >= 0)                  /* P1.6d: its kind */
-            ui_kind_icon(ui_track_kind(i + 1), x - 24.f, y - 13.f, 1.f, mute ? UI_G2 : UI_PK_COL[ui_track_kind(i + 1)]);
-        if (solo) {                                     /* soloed: an S in a ring, blinking */
-            ui_O(x + 24.f, y - 14.f, 8.f, SOLO_COL, 1.2f, v->blink ? SOLO_COL : QD_NONE);
-            ui_T("S", x + 24.f, y - 9.5f, 12.f, 700, 0.f, v->blink ? UI_BG : SOLO_COL, QD_CENTER);
+            px_box(x - 18, y - 12, 36, 34, UI_K3);
+        speaker(x - 2, y, mute ? UI_G2 : UI_K3, v->flash[i] != 0, mute);
+        px_rect(x - 16, y + 9, 7, 7, tc);
+        px_ctext(x - 12, y + 10, NUM[i], UI_BG, PX_FS, 1);
+        px_text(x - 7, y + 10, v->tname[i] ? v->tname[i] : "", mute ? UI_G2 : sel ? UI_K3 : UI_G1, PX_FS, 1);
+        if (solo) {
+            px_rect(x + 9, y - 10, 7, 7, v->blink ? UI_KSEL : UI_BG);
+            px_box(x + 9, y - 10, 7, 7, UI_KSEL);
+            px_ctext(x + 13, y - 9, "S", v->blink ? UI_BG : UI_KSEL, PX_FS, 1);
         }
     }
     keys_clear(k);
@@ -318,15 +256,15 @@ static void tracks(const ui_layer_t *v)
 
 void ui_layer_draw(const ui_layer_t *v)
 {
-    static const char *const T[4] = {"F1 \xc2\xb7 PAGES", "F2 \xc2\xb7 CUT & PASTE", "F3 \xc2\xb7 RANGE & RATE",
+    static const char *const T[4] = {"F1 \xc2\xb7 PAGES", "F2 \xc2\xb7 CUT+PASTE", "F3 \xc2\xb7 RANGE+RATE",
                                      "SEL \xc2\xb7 TRACKS"};
     const int l = v->layer < 1 ? 1 : v->layer > 4 ? 4 : v->layer;
-    if (l == 3 && v->latched) {                         /* P1.3d: a latched menu: a back arrow top right (OCT-) */
-        ui_head_track(T[l - 1], v->track, "", UI_K3);
-        ui_RR(180.f, 4.f, 24.f, 17.f, 4.f, UI_K3, 1.2f, QD_NONE);
-        ui_icon(UI_IC_BACK, 192.f, 12.5f, 1.f, UI_K3);
+    if (l == 3 && v->latched) {                         /* a latched menu: the back arrow (OCT-) */
+        map_head(T[l - 1], v->track, "");
+        px_box(88, 1, 12, 9, UI_K3);
+        ui_icon(UI_IC_BACK, 188.f, 11.f, 1.f, UI_K3);
     } else {
-        ui_head_track(v->b11 ? "B11 \xc2\xb7 PAGES" : T[l - 1], v->track, v->name ? v->name : "", UI_K3);
+        map_head(v->b11 ? "B11 \xc2\xb7 PAGES" : T[l - 1], v->track, v->name ? v->name : "");
     }
     if (l == 1)
         f1(v);
@@ -338,7 +276,7 @@ void ui_layer_draw(const ui_layer_t *v)
         tracks(v);
 }
 
-/* ---------------------------------------------------------------- SEQ: the patterns (line.html s13) */
+/* ---------------------------------------------------------------- SEQ: the patterns, the pocket computer's keypad */
 void ui_patterns_draw(const ui_patterns_t *v)
 {
     static const char *const LAUNCH[4] = {"END", "BAR", "BEAT", "NOW"};
@@ -347,123 +285,86 @@ void ui_patterns_draw(const ui_patterns_t *v)
     const int big = v->queued >= 0 ? v->queued : v->cur;
     char s[8], n[12], hb[8];
     int i;
-
     hb[0] = 0;
     cat(cat(hb, "BANK "), BANK[bank]);
     ui_head("PATTERNS", hb, 0, UI_K3, UI_G1);
-    s[0] = 0;                                           /* the queued one big (orange), else the playing one */
+    px_dots(0, 11, 120, UI_G3, 2);
+    s[0] = 0;
+    cat(s, BANK[(big >> 4) & 3]);
     if ((big & 15) + 1 < 10)
         cat(s, "0");
     cat(s, ui_itoa(n, (big & 15) + 1));
-    ui_T(BANK[(big >> 4) & 3], 12.f, 100.f, 40.f, 200, 0.f, UI_G1, QD_LEFT);
-    ui_T(s, 40.f, 100.f, 64.f, 200, 0.f, v->queued >= 0 ? UI_K4 : UI_K3, QD_LEFT);
-    ui_icon(v->playing ? UI_IC_PLAY : UI_IC_STOP, 20.f, 124.f, 1.f, v->playing ? UI_K3 : UI_G1);   /* PLAY / STOP */
-    if (v->queued >= 0) {                               /* queued: a line emptying to the change */
-        line2(34.f, 124.f, 120.f, 124.f, UI_G3, 2.f);
+    px_text_sh(4, 22, s, v->queued >= 0 ? UI_K4 : UI_K3, UI_G3, PX_FB, 2);
+    ui_icon(v->playing ? UI_IC_PLAY : UI_IC_STOP, 14.f, 100.f, 1.f, v->playing ? UI_K3 : UI_G1);
+    if (v->queued >= 0) {                               /* queued: a fuse burning down to the change */
+        px_hline(14, 50, 44, UI_G3);
         if (v->playing && v->left > 0.f)
-            line2(34.f, 124.f, 34.f + 86.f * v->left, 124.f, UI_K4, 2.f);
+            px_hline(14, 50, (int)(44.f * v->left), UI_K4);
     }
-    for (i = 0; i < 16; i++) {                          /* the bank shown: sixteen dots */
-        const int k = bank * 16 + i;
-        const float x = 148.f + (float)(i % 4) * 22.f, y = 42.f + (float)(i / 4) * 20.f;
+    px_rbox(66, 15, 50, 66, UI_G1, PX_DGREY);           /* the keypad */
+    for (i = 0; i < 16; i++) {
+        const int k = bank * 16 + i, x = 70 + (i % 4) * 11, y = 19 + (i / 4) * 11;
         if (k == v->cur)
-            ui_O(x, y, 6.5f, QD_NONE, 1.f, UI_K3);
+            px_rect(x, y, 9, 9, UI_K3);
         else if (k == v->queued)
-            ui_O(x, y, 6.5f, v->blink ? UI_K4 : UI_G2, 1.5f, UI_BG);
+            px_rect(x, y, 9, 9, v->blink ? UI_K4 : UI_G2);
         else if ((v->used >> i) & 1u)
-            ui_O(x, y, 6.5f, UI_G1, 1.2f, UI_BG);
+            px_rect(x, y, 9, 9, PX_GREY);
         else
-            ui_O(x, y, 1.5f, QD_NONE, 1.f, UI_G2);
+            px_box(x, y, 9, 9, UI_G2);
     }
-    for (i = 0; i < 4; i++) {                           /* the banks (SEQ + B1..B4): the one shown boxed */
-        const float x = 148.f + (float)i * 22.f, y = 134.f;
-        const int on = i == bank, has = (v->bank_used >> i) & 1u;
-        const int playing_here = (v->cur >> 4) == i;
+    for (i = 0; i < 4; i++) {                           /* the banks: the one shown boxed */
+        const int x = 70 + i * 11, y = 66, on = i == bank, has = (v->bank_used >> i) & 1u;
         if (on)
-            ui_RR(x - 9.f, y - 13.f, 18.f, 18.f, 4.f, UI_K3, 1.2f, QD_NONE);
-        ui_T(BANK[i], x, y + 1.f, 13.f, on ? 600 : 500, 0.f, on || has ? UI_K3 : UI_G2, QD_CENTER);
-        if (playing_here)                               /* the playing pattern's bank: a dot under it */
-            ui_O(x, y + 10.f, 1.4f, QD_NONE, 1.f, UI_K3);
+            px_box(x, y, 9, 10, UI_K3);
+        px_ctext(x + 5, y + 2, BANK[i], on || has ? UI_K3 : UI_G1, PX_FS, 1);
+        if ((v->cur >> 4) == i)
+            px_pset(x + 4, y + 11, UI_K3);
     }
-    ui_knob_mark(22.f, 176.f, (float)v->launch / 3.f, UI_G1);   /* the launch mode (ALGORITHM), the one in use white */
-    for (i = 0; i < 4; i++) {
-        const float x = 66.f + (float)i * 46.f;
-        ui_T(LAUNCH[i], x, 181.f, 14.f, 500, 0.5f, i == v->launch ? UI_K3 : UI_G2, QD_CENTER);
+    ui_knob_mark(14.f, 176.f, (float)v->launch / 3.f, UI_G1);
+    for (i = 0; i < 4; i++) {                           /* the launch mode (ALGORITHM) */
+        const int x = 34 + i * 22;
+        px_ctext(x, 86, LAUNCH[i], i == v->launch ? UI_K3 : UI_G2, PX_FS, 1);
         if (i == v->launch)
-            line2(x - 12.f, 188.f, x + 12.f, 188.f, UI_K3, 1.5f);
+            px_hline(x - 6, 93, 12, UI_K3);
     }
 }
 
 /* ---------------------------------------------------------------- SHIFT */
-/* 2026-11-10 (the owner's take A2, mockups/fizz-shift.html takeA2): only the knobs are circles (S A P badges); the
- * buttons are boxes with their printed names (F1, F2, SEL), PLAY a box with its triangle, REC a box with its red dot.
- * Its fixed parts as data (a call each is the bigger code): {kind, x, y, w, h, colour}; kinds: 0 a tile (30 high), 1 a
- * button's box, 2 a filled bar, 3 a filled dot (radius w / 2), 4 the track's number box (filled), 5 a key (outlined) */
-static const uint8_t SH_PRIM[][6] = {
-    {0, 8, 76, 110, 0, 3}, {0, 122, 76, 110, 0, 3}, {0, 8, 112, 110, 0, 3}, {0, 122, 112, 53, 0, 3},
-    {0, 179, 112, 53, 0, 3}, {0, 8, 148, 110, 0, 3}, {0, 122, 148, 110, 0, 3},
-    {4, 8, 8, 34, 34, 2},                                                 /* the track's number box */
-    {3, 152, 52, 17, 0, 4}, {3, 22, 91, 17, 0, 0}, {3, 136, 91, 17, 0, 0},   /* S, P, A */
-    {5, 36, 84, 5, 14, 0}, {5, 41, 84, 5, 14, 0}, {5, 47, 84, 5, 14, 0},       /* P: the root, three keys .. */
-    {2, 40, 84, 3, 8, 0}, {2, 45, 84, 3, 8, 0},                                /* .. two black */
-    {2, 148, 95, 3, 4, 0}, {2, 152, 92, 3, 7, 0}, {2, 157, 90, 3, 9, 0}, {2, 161, 87, 3, 12, 0},   /* A: the scale */
-    {2, 166, 85, 3, 12, 0},
-    {1, 13, 119, 22, 16, 0},                                              /* PLAY's box */
-    {1, 13, 155, 22, 16, 1}, {3, 24, 163, 7, 0, 1},                       /* REC's box, its dot */
-    {1, 163, 154, 16, 16, 2},                                             /* SEL's tile: the track's box */
-};
-static void sh_button(const char *nm, float x, float y, qd_rgb col)
+static void tile(int x, int y, int w, qd_rgb c) { px_rbox(x, y, w, 15, c, QD_NONE); }
+static void btn(const char *nm, int x, int y, qd_rgb c)   /* a button's box with its printed name */
 {
-    const float w = ui_TW(nm, 12.f, 700, 0.f) + 8.f;
-    ui_RR(x - w / 2.f, y - 8.f, w, 16.f, 3.5f, col, 1.2f, QD_NONE);
-    ui_T(nm, x, y + 4.3f, 12.f, 700, 0.f, col, QD_CENTER);
-}
-static void sh_val(const char *val, float right, float y, float room, float size, qd_rgb col)   /* right-aligned, fitted */
-{
-    const float w = ui_TW(val, size, 400, 0.f);
-    float sz = w > room ? size * room / w : size;
-    ui_T(val, right, y, sz < 12.f ? 12.f : sz, 400, 0.f, col, QD_RIGHT);
+    const int w = px_text_w(nm, PX_FS, 1) + 4;
+    px_box(x, y, w, 9, c);
+    px_text(x + 2, y + 2, nm, c, PX_FS, 1);
 }
 
-/* P1.5c: SHIFT's black-key shortcuts, the keys drawn where they are, each its glyph (none: dark) */
 static void shift_keys(const ui_shift_t *v)
 {
-    static const uint8_t SK[11] = {1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 1};   /* (ctl_shift.c QD_SHIFT_KEYS; P1.5z: B8) */
+    static const uint8_t SK[11] = {1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 1};
     int i;
     for (i = 0; i < 11; i++) {
-        const float x = 10.f + (float)i * 20.4f, cx = x + 9.f, cy = 211.f;   /* (2026-11-10: 38 px from 192) */
+        const int x = 4 + i * 10 + (i == 10 ? 2 : 0), cx = x + 4, cy = 105;
         const qd_rgb c = !SK[i] ? UI_G3 : (i == 2 && !v->snap_ok) || (i == 4 && !v->pclip_ok) ? UI_G2
                        : i == 10 ? UI_K4 : i == 6 && v->metro ? UI_K2 : i == 7 && v->follow ? UI_K2 : UI_K3;
-        ui_RR(x, 192.f, 18.f, 38.f, 4.f, c, !SK[i] ? 1.f : i == 10 && v->armed ? 2.4f : 1.4f, QD_NONE);
+        px_box(x, 96, 9, 18, c);
+        if (i == 10 && v->armed)
+            px_box(x + 1, 97, 7, 16, c);
         switch (i) {
-        case 0:                                         /* the snapshot stored: a frame, its shutter, filled */
-            ui_RR(cx - 6.f, cy - 4.f, 12.f, 9.f, 2.f, c, 1.2f, QD_NONE);
-            ui_O(cx, cy + 0.5f, 2.2f, QD_NONE, 1.f, c);
-            break;
-        case 2:                                         /* .. recalled: the frame, an arrow out of it */
-            ui_RR(cx - 6.f, cy - 1.f, 12.f, 9.f, 2.f, c, 1.2f, QD_NONE);
-            line2(cx, cy - 10.f, cx, cy + 2.f, c, 1.2f);
-            line2(cx - 3.f, cy - 7.f, cx, cy - 10.f, c, 1.2f);
-            line2(cx + 3.f, cy - 7.f, cx, cy - 10.f, c, 1.2f);
-            break;
-        case 3: ui_icon(UI_IC_COPY, cx, cy, 1.f, c); break;
-        case 4: ui_icon(UI_IC_PASTE, cx, cy, 1.f, c); break;
-        case 5:                                         /* tap tempo: a tap and its ring */
-            ui_O(cx, cy, 2.5f, QD_NONE, 1.f, c);
-            ui_O(cx, cy, 6.5f, c, 1.2f, QD_NONE);
-            break;
+        case 0: px_box(cx - 3, cy - 2, 7, 5, c), px_pset(cx, cy, c); break;   /* the snapshot stored */
+        case 2: px_box(cx - 3, cy, 7, 5, c), px_vline(cx, cy - 5, 5, c); break;   /* .. recalled */
+        case 3: ui_icon(UI_IC_COPY, (float)(2 * cx + 1), (float)(2 * cy), 1.f, c); break;
+        case 4: ui_icon(UI_IC_PASTE, (float)(2 * cx + 1), (float)(2 * cy), 1.f, c); break;
+        case 5: px_rect(cx - 1, cy - 1, 3, 3, c), px_box(cx - 3, cy - 3, 7, 7, c); break;   /* tap */
         case 6: {                                       /* the metronome */
-            const float m[8] = {cx - 6.f, cy + 8.f, cx - 2.f, cy - 8.f, cx + 2.f, cy - 8.f, cx + 6.f, cy + 8.f};
-            ui_P(m, 4, c, 1.2f, 1, QD_NONE);
-            line2(cx, cy + 5.f, cx + 5.f, cy - 6.f, c, 1.2f);
+            int p[6] = {cx - 3, cy + 4, cx + 3, cy + 4, cx, cy - 5};
+            px_poly(p, 3, 1, c, QD_NONE);
+            px_line(cx, cy + 2, cx + 3, cy - 3, c);
             break;
         }
-        case 7: ui_icon(UI_IC_FOLLOW, cx, cy, 0.9f, c); break;   /* P1.5z: page follow */
-        case 8:                                         /* the track doubled: two pages */
-            ui_RR(cx - 7.f, cy - 4.f, 6.f, 8.f, 1.f, c, 1.1f, QD_NONE);
-            ui_RR(cx + 1.f, cy - 4.f, 6.f, 8.f, 1.f, c, 1.1f, QD_NONE);
-            break;
-        case 10: ui_icon(UI_IC_CLEAR, cx, cy, 1.f, c); break;
+        case 7: ui_icon(UI_IC_FOLLOW, (float)(2 * cx + 1), (float)(2 * cy), 1.f, c); break;
+        case 8: px_box(cx - 4, cy - 2, 4, 5, c), px_box(cx + 1, cy - 2, 4, 5, c); break;   /* the track doubled */
+        case 10: ui_icon(UI_IC_CLEAR, (float)(2 * cx + 1), (float)(2 * cy), 1.f, c); break;
         default: break;
         }
     }
@@ -471,345 +372,237 @@ static void shift_keys(const ui_shift_t *v)
 
 void ui_shift_draw(const ui_shift_t *v)
 {
-    static const char *const BADGE[3] = {"S", "P", "A"};
     const int t = v->track < 1 ? 0 : (v->track - 1) % UI_NTRACK;
     const qd_rgb tc = UI_TRACK_PAL[t], kc = v->kind >= 0 && v->kind < 7 ? UI_PK_COL[v->kind] : UI_K3;
-    const qd_rgb COL[5] = {UI_K3, UI_RED, tc, UI_G3, UI_KSEL};
     const char *nm = v->name ? v->name : "";
     char n[12], sw[8];
-    float nw, x;
-    size_t i;
-    const int lsc = ui_TW(v->scale ? v->scale : "", 12.f, 400, 0.f) > 52.f;   /* (a long scale name: no staircase) */
-    qd_fill_rect(0.f, 0.f, (float)QD_W, (float)QD_H, UI_BG);
-    for (i = 0; i < sizeof SH_PRIM / sizeof SH_PRIM[0]; i++) {
-        const uint8_t *p = SH_PRIM[i];
-        if (lsc && i >= 16 && i <= 20)
-            continue;
-        const float px = p[1], py = p[2], pw = p[3], ph = p[4];
-        const qd_rgb c = COL[p[5]];
-        switch (p[0]) {
-        case 0: ui_RR(px, py, pw, 30.f, 6.f, c, 1.2f, QD_NONE); break;
-        case 1: ui_RR(px, py, pw, ph, 3.5f, c, 1.3f, QD_NONE); break;
-        case 2: ui_RR(px, py, pw, ph, 0.8f, QD_NONE, 1.f, c); break;
-        case 3: ui_O(px, py, pw / 2.f, QD_NONE, 1.f, c); break;
-        case 4: ui_RR(px, py, pw, ph, 7.f, QD_NONE, 1.f, c); break;
-        default: ui_RR(px, py, pw, ph, 1.2f, c, 1.2f, QD_NONE); break;
-        }
-    }
-    for (i = 0; i < 3; i++)                             /* the knobs' letters */
-        ui_T(BADGE[i], SH_PRIM[8 + i][1], SH_PRIM[8 + i][2] + 4.3f, 12.f, 700, 0.f, UI_BG, QD_CENTER);
-    /* the track band: its number, its kind, its name big in the kind's colour; SELECT's six, the selected filled */
-    ui_T(ui_itoa(n, t + 1), 25.f, 33.f, 24.f, 700, 0.f, UI_BG, QD_CENTER);
-    x = 50.f;
+    int x, i;
+    px_rect(0, 0, 120, 120, UI_BG);
+    /* the track band: its number, its kind, its name big; SELECT's six, the selected filled */
+    px_rect(3, 3, 16, 16, tc);
+    px_ctext(11, 7, ui_itoa(n, t + 1), UI_BG, PX_FB, 1);
+    x = 23;
     if (v->kind >= 0) {
-        ui_kind_icon(v->kind, 58.f, 25.f, 1.3f, kc);
-        x = 74.f;
+        ui_kind_icon(v->kind, 54.f, 22.f, 1.f, kc);
+        x = 33;
     }
-    nw = ui_TW(nm, 26.f, 300, 0.f);
-    ui_T(nm, x, 35.f, nw > 232.f - x ? 26.f * (232.f - x) / nw : 26.f, 300, 0.f, kc, QD_LEFT);
-    for (i = 0; i < UI_NTRACK; i++)
-        ui_RR(166.f + (float)i * 11.3f, 45.f, 9.f, 14.f, 2.f, (int)i == t ? UI_TRACK_PAL[i] : UI_G2, 1.1f,
-              (int)i == t ? UI_TRACK_PAL[i] : QD_NONE);
-    line2(8.f, 68.f, 232.f, 68.f, UI_G3, 1.f);
-    /* the values: P the root, A the scale; PLAY (F3) the tempo, the swing; REC's MODE */
-    sh_val(v->root ? v->root : "", 110.f, 97.f, 50.f, 16.f, UI_K3);
-    sh_val(v->scale ? v->scale : "", 224.f, 97.f, lsc ? 76.f : 52.f, 16.f, UI_K3);
-    {
-        const float tri[6] = {21.f, 122.5f, 28.5f, 127.f, 21.f, 131.5f};
-        ui_P(tri, 3, UI_K3, 1.f, 1, UI_K3);
+    if (px_text_w(nm, PX_FB, 1) <= 116 - x)
+        px_text(x, 4, nm, kc, PX_FB, 1);
+    else
+        px_text(x, 6, nm, kc, PX_FS, 1);
+    for (i = 0; i < UI_NTRACK; i++) {
+        if (i == t)
+            px_rect(x + i * 6, 14, 4, 5, UI_TRACK_PAL[i]);
+        else
+            px_box(x + i * 6, 14, 4, 5, UI_G2);
     }
-    sh_val(ui_itoa(n, v->bpm), 64.f, 133.f, 26.f, 15.f, v->ext ? UI_G1 : UI_K3);
-    ui_icon(UI_IC_SWING, 75.f, 127.f, 1.f, UI_K3);
+    px_rect(98, 13, 7, 7, UI_KSEL);
+    px_ctext(102, 14, "S", UI_BG, PX_FS, 1);
+    px_dots(0, 23, 120, UI_G3, 2);
+    /* the tiles: P the root, A the scale; PLAY the tempo and swing; F1 / F2; REC's mode; SEL the track settings */
+    tile(3, 27, 55, UI_K3);
+    px_rect(6, 31, 7, 7, PX_WHITE), px_ctext(10, 32, "P", UI_BG, PX_FS, 1);
+    px_rtext(55, 30, v->root ? v->root : "", UI_K3, PX_FB, 1);
+    tile(61, 27, 56, UI_K3);
+    px_rect(64, 31, 7, 7, UI_KALG), px_ctext(68, 32, "A", UI_BG, PX_FS, 1);
+    px_rtext(114, 32, v->scale ? v->scale : "", UI_K3, PX_FS, 1);
+    tile(3, 45, 55, UI_K3);
+    ui_icon(UI_IC_PLAY, 18.f, 105.f, 1.f, UI_K3);
+    ui_itoa(n, v->bpm);
+    px_text(15, 49, n, v->ext ? UI_G1 : UI_K3, PX_FB, 1);
     sw[0] = 0;
     cat(cat(sw, ui_itoa(n, v->swing)), "%");
-    sh_val(sw, 112.f, 133.f, 30.f, 13.f, UI_K3);
-    ui_icon(UI_IC_GEAR, 50.f, 163.f, 1.15f, UI_RED);
-    sh_val(v->rec_step ? "STEP" : "LIVE", 110.f, 169.f, 52.f, 16.f, UI_RED);
-    /* F1 undo, F2 redo: their arrows (dim with nothing there) */
-    for (i = 0; i < 2; i++) {
-        sh_button(i ? "F2" : "F1", 137.f + (float)i * 57.f, 127.f, UI_K3);
-        ui_icon(i ? UI_IC_RIGHT : UI_IC_LEFT, 160.f + (float)i * 57.f, 127.f, 1.2f,
-                (i ? v->can_redo : v->can_undo) ? UI_K3 : UI_G2);
-    }
-    /* SEL: the track settings: the track's box (its number) with a small gear */
-    sh_button("SEL", 140.f, 163.f, tc);
-    ui_T(ui_itoa(n, t + 1), 171.f, 166.5f, 12.f, 700, 0.f, tc, QD_CENTER);
-    ui_O(179.f, 169.f, 5.5f, QD_NONE, 1.f, UI_BG);
-    ui_icon(UI_IC_GEAR, 179.f, 169.f, 0.75f, tc);
+    px_rtext(55, 50, sw, UI_K2, PX_FS, 1);
+    tile(61, 45, 27, UI_K3);
+    btn("F1", 63, 48, UI_K3);
+    ui_icon(UI_IC_LEFT, 162.f, 105.f, 1.f, v->can_undo ? UI_K3 : UI_G2);
+    tile(90, 45, 27, UI_K3);
+    btn("F2", 92, 48, UI_K3);
+    ui_icon(UI_IC_RIGHT, 220.f, 105.f, 1.f, v->can_redo ? UI_K3 : UI_G2);
+    tile(3, 63, 55, PX_LRED);
+    px_rect(7, 67, 7, 7, PX_LRED);
+    px_text(19, 66, v->rec_step ? "STEP" : "LIVE", PX_LRED, PX_FB, 1);
+    tile(61, 63, 56, tc);
+    btn("SEL", 63, 66, tc);
+    px_rect(82, 66, 9, 9, tc);
+    px_ctext(87, 68, ui_itoa(n, t + 1), UI_BG, PX_FS, 1);
+    ui_icon(UI_IC_GEAR, 200.f, 141.f, 1.f, tc);
+    px_dots(0, 82, 120, UI_G3, 2);
     shift_keys(v);
 }
 
-/* ---------------------------------------------------------------- P1.3y: the settings menus */
+/* ---------------------------------------------------------------- the settings menus */
 static const qd_rgb KCOL[4] = {UI_K1, UI_K2, UI_K3, UI_K4};
+#define ROW_Y(k) (15 + (k) * 26)                       /* four rows under the head, 26 apart */
 
-/* a row's head: the knob's badge, the row's name; its value big at the right, in the knob's colour */
-static void menu_row_sz(int k, float y, const char *name, const char *val, float sz)   /* (sz 0: fitted to 110 px) */
+/* a row: the knob's badge, its name; its value big at the right in the knob's colour */
+static void row(int k, const char *name, const char *val)
 {
     char n[4] = {(char)('1' + k), 0};
-    ui_O(18.f, y, 9.f, QD_NONE, 1.f, KCOL[k]);
-    ui_T(n, 18.f, y + 4.5f, 12.f, 700, 0.f, UI_BG, QD_CENTER);
-    ui_lab(name, 34.f, y + 4.5f, UI_G1, QD_LEFT);
+    const int y = ROW_Y(k);
+    px_rect(3, y, 7, 7, KCOL[k]);
+    px_ctext(7, y + 1, n, UI_BG, PX_FS, 1);
+    px_text(13, y + 1, name, UI_G1, PX_FS, 1);
     if (val) {
-        const float w = ui_TW(val, 30.f, 300, 0.f);
-        if (sz <= 0.f)
-            sz = w > 110.f ? 30.f * 110.f / w : 30.f;
-        ui_T(val, 232.f, y + 30.f, sz, 300, 0.f, KCOL[k], QD_RIGHT);
+        if (px_text_w(val, PX_FB, 2) <= 64)
+            px_rtext(116, y + 9, val, KCOL[k], PX_FB, 2);
+        else if (px_text_w(val, PX_FB, 1) <= 100)
+            px_rtext(116, y + 12, val, KCOL[k], PX_FB, 1);
+        else
+            px_rtext(116, y + 14, val, KCOL[k], PX_FS, 1);
     }
 }
-static void menu_row(int k, float y, const char *name, const char *val) { menu_row_sz(k, y, name, val, 0.f); }
 
-static void menu_head(const char *title)
+static void menu_head(const char *title, int npage, int page)
 {
-    ui_T(title, 8.f, 18.f, 12.f, 600, 0.8f, UI_K3, QD_LEFT);
-    ui_RR(208.f, 4.f, 24.f, 17.f, 4.f, UI_K3, 1.2f, QD_NONE);   /* (latched: OCT- back) */
-    ui_icon(UI_IC_BACK, 220.f, 12.5f, 1.f, UI_K3);
-    line2(8.f, 27.f, 232.f, 27.f, UI_G3, 1.f);
+    int k;
+    px_text(4, 3, title, UI_K3, PX_FS, 1);
+    for (k = 0; k < npage; k++)
+        px_rect(4 + px_text_w(title, PX_FS, 1) + 4 + k * 4, 5, 2, 2, k == page ? UI_K3 : UI_G2);
+    px_box(104, 1, 13, 9, UI_K3);                       /* latched: OCT- back */
+    ui_icon(UI_IC_BACK, 221.f, 11.f, 1.f, UI_K3);
+    px_dots(0, 11, 120, UI_G3, 2);
 }
 
-/* P1.6d, the record settings' page 2: KNOB 1 AUTOMATION. A lane of eight steps under the moving playhead (its red dot):
- * ON, the knob's moves as bars over every step (the empty steps ghosts, outlined); OFF, the bars faint and crossed */
 static void menu_rec2(const ui_menu_t *v)
 {
-    static const float LV[8] = {0.25f, 0.4f, 0.65f, 0.85f, 0.7f, 0.5f, 0.3f, 0.45f};
+    static const uint8_t LV[8] = {7, 11, 18, 24, 19, 14, 8, 12};
     static const uint8_t NOTE[8] = {1, 0, 0, 1, 0, 1, 0, 0};
-    const int on = v->rec_auto;
-    const float px = 34.f + fmodf(v->t * 44.f, 176.f);
+    const int on = v->rec_auto, px = 14 + (int)fmodf(v->t * 22.f, 88.f);
     int i;
-    menu_row(0, 44.f, "AUTOMATION", on ? "ON" : "OFF");
+    row(0, "AUTOMATION", on ? "ON" : "OFF");
     for (i = 0; i < 8; i++) {
-        const float x = 34.f + (float)i * 22.f, h = 56.f * LV[i];
-        ui_RR(x + 5.f, 168.f - h, 8.f, h, 2.f, QD_NONE, 1.f, on ? UI_K1 : UI_G3);
+        const int x = 14 + i * 11;
+        px_rect(x + 3, 84 - LV[i], 4, LV[i], on ? UI_K1 : UI_G3);
         if (NOTE[i])
-            ui_RR(x, 178.f, 18.f, 18.f, 3.f, UI_G1, 1.2f, UI_G1);
+            px_rect(x, 88, 9, 9, UI_G1);
         else
-            ui_RR(x, 178.f, 18.f, 18.f, 3.f, on ? UI_K1 : UI_G3, 1.2f, QD_NONE);   /* (ON: a ghost) */
+            px_box(x, 88, 9, 9, on ? UI_K1 : UI_G3);
     }
     if (!on)
-        line2(30.f, 104.f, 210.f, 172.f, UI_RED, 1.6f);
-    line2(px, 100.f, px, 200.f, on ? UI_RED : UI_G2, 1.2f);
-    if (on)
-        ui_O(px, 96.f, 4.5f, QD_NONE, 1.f, UI_RED);
+        px_line(12, 52, 104, 86, PX_LRED);
+    px_vline(px, 50, 50, on ? PX_LRED : UI_G2);
 }
 
 static void menu_rec(const ui_menu_t *v)
 {
-    static const float OFF[4] = {7.f, -6.f, 4.f, -9.f};    /* the notes' places off their grid lines (px) */
     char q[12];
     int i;
-    menu_head("REC");
-    for (i = 0; i < 2; i++)                             /* P1.6d: two pages */
-        ui_O(52.f + (float)i * 9.f, 14.f, 2.6f, i == v->rec_page ? UI_K3 : UI_G2, 1.f, i == v->rec_page ? UI_K3 : QD_NONE);
+    menu_head("REC", 2, v->rec_page);
     if (v->rec_page) {
         menu_rec2(v);
         return;
     }
-    /* KNOB 1: MODE (P1.5b: four rows, 52 px apart) */
-    menu_row(0, 42.f, "MODE", v->rec_step ? "STEP" : "LIVE");
-    if (v->rec_step) {                                  /* a row of cells, the cursor's lit */
-        for (i = 0; i < 8; i++)
-            ui_RR(34.f + (float)i * 13.f, 54.f, 11.f, 12.f, 2.f, i == 3 ? UI_K1 : UI_G2, 1.2f, i == 3 ? UI_K1 : QD_NONE);
-    } else {                                            /* a line, notes off the grid, a red dot */
-        line2(34.f, 66.f, 134.f, 66.f, UI_G2, 1.2f);
-        for (i = 0; i < 4; i++) {
-            line2(40.f + (float)i * 26.f, 58.f, 40.f + (float)i * 26.f, 70.f, UI_G3, 1.f);
-            ui_O(40.f + (float)i * 26.f + OFF[i] * 0.6f, 59.f - (float)(i % 2) * 3.f, 3.f, QD_NONE, 1.f, UI_K1);
+    row(0, "MODE", v->rec_step ? "STEP" : "LIVE");
+    for (i = 0; i < 8; i++) {                           /* STEP: cells, the cursor's lit; LIVE: notes off the grid */
+        if (v->rec_step) {
+            if (i == 3)
+                px_rect(14 + i * 6, 27, 5, 6, UI_K1);
+            else
+                px_box(14 + i * 6, 27, 5, 6, UI_G2);
+        } else if (i < 4) {
+            px_vline(16 + i * 12, 27, 7, UI_G3);
+            px_rect(16 + i * 12 + (i & 1 ? -2 : 2), 28, 3, 3, UI_K1);
         }
-        ui_O(146.f, 60.f, 4.f, QD_NONE, 1.f, UI_RED);
     }
-    /* KNOB 2: QUANTIZE */
     cat(ui_itoa(q, v->quant), "%");
-    menu_row(1, 94.f, "QUANTIZE", q);
-    line2(34.f, 120.f, 140.f, 120.f, UI_G2, 1.2f);
-    for (i = 0; i < 4; i++) {                           /* the grid lines, the notes pulled onto them by q % */
-        const float gx = 44.f + (float)i * 28.f;
-        const float nx = gx + OFF[i] * (float)(100 - v->quant) / 100.f;
-        line2(gx, 106.f, gx, 124.f, UI_G1, 1.f);
-        if (v->quant < 100)
-            ui_O(gx + OFF[i], 113.f, 3.5f, UI_G2, 1.f, QD_NONE);
-        ui_O(nx, 113.f, 3.5f, QD_NONE, 1.f, UI_K2);
+    row(1, "QUANTIZE", q);
+    for (i = 0; i < 4; i++) {                           /* the notes pulled onto their grid lines by q % */
+        static const int8_t OFF[4] = {4, -3, 2, -5};
+        const int gx = 18 + i * 14, nx = gx + OFF[i] * (100 - v->quant) / 100;
+        px_vline(gx, 53, 8, UI_G1);
+        px_rect(nx - 1, 56, 3, 3, UI_K2);
     }
-    /* KNOB 3: the TAKE: CAPTURE / REPLACE / OVERDUB */
-    menu_row(2, 146.f, "TAKE", v->dub == 0 ? "CAPTURE" : v->dub == 1 ? "OVERDUB" : "REPLACE");
-    if (v->dub == 0) {                                  /* CAPTURE: the steps played, cut at the take's end (red) */
-        for (i = 0; i < 6; i++)
-            ui_RR(34.f + (float)i * 14.f, 160.f, 10.f, 20.f, 2.f, i < 4 ? UI_G1 : UI_G3, 1.2f,
-                  i < 4 && i != 2 ? UI_K3 : QD_NONE);
-        line2(88.f, 154.f, 88.f, 186.f, UI_RED, 2.f);
-    } else {
-        ui_RR(34.f, 158.f, 40.f, 24.f, 4.f, UI_G2, 1.2f, QD_NONE);   /* a step: its notes, the new one */
-        for (i = 0; i < 2; i++) {
-            const float y = 174.f - (float)i * 7.f;
-            ui_RR(39.f, y, 30.f, 5.f, 2.f, QD_NONE, 1.f, v->dub == 1 ? UI_G1 : UI_G3);
-            if (v->dub != 1)
-                line2(37.f, y + 6.f, 71.f, y - 1.f, UI_RED, 1.4f);
-        }
-        ui_RR(39.f, 160.f, 30.f, 5.f, 2.f, QD_NONE, 1.f, UI_K3);
-        ui_RR(84.f, 167.f, 10.f, 6.f, 2.f, QD_NONE, 1.f, UI_K3);   /* the note coming in */
-        {
-            const float a[6] = {102.f, 167.f, 96.f, 170.f, 102.f, 173.f};
-            line2(96.f, 170.f, 114.f, 170.f, UI_K3, 1.2f);
-            ui_P(a, 3, UI_K3, 1.2f, 0, QD_NONE);
-        }
-    }
-    /* KNOB 4 (P1.5b): EDIT KEYS: the sound editor's keyboard, SCALE (eight keys, all in the scale, the root brighter;
-     * the black ones its pages) or FULL (the keybed) */
-    menu_row(3, 198.f, "EDIT KEYS", v->ekeys ? "FULL" : "SCALE");
-    for (i = 0; i < 8; i++) {
-        const float x = 34.f + (float)i * 13.f;
-        ui_RR(x, 214.f, 11.f, 18.f, 2.f, v->ekeys ? UI_G1 : (i % 7 == 0 ? UI_K4 : UI_G1), 1.2f,
-              !v->ekeys && i % 7 == 0 ? UI_K4 : QD_NONE);
-    }
-    for (i = 0; i < 7; i++) {
-        static const uint8_t B[7] = {1, 1, 0, 1, 1, 1, 0};
-        if (B[i])
-            ui_RR(34.f + (float)i * 13.f + 8.f, 210.f, 8.f, 10.f, 2.f, QD_NONE, 1.f, v->ekeys ? UI_G1 : UI_G3);
-    }
+    row(2, "TAKE", v->dub == 0 ? "CAPTURE" : v->dub == 1 ? "OVERDUB" : "REPLACE");
+    for (i = 0; i < 6; i++)
+        px_box(14 + i * 7, 80, 5, 10, i < 4 ? UI_G1 : UI_G3);
+    if (v->dub == 0)
+        px_vline(42, 77, 16, PX_LRED);
+    row(3, "EDIT KEYS", v->ekeys ? "FULL" : "SCALE");
+    for (i = 0; i < 8; i++)
+        px_box(14 + i * 6, 106, 5, 10, !v->ekeys && i % 7 == 0 ? UI_K4 : UI_G1);
 }
 
-/* P1.6d: automation recording: the screen framed in red, pulsing, while the knobs record; the knob that wrote last
- * a red dot on its band at the foot (KNOB 1..4's cells; an encoder: the frame flashes), fading */
 void ui_auto_cue(int k, float since, float t)
 {
-    const float pulse = 0.5f + 0.5f * sinf(t * 6.f);
-    const float al = since < 0.f ? 0.f : since < 0.3f ? 1.f : since < 0.9f ? 1.f - (since - 0.3f) / 0.6f : 0.f;
-    qd_save();
-    qd_alpha(0.45f + 0.35f * pulse + (k < 0 || k > 3 ? 0.2f * al : 0.f));
-    ui_RR(1.f, 1.f, 238.f, 238.f, 8.f, UI_RED, 2.f, QD_NONE);
-    qd_restore();
-    if (al > 0.f && k >= 0 && k < 4) {
-        qd_save();
-        qd_alpha(al);
-        ui_O(30.f + (float)k * 60.f, 235.f, 4.f, UI_BG, 1.5f, UI_RED);
-        qd_restore();
-    }
+    const int lit = fz_sinf(t * 6.f) > 0.f || (since >= 0.f && since < 0.3f);
+    px_box(0, 0, 120, 120, lit ? PX_LRED : UI_RED);
+    if (since >= 0.f && since < 0.9f && k >= 0 && k < 4)
+        px_rect(13 + k * 30, 116, 4, 3, PX_LRED);
 }
 
-/* P1.5b: LFO held alone: the latch mode. Two drawings side by side, the chosen one lit in LFO's colour: VALUES (a step
- * selected, its value on the black keys: a bar of ten, one lit) and MODES (the black keys as the hold modes' colours,
- * the knobs turning the step's value) */
 void ui_lmode_draw(int mode, float t)
 {
     int side, i;
     (void)t;
-    qd_fill_rect(0.f, 0.f, (float)QD_W, (float)QD_H, UI_BG);
+    px_rect(0, 0, 120, 120, UI_BG);
     for (side = 0; side < 2; side++) {
-        const float x0 = 12.f + (float)side * 112.f;
-        const int modes = side == 0, on = (modes ? 1 : 0) == mode;   /* (2026-10-26: MODES (1) first, left; VALUES 0) */
+        const int x0 = 5 + side * 57, modes = side == 0, on = (modes ? 1 : 0) == mode;
         const qd_rgb c = on ? UI_K3 : UI_G2;
-        ui_RR(x0, 30.f, 104.f, 156.f, 10.f, c, on ? 2.f : 1.f, QD_NONE);
-        for (i = 0; i < 4; i++)                         /* the step selected: a row of four, one held */
-            ui_RR(x0 + 14.f + (float)i * 20.f, 48.f, 16.f, 16.f, 3.f, i == 1 ? c : UI_G3, 1.2f, i == 1 ? c : QD_NONE);
-        for (i = 0; i < 10; i++) {                      /* the black keys */
-            const float bx = x0 + 9.f + (float)i * 9.2f;
-            qd_rgb kc = UI_G3;
-            if (!modes)
-                kc = i == 6 ? (on ? UI_K1 : UI_G1) : on ? UI_G2 : UI_G3;   /* VALUES: one value lit */
+        px_box(x0, 14, 53, 80, c);
+        if (on)
+            px_box(x0 + 1, 15, 51, 78, c);
+        for (i = 0; i < 4; i++) {
+            if (i == 1)
+                px_rect(x0 + 7 + i * 10, 22, 8, 8, c);
             else
-                kc = on ? UI_MODE_COL[i] : UI_G2;       /* MODES: the hold modes' colours */
-            ui_RR(bx, 82.f, 7.f, 30.f, 2.f, QD_NONE, 1.f, kc);
+                px_box(x0 + 7 + i * 10, 22, 8, 8, UI_G3);
         }
-        if (!modes) {                                   /* VALUES: the step's value, a bar */
-            ui_RR(x0 + 14.f, 126.f, 76.f, 10.f, 3.f, c, 1.2f, QD_NONE);
-            ui_RR(x0 + 14.f, 126.f, 52.f, 10.f, 3.f, QD_NONE, 1.f, on ? UI_K1 : UI_G2);
-        } else {                                        /* MODES: a knob turning the step's value */
-            ui_O(x0 + 52.f, 136.f, 15.f, c, 1.6f, QD_NONE);
-            line2(x0 + 52.f, 136.f, x0 + 52.f + 10.f, 136.f - 10.f, on ? UI_K1 : UI_G2, 2.f);
+        for (i = 0; i < 10; i++) {                      /* the black keys */
+            const qd_rgb kc = modes ? (on ? UI_MODE_COL[i] : UI_G2)
+                                    : i == 6 ? (on ? UI_K1 : UI_G1) : on ? UI_G2 : UI_G3;
+            px_rect(x0 + 4 + i * 5, 38, 3, 15, kc);
         }
-        ui_T(modes ? "MODES" : "VALUES", x0 + 52.f, 172.f, 14.f, 600, 0.8f, c, QD_CENTER);
+        if (!modes) {
+            px_box(x0 + 7, 60, 38, 6, c);
+            px_rect(x0 + 8, 61, 26, 4, on ? UI_K1 : UI_G2);
+        } else {
+            px_circle(x0 + 26, 64, 7, c, QD_NONE);
+            px_line(x0 + 26, 64, x0 + 31, 59, on ? UI_K1 : UI_G2);
+        }
+        px_ctext(x0 + 27, 80, modes ? "MODES" : "VALUES", c, PX_FS, 1);
     }
-    ui_T("LATCH", 120.f, 218.f, 20.f, 300, 1.f, UI_K3, QD_CENTER);
+    px_ctext(60, 102, "LATCH", UI_K3, PX_FB, 1);
 }
 
 #if QD_PKG_BLE
-/* 2026-10-27, the Bluetooth package: SETTINGS' page 2 (SELECT), on the track settings' page-3 grid (four rows 51 px
- * apart, the value 26 px at the right, its picture left of it): KNOB 1 BLUETOOTH ON / OFF (the rune), KNOB 2 its
- * state, shown only: OFF, WAITING (three dots in turn), CONNECTED (three dots lit). KNOB 3, 4 nothing */
-static void ble_rune(float x, float y, float h, qd_rgb col)
-{
-    const float w = h * 0.5f;
-    const float a[12] = {x - w, y - h * 0.5f, x + w, y + h * 0.5f, x, y + h, x, y - h, x + w, y - h * 0.5f,
-                         x - w, y + h * 0.5f};
-    ui_P(a, 6, col, 1.8f, 0, QD_NONE);
-}
-static __attribute__((noinline)) void menu_set2(const ui_menu_t *v)   /* (noinline: in the Bluetooth package's second blob, not with ui_menu_draw in the app slot) */
+static __attribute__((noinline)) void menu_set2(const ui_menu_t *v)
 {
     static const char *const ST[3] = {"OFF", "WAITING", "CONNECTED"};
     const int st = v->ble_st < 0 || v->ble_st > 2 ? 0 : v->ble_st;
-    int k;
-    for (k = 0; k < 2; k++) {
-        const float y = 40.f + (float)k * 53.25f, vy = y + 30.f;   /* (the track settings' grid, TRK_Y) */
-        const char *val = k == 0 ? (v->ble_on ? "ON" : "OFF") : ST[st];
-        const qd_rgb col = (k == 0 ? v->ble_on : st) ? KCOL[k] : UI_G2;
-        const float w = ui_TW(val, 26.f, 300, 0.f), sz = w > 150.f ? 26.f * 150.f / w : 26.f;
-        const float lx = 232.f - (w > 150.f ? 150.f : w);
-        menu_row_sz(k, y, k == 0 ? "BLUETOOTH" : "STATUS", 0, 0.f);
-        ui_T(val, 232.f, vy, sz, 300, 0.f, col, QD_RIGHT);
-        if (k == 0) {
-            ble_rune(lx - 18.f, vy - 9.f, 10.f, col);
-            if (!v->ble_on)
-                line2(lx - 30.f, vy - 21.f, lx - 6.f, vy + 3.f, UI_RED, 1.6f);
-        } else {
-            int i;
-            const int lit = st == 2 ? 3 : st == 1 ? (int)fmodf(v->t * 3.f, 3.f) + 1 : 0;
-            for (i = 0; i < 3; i++) {
-                const int on = st == 2 ? 1 : st == 1 ? i == lit - 1 : 0;
-                ui_O(lx - 42.f + (float)i * 14.f, vy - 9.f, 4.5f, on ? col : UI_G3, 1.2f, on ? col : QD_NONE);
-            }
-        }
-    }
+    row(0, "BLUETOOTH", v->ble_on ? "ON" : "OFF");
+    row(1, "STATUS", ST[st]);
 }
 #endif
 
-/* 2026-11-10 (owner): SETTINGS' page 2, HOME, on the track settings' grid (TRK_Y: four rows 53.25 px apart, the value
- * 26 px at the right): KNOB 1 HOME VIEW (its name), KNOB 2 LOCK (ON / OFF, a padlock shut or open); under them the five
- * Home views as five little screens in HOME's order, the chosen one lit in KNOB 1's colour; unlocked an arrow along
- * them (HOME clicks go round), locked the padlock over the chosen one */
-static void padlock(float cx, float cy, int shut, qd_rgb col)   /* its shackle (open: lifted), its body */
+static __attribute__((noinline)) void menu_home(const ui_menu_t *v)
 {
-    ui_RR(cx - 4.f, cy - (shut ? 6.f : 10.f), 8.f, 10.f, 4.f, col, 1.8f, QD_NONE);
-    ui_RR(cx - 6.5f, cy - 1.f, 13.f, 10.f, 2.f, QD_NONE, 1.f, col);
-}
-static __attribute__((noinline)) void menu_home(const ui_menu_t *v)   /* (noinline: the Bluetooth package's second
-                                                         * blob, as menu_set2) */
-{
-    static const char *const VN[4] = {"PIANO ROLL", "STEPS", "EDIT", "GEEK OUT"};   /* (2026-11-11: OVERVIEW is SEL's) */
+    static const char *const VN[4] = {"PIANO ROLL", "STEPS", "EDIT", "GEEK OUT"};
     const int hv = v->home_view < 0 || v->home_view > 3 ? 0 : v->home_view;
-    int k, i;
-    for (k = 0; k < 2; k++) {
-        const float y = 40.f + (float)k * 53.25f, vy = y + 30.f;
-        const char *val = k == 0 ? VN[hv] : v->home_lock ? "ON" : "OFF";
-        const qd_rgb col = k == 0 || v->home_lock ? KCOL[k] : UI_G2;
-        const float w = ui_TW(val, 26.f, 300, 0.f), sz = w > 150.f ? 26.f * 150.f / w : 26.f;
-        menu_row_sz(k, y, k == 0 ? "HOME VIEW" : "LOCK", 0, 0.f);
-        ui_T(val, 232.f, vy, sz, 300, 0.f, col, QD_RIGHT);
-        if (k == 1)
-            padlock(232.f - (w > 150.f ? 150.f : w) - 18.f, vy - 9.f, v->home_lock, col);
-    }
-    for (k = 0; k < 4; k++) {                           /* the four views, small: a few bars each (x, y, w, h) */
-        static const uint8_t TH[4][6][4] = {
-            {{5, 24, 7, 4}, {13, 18, 7, 4}, {21, 26, 7, 4}, {29, 12, 6, 4}},                  /* PIANO ROLL: notes */
-            {{5, 6, 30, 4}, {5, 13, 30, 12}, {5, 28, 30, 4}},                                 /* STEPS: a row open */
-            {{11, 5, 18, 18}, {5, 29, 30, 6}},                                                /* EDIT: the picture, the row */
-            {{6, 26, 5, 8}, {14, 20, 5, 14}, {22, 14, 5, 20}, {30, 8, 5, 26}},                /* GEEK OUT: meters */
-        };
-        const float x = 22.f + (float)k * 52.f, y = 160.f;
+    int k;
+    row(0, "HOME VIEW", VN[hv]);
+    row(1, "LOCK", v->home_lock ? "ON" : "OFF");
+    for (k = 0; k < 4; k++) {                           /* the four views as little screens */
+        const int x = 10 + k * 26, y = 72;
         const qd_rgb c = k == hv ? KCOL[0] : UI_G2;
-        ui_RR(x, y, 40.f, 40.f, 5.f, c, k == hv ? 2.f : 1.2f, QD_NONE);
-        for (i = 0; i < 6 && TH[k][i][2]; i++)
-            ui_RR(x + TH[k][i][0], y + TH[k][i][1], TH[k][i][2], TH[k][i][3], 1.f, QD_NONE, 1.f, c);
+        px_box(x, y, 20, 20, c);
+        switch (k) {
+        case 0: px_rect(x + 3, y + 12, 3, 2, c), px_rect(x + 7, y + 8, 3, 2, c), px_rect(x + 12, y + 5, 3, 2, c); break;
+        case 1: px_rect(x + 3, y + 3, 14, 2, c), px_box(x + 3, y + 7, 14, 6, c), px_rect(x + 3, y + 15, 14, 2, c); break;
+        case 2: px_box(x + 5, y + 3, 10, 9, c), px_rect(x + 3, y + 14, 14, 3, c); break;
+        default: px_rect(x + 3, y + 12, 2, 5, c), px_rect(x + 7, y + 9, 2, 8, c), px_rect(x + 11, y + 6, 2, 11, c); break;
+        }
     }
-    if (v->home_lock)                                   /* locked: the padlock under the chosen one */
-        padlock(42.f + (float)hv * 52.f, 214.f, 1, KCOL[1]);
-    else                                                /* HOME clicks go round */
-        ui_icon(UI_IC_RIGHT, 120.f, 216.f, 2.f, UI_G1);
+    if (v->home_lock)
+        px_rect(16 + hv * 26, 96, 8, 6, KCOL[1]);
+    else
+        ui_icon(UI_IC_RIGHT, 120.f, 200.f, 2.f, UI_G1);
 }
 
 static void menu_set(const ui_menu_t *v)
 {
     int k;
-    menu_head("SETTINGS");
-    for (k = 0; k < (QD_PKG_BLE ? 3 : 2); k++)          /* the pages' dots, where the track settings' are */
-        ui_O(170.f + (float)k * 9.f, 14.f, 2.6f, k == v->set_page ? UI_K3 : UI_G2, 1.f, k == v->set_page ? UI_K3 : QD_NONE);
+    menu_head("SETTINGS", QD_PKG_BLE ? 3 : 2, v->set_page);
     if (v->set_page == 1) {
         menu_home(v);
         return;
@@ -820,142 +613,84 @@ static void menu_set(const ui_menu_t *v)
         return;
     }
 #endif
-    /* KNOB 1: PAGE FOLLOW (2026-10-25: KNOBS gone) */
-    menu_row(0, 44.f, "PAGE FOLLOW", v->follow ? "ON" : "OFF");
+    row(0, "PAGE FOLLOW", v->follow ? "ON" : "OFF");
     {
-        const float px = 34.f + fmodf(v->t * 22.f, 88.f);
+        const int px = 14 + (int)fmodf(v->t * 11.f, 44.f);
         for (k = 0; k < 4; k++)
-            ui_RR(34.f + (float)k * 22.f, 64.f, 20.f, 22.f, 3.f, v->follow && (int)((px - 34.f) / 22.f) == k
-                  ? UI_K1 : UI_G2, 1.2f, QD_NONE);
-        line2(px, 60.f, px, 90.f, UI_RED, 1.4f);
-        line2(34.f, 98.f, 120.f, 98.f, v->follow ? UI_K1 : UI_G2, 1.2f);
-        {
-            const float a[6] = {114.f, 94.f, 120.f, 98.f, 114.f, 102.f};
-            ui_P(a, 3, v->follow ? UI_K1 : UI_G2, 1.2f, 0, QD_NONE);
-        }
-        if (!v->follow)
-            line2(70.f, 92.f, 84.f, 104.f, UI_RED, 1.4f);
+            px_box(14 + k * 11, 26, 10, 9, v->follow && (px - 14) / 11 == k ? UI_K1 : UI_G2);
+        px_vline(px, 24, 13, PX_LRED);
     }
-    /* KNOB 2: BOOST (2026-10-26): the level +6 dB, a meter's bars to its red top */
-    menu_row(1, 120.f, "BOOST", v->boost ? "+6 dB" : "OFF");
+    row(1, "BOOST", v->boost ? "+6 DB" : "OFF");
     for (k = 0; k < 8; k++) {
         const int lit = k < (v->boost ? 8 : 5);
-        ui_RR(34.f + (float)k * 11.f, 172.f - (float)k * 4.f, 8.f, 8.f + (float)k * 4.f, 2.f, QD_NONE, 1.f,
-              lit ? (k >= 6 ? UI_RED : KCOL[1]) : UI_G3);
+        px_rect(14 + k * 6, 60 - k * 2, 4, 4 + k * 2, lit ? (k >= 6 ? PX_LRED : KCOL[1]) : UI_G3);
     }
-    /* KNOB 3, 4 (FIZZ MIDI (c)): CLOCK OUT and CC OUT, ON / OFF, small at the foot (the page's two pictures above) */
-    menu_row_sz(2, 194.f, "CLOCK OUT", 0, 0.f);
-    ui_T(v->clk_out ? "ON" : "OFF", 112.f, 222.f, 14.f, 600, 0.f, v->clk_out ? KCOL[2] : UI_G2, QD_RIGHT);
-    {
-        char n[4] = {'4', 0};
-        ui_O(132.f, 194.f, 9.f, QD_NONE, 1.f, KCOL[3]);
-        ui_T(n, 132.f, 198.5f, 12.f, 700, 0.f, UI_BG, QD_CENTER);
-        ui_lab("CC OUT", 146.f, 198.5f, UI_G1, QD_LEFT);
-        ui_T(v->cc_out ? "ON" : "OFF", 232.f, 222.f, 14.f, 600, 0.f, v->cc_out ? KCOL[3] : UI_G2, QD_RIGHT);
-    }
+    row(2, "CLOCK OUT", v->clk_out ? "ON" : "OFF");
+    row(3, "CC OUT", v->cc_out ? "ON" : "OFF");
 }
 
-/* P1.4b: the track settings: the track's number and name in its colour; page 1 MODE (GLOBAL / LOCAL), SCALE (its twelve
- * pitch classes as dots, the scale's filled, the root ringed), ROOT, MIDI CH; page 2 VOICES (sixteen dots: the limit lit,
- * the ones sounding white), SWING, PAGE FOLLOW */
 static const char *const KIND_NAME[7] = {"BASS", "KEYS", "PLUCK", "PAD", "LEAD", "DRUMS", "FX"};
-/* FIZZ MIDI: a MIDI socket (DIN 5): its ring, the key notch, five pins on the upper half circle at 0.55 r */
+/* a MIDI socket (DIN 5), 240-space as FIZZ's callers give it */
 static void din5(float x, float y, float r, qd_rgb col)
 {
     static const float PX[5] = {-1.f, -0.7071f, 0.f, 0.7071f, 1.f}, PY[5] = {0.f, -0.7071f, -1.f, -0.7071f, 0.f};
     int i;
-    ui_O(x, y, r, col, 1.8f, QD_NONE);
-    ui_RR(x - 1.6f, y + r - 3.2f, 3.2f, 3.2f, 1.f, QD_NONE, 1.f, col);
+    px_circle((int)(x * 0.5f), (int)(y * 0.5f), (int)(r * 0.5f + 0.5f), col, QD_NONE);
     for (i = 0; i < 5; i++)
-        ui_O(x + PX[i] * r * 0.55f, y + PY[i] * r * 0.55f + 1.f, 1.3f, QD_NONE, 1.f, col);
+        px_pset((int)((x + PX[i] * r * 0.55f) * 0.5f), (int)((y + PY[i] * r * 0.55f) * 0.5f), col);
 }
-#define TRK_Y(k) (40.f + (float)(k) * 53.25f)   /* 2026-11-10 (owner): the four rows split the space under the head evenly,
-                                                  * at the same height on every page */
+
 static void menu_trk(const ui_menu_t *v)
 {
     const qd_rgb tc = UI_TRACK_PAL[(v->track - 1) & 7];
     char n[12];
     int k;
-    ui_box(8.f, 5.f, v->track, tc);
-    if (ui_track_kind(v->track) >= 0)                   /* P1.6d: its kind */
-        ui_kind_icon(ui_track_kind(v->track), 38.f, 13.f, 1.f, UI_PK_COL[ui_track_kind(v->track)]);
-    ui_T(v->tname ? v->tname : "", ui_track_kind(v->track) >= 0 ? 48.f : 32.f, 18.f, 12.f, 600, 0.8f, tc, QD_LEFT);
+    px_rect(3, 2, 8, 8, tc);
+    px_ctext(7, 3, ui_itoa(n, v->track), UI_BG, PX_FS, 1);
+    px_text(14, 3, v->tname ? v->tname : "", tc, PX_FS, 1);
     for (k = 0; k < 3; k++)
-        ui_O(170.f + (float)k * 9.f, 14.f, 2.6f, k == v->page ? UI_K3 : UI_G2, 1.f, k == v->page ? UI_K3 : QD_NONE);
-    ui_RR(208.f, 4.f, 24.f, 17.f, 4.f, UI_K3, 1.2f, QD_NONE);
-    ui_icon(UI_IC_BACK, 220.f, 12.5f, 1.f, UI_K3);
-    line2(8.f, 27.f, 232.f, 27.f, UI_G3, 1.f);
+        px_rect(84 + k * 4, 5, 2, 2, k == v->page ? UI_K3 : UI_G2);
+    px_box(104, 1, 13, 9, UI_K3);
+    ui_icon(UI_IC_BACK, 221.f, 11.f, 1.f, UI_K3);
+    px_dots(0, 11, 120, UI_G3, 2);
     if (!v->page) {
-        const float pw = ui_TW("PHRYGIAN", 30.f, 300, 0.f);   /* (every scale name at PHRYGIAN's size) */
-        menu_row(0, TRK_Y(0), "MODE", v->follow_key ? "GLOBAL" : "LOCAL");
-        menu_row_sz(1, TRK_Y(1), "SCALE", v->scale, pw > 110.f ? 30.f * 110.f / pw : 30.f);
-        for (k = 0; k < 12; k++) {                      /* C .. B: the scale's notes, under its name */
-            const float x = 133.f + (float)k * 9.f, y = TRK_Y(1) + 41.f;
-            const int in = (v->scale_mask >> k) & 1;
-            ui_O(x, y, 3.f, in ? UI_K2 : UI_G3, 1.f, in ? UI_K2 : QD_NONE);
+        row(0, "MODE", v->follow_key ? "GLOBAL" : "LOCAL");
+        row(1, "SCALE", v->scale);
+        for (k = 0; k < 12; k++) {                      /* C .. B: the scale's notes */
+            const int x = 14 + k * 4, in = (v->scale_mask >> k) & 1;
+            if (in)
+                px_rect(x, 33 + 26, 3, 3, UI_K2);
+            else
+                px_pset(x + 1, 34 + 26, UI_G3);
             if (k == v->root_pc)
-                ui_O(x, y, 5.5f, UI_K3, 1.3f, QD_NONE);
+                px_box(x - 1, 32 + 26, 5, 5, UI_K3);
         }
-        menu_row(2, TRK_Y(2), "ROOT", v->root);
-        menu_row(3, TRK_Y(3), "MIDI CH", ui_itoa(n, v->chan));
-    } else if (v->page == 2) {                          /* P1.6d: KIND, NAME; FIZZ MIDI (c, mockups/fizz-midi-track.html
-                                                         * screens 1..3): four rows as page 1's, ENGINE (FM TONE, its four
-                                                         * operators; (e) MIDI, a DIN socket), MIDI OUT (a DIN socket and
-                                                         * an arrow, the channel; OFF grey) */
+        row(2, "ROOT", v->root);
+        row(3, "MIDI CH", ui_itoa(n, v->chan));
+    } else if (v->page == 2) {
         static const char *const TL[4] = {"KIND", "NAME", "ENGINE", "MIDI OUT"};
         for (k = 0; k < 4; k++) {
-            const float y = TRK_Y(k), vy = y + 30.f;
             const char *val = k == 0 ? (v->tkind >= 0 ? KIND_NAME[v->tkind] : "NONE") : k == 1 ? (v->tname ? v->tname : "")
-                            : k == 2 ? (v->engine == 2 ? "MIDI" : v->engine ? "FM+MIDI" : "FM TONE")
+                            : k == 2 ? (v->engine == 2 ? "MIDI" : v->engine ? "SID+MIDI" : "SID TONE")
                             : v->mout ? ui_itoa(n, v->mout) : "OFF";
-            const qd_rgb col = k == 3 && !v->mout ? UI_G2 : KCOL[k];
-            const float w = ui_TW(val, 26.f, 300, 0.f), sz = w > 150.f ? 26.f * 150.f / w : 26.f;
-            const float lx = 232.f - (w > 150.f ? 150.f : w);
-            menu_row_sz(k, y, TL[k], 0, 0.f);
-            ui_T(val, 232.f, vy, sz, 300, 0.f, col, QD_RIGHT);
-            if (k == 0 && v->tkind >= 0) {              /* its kind's icon, boxed in its colour */
-                ui_RR(lx - 33.f, vy - 21.f, 24.f, 24.f, 5.f, UI_PK_COL[v->tkind], 1.4f, QD_NONE);
-                ui_kind_icon(v->tkind, lx - 21.f, vy - 9.f, 1.f, UI_PK_COL[v->tkind]);
-            } else if (k == 2 && v->engine == 2) {      /* FIZZ MIDI (e): MIDI, a DIN socket */
-                din5(lx - 18.f, vy - 9.f, 9.f, col);
-            } else if (k == 2) {                        /* four operators; FM+MIDI (2026-11-10): a small socket out
-                                                         * before them */
-                int i;
-                for (i = 0; i < 4; i++)
-                    ui_O(lx - 30.f + (float)(i % 2) * 12.f, vy - 15.f + (float)(i >> 1) * 12.f, 4.2f, col, 1.5f, QD_NONE);
-                if (v->engine) {
-                    const float x = lx - 56.f, yy = vy - 9.f;
-                    const float ar[6] = {x + 12.f, yy - 3.f, x + 15.f, yy, x + 12.f, yy + 3.f};
-                    din5(x, yy, 6.5f, col);
-                    line2(x + 9.f, yy, x + 15.f, yy, col, 1.6f);
-                    ui_P(ar, 3, col, 1.6f, 0, QD_NONE);
-                }
-            } else if (k == 3 && v->mout) {             /* a MIDI socket (DIN 5), out */
-                const float x = lx - 38.f, yy = vy - 9.f, r = 9.f;
-                din5(x, yy, r, col);
-                line2(x + r + 4.f, yy, x + r + 13.f, yy, col, 1.8f);
-                {
-                    const float ar[6] = {x + r + 9.f, yy - 4.f, x + r + 13.f, yy, x + r + 9.f, yy + 4.f};
-                    ui_P(ar, 3, col, 1.8f, 0, QD_NONE);
-                }
-            }
+            row(k, TL[k], val);
+            if (k == 0 && v->tkind >= 0)
+                ui_kind_icon(v->tkind, 30.f, (float)(2 * (ROW_Y(0) + 14)), 1.f, UI_PK_COL[v->tkind]);
+            else if (k == 2 && v->engine != 2)          /* SID TONE: the chip */
+                px_sprite(10, ROW_Y(2) + 10, PXS_ICON_SID, 0);
+            else if (k == 2)
+                din5(32.f, (float)(2 * (ROW_Y(2) + 14)), 9.f, KCOL[2]);
         }
     } else {
-        menu_row(0, TRK_Y(0), "VOICES", ui_itoa(n, v->limit));
-        for (k = 0; k < 16; k++)                        /* the limit lit, the voices sounding white */
-            ui_O(38.f + (float)k * 7.f, TRK_Y(0) + 28.f, 2.4f, QD_NONE, 1.f,
-                 k < v->voices_now ? UI_K3 : k < v->limit ? UI_K1 : UI_G3);
-        menu_row(1, TRK_Y(1), "SWING", v->swing ? "ON" : "OFF");
-        ui_icon(UI_IC_SWING, 46.f, TRK_Y(1) + 28.f, 1.4f, v->swing ? UI_K2 : UI_G2);
-        menu_row(2, TRK_Y(2), "PAGE FOLLOW", v->follow ? "ON" : "OFF");
-        menu_row(3, TRK_Y(3), "MIDI FX", v->mfx ? 0 : "OFF");   /* P1.6c: the track's group, a hexagon */
-        if (v->mfx)
-            ui_mfx_hex(214.f, TRK_Y(3) + 22.f, 13.f, v->mfx, KCOL[3], 1.6f, 0);
-        else
-            ui_mfx_hex(46.f, TRK_Y(3) + 24.f, 9.f, 0, UI_G2, 1.2f, 1);
+        row(0, "VOICES", ui_itoa(n, v->limit));
+        for (k = 0; k < 16; k++)
+            px_rect(14 + k * 4, ROW_Y(0) + 12, 2, 3, k < v->voices_now ? UI_K3 : k < v->limit ? UI_K1 : UI_G3);
+        row(1, "SWING", v->swing ? "ON" : "OFF");
+        row(2, "PAGE FOLLOW", v->follow ? "ON" : "OFF");
+        row(3, "MIDI FX", v->mfx ? ui_itoa(n, v->mfx) : "OFF");
     }
     if (v->last >= 0 && v->last < 4)                    /* the row turned last: its badge ringed */
-        ui_O(18.f, TRK_Y(v->last), 12.f, KCOL[v->last], 1.2f, QD_NONE);
+        px_box(2, ROW_Y(v->last) - 1, 9, 9, KCOL[v->last]);
 }
 
 void ui_menu_draw(const ui_menu_t *v)

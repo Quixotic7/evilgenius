@@ -13,25 +13,26 @@ static const uint8_t MM_CC[128] = {
     [7] = M(QD_LK_LEVEL), [10] = M(QD_LK_PAN), [91] = M(QD_LK_REVERB), [93] = M(QD_LK_CHORUS), [94] = M(QD_LK_DELAY),
     [95] = M(QD_MM_DRY), [74] = M(QD_QP_FREQ), [71] = M(QD_QP_RESO), [5] = M(QD_QP_PTIM), [65] = M(QD_QP_PORT),
     [73] = M(QD_QP_EATK), [75] = M(QD_QP_EDEC), [72] = M(QD_QP_EREL),
-    /* TRIG, KEYS, PORT, VOICE */
-    [3] = M(QD_QP_ATRIG), [9] = M(QD_QP_ARST), [12] = M(QD_QP_BTRIG), [13] = M(QD_QP_BRST), [14] = M(QD_QP_PHRT),
-    [15] = M(QD_QP_AKEY), [16] = M(QD_QP_B1KEY), [17] = M(QD_QP_B2KEY), [18] = M(QD_QP_VEL), [19] = M(QD_QP_PSLOPE),
+    /* PORT, VOICE (EvilGenius: SID TONE's values) */
+    [9] = M(QD_QP_HR), [18] = M(QD_QP_VEL), [19] = M(QD_QP_PSLOPE),
     [20] = M(QD_QP_VMODE), [21] = M(QD_QP_UNI), [22] = M(QD_QP_UDET), [23] = M(QD_QP_USPR), [24] = M(QD_QP_VPRIO),
-    /* RATIO, TONE, OFFSET */
-    [25] = M(QD_QP_RC), [26] = M(QD_QP_RA), [27] = M(QD_QP_RB1), [28] = M(QD_QP_MIX), [29] = M(QD_QP_ALGO),
-    [30] = M(QD_QP_HARM), [31] = M(QD_QP_DTUN), [33] = M(QD_QP_FDBK),
-    [34] = M(QD_QP_OFSC), [35] = M(QD_QP_OFSA), [36] = M(QD_QP_OFSB1), [37] = M(QD_QP_OFSB2),
-    /* ENV A, ENV B */
-    [39] = M(QD_QP_AATK), [40] = M(QD_QP_ADEC), [41] = M(QD_QP_AEND), [42] = M(QD_QP_ALEV), [43] = M(QD_QP_ADLY),
-    [44] = M(QD_QP_BATK), [45] = M(QD_QP_BDEC), [46] = M(QD_QP_BEND), [47] = M(QD_QP_BLEV), [48] = M(QD_QP_BDLY),
-    /* FILTER, F ENV, BASE */
-    [49] = M(QD_QP_FTYPE), [50] = M(QD_QP_FDEPTH), [51] = M(QD_QP_FSHAPE), [52] = M(QD_QP_FGAIN),
-    [53] = M(QD_QP_FATK), [54] = M(QD_QP_FDEC), [55] = M(QD_QP_FSUS), [56] = M(QD_QP_FREL), [57] = M(QD_QP_FDLY),
-    [58] = M(QD_QP_BASE), [59] = M(QD_QP_WIDTH), [60] = M(QD_QP_FKTRK), [61] = M(QD_QP_BWPOST),
-    /* AMP, LEVEL, CRUSH */
-    [62] = M(QD_QP_ESUS), [63] = M(QD_QP_AMOD), [70] = M(QD_QP_HOLD),
-    [76] = M(QD_QP_LEVEL), [77] = M(QD_QP_DRIVE), [78] = M(QD_QP_DRPRE),
-    [79] = M(QD_QP_BITS), [80] = M(QD_QP_SRR), [81] = M(QD_QP_CRPOST),
+    /* OSC 1 .. 3: WAVE COARSE FINE PW MOD; DETUNE */
+    [25] = M(QD_QP_W1), [26] = M(QD_QP_C1), [27] = M(QD_QP_F1), [28] = M(QD_QP_PW1), [29] = M(QD_QP_M1),
+    [30] = M(QD_QP_W2), [31] = M(QD_QP_C2), [33] = M(QD_QP_F2), [34] = M(QD_QP_PW2), [35] = M(QD_QP_M2),
+    [36] = M(QD_QP_W3), [37] = M(QD_QP_C3), [39] = M(QD_QP_F3), [40] = M(QD_QP_PW3), [41] = M(QD_QP_M3),
+    [42] = M(QD_QP_DETUNE),
+    /* ENV 1 (73 75 72 above, SUS), ENV 2, ENV 3 */
+    [62] = M(QD_QP_ESUS), [43] = M(QD_QP_E2A), [44] = M(QD_QP_E2D), [45] = M(QD_QP_E2S), [46] = M(QD_QP_E2R),
+    [47] = M(QD_QP_E2LINK), [48] = M(QD_QP_E3A), [3] = M(QD_QP_E3D), [12] = M(QD_QP_E3S), [13] = M(QD_QP_E3R),
+    [14] = M(QD_QP_E3LINK),
+    /* FILTER, F ENV, CHIP */
+    [49] = M(QD_QP_FTYPE), [50] = M(QD_QP_FDEPTH), [51] = M(QD_QP_FROUTE), [52] = M(QD_QP_CHIP),
+    [53] = M(QD_QP_FATK), [54] = M(QD_QP_FDEC), [55] = M(QD_QP_FSUS), [56] = M(QD_QP_FREL), [60] = M(QD_QP_FKTRK),
+    /* AMP, CRUSH */
+    [76] = M(QD_QP_LEVEL), [77] = M(QD_QP_DRIVE), [79] = M(QD_QP_BITS), [80] = M(QD_QP_SRR),
+    /* VOX: WORD ROOT START END LOOP, DIGI */
+    [15] = M(QD_QP_WORD), [16] = M(QD_QP_ROOT), [17] = M(QD_QP_VSTART), [57] = M(QD_QP_VEND), [58] = M(QD_QP_VLOOP),
+    [59] = M(QD_QP_DBITS), [61] = M(QD_QP_DHOLD), [63] = M(QD_QP_DBOOST), [70] = M(QD_QP_DLVL),
     /* LFO 1 .. 3: SPEED MULT DEPTH DEST, WAVE PHASE TRIG FADE */
     [82] = LF(0, QD_QL_SPEED), [83] = LF(0, QD_QL_MULT), [84] = LF(0, QD_QL_DEPTH), [85] = LF(0, QD_QL_DEST),
     [86] = LF(0, QD_QL_WAVE), [87] = LF(0, QD_QL_PHASE), [88] = LF(0, QD_QL_TRIG), [89] = LF(0, QD_QL_FADE),

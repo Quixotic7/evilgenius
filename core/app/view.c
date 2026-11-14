@@ -593,7 +593,7 @@ static __attribute__((noinline)) void fill_shift(const qd_app_t *a, ui_shift_t *
 /* ---------------------------------------------------------------- the takeovers --- */
 static void fill_turn(qd_app_t *a, ui_turn_t *v, char *ctx)
 {
-    static const char *const NAMES[UI_NTK] = {"FREQ", "DECAY", "HARM", "FEEDBACK", "ALGO", "TEMPO", "SWING",
+    static const char *const NAMES[UI_NTK] = {"CUTOFF", "DECAY", "PULSE WIDTH", "RESONANCE", "ALGO", "TEMPO", "SWING",
                                               "LENGTH", "RATE", "LIMIT", "SWING", "PAGE", "SCALE", "ROOT",
                                               "OCTAVE", "TRACK", "TRACK", "TAP", "PAGE FOLLOW"};
     const qd_ui_t *u = &a->ui;
@@ -640,23 +640,14 @@ static void fill_turn(qd_app_t *a, ui_turn_t *v, char *ctx)
             v->ghost_v = range01(id, tb);
             v->ghost[0] = 0;
             cat(v->ghost, "track ");
-            if (id == QD_QP_FREQ)
-                fmt_hundredths(v->ghost + 6, tb, 2);
-            else if (id == QD_QP_HARM)
-                fmt_hundredths(v->ghost + 6, tb, 1);
-            else
-                cat(v->ghost, ui_itoa(n, tb));
+            cat(v->ghost, ui_itoa(n, tb));      /* (SID TONE: whole numbers) */
         }
         v->v = range01(id, v->value);
-        if (id == QD_QP_FREQ)
-            fmt_hundredths(v->val, v->value, 0);
-        else if (id == QD_QP_HARM) {
+        {
+            char tx[12];
             v->val[0] = 0;
-            if (v->value > 0)
-                cat(v->val, "+");
-            fmt_hundredths(v->val + (v->value > 0), v->value, 1);
-        } else
-            ui_itoa(v->val, v->value);
+            cat(v->val, qd_quad_value_text(id, v->value, tx));
+        }
         break;
     }
     case UI_TK_TEMPO:
@@ -1716,15 +1707,6 @@ void qd_view_snd(qd_app_t *a, ui_snd_t *v)
                     v->lfomark[k] |= (uint8_t)(1u << lf);
             }
         }
-        if (id == QD_QP_MIX && (pg->draw == UI_SD_ALGO || pg->draw == UI_SD_TONE)) {   /* P1.5i: MIX on RATIO (P1.5n:
-                                                         * and TONE): the drawing's balance */
-            int fb, ox, oy;
-            v->has_mix = 1;
-            v->mix = pp[QD_QP_MIX];
-            qd_quad_algo(pp[QD_QP_ALGO], v->mod, &fb, &ox, &oy);
-            v->outx = (uint8_t)ox;
-            v->outy = (uint8_t)oy;
-        }
     }
     if (qd_snd_keys(a)) {                               /* P1.5b: the keyboard on: its keys' states (as the LEDs) */
         v->keys = a->proj.rec_ekeys ? 2 : 1;
@@ -1775,30 +1757,24 @@ void qd_view_snd(qd_app_t *a, ui_snd_t *v)
             const int did = qd_quad_dest_id(dst);
             v->lk_name = did >= 0 ? (did == QD_QP_RB1 ? "RATIO B" : qd_quad_value_name(did)) : qd_quad_dest_name(dst);
         }
-        v->lk_depth = (float)dep / 6400.f;
+        v->lk_depth = (float)(dep - 64) / 64.f;
         if (v->lk_k < 0)                                /* (not turned yet: the column already mapped, if on this page) */
             for (k = 0; k < 4; k++)
                 if (ids[k] >= 0 && dst > 0 && qd_quad_dest_of(ids[k], lf) == dst)
                     v->lk_k = k;
     }
-    if (pg->draw == UI_SD_ALGO) {
-        static const int RID[4] = {QD_QP_RC, QD_QP_RA, QD_QP_RB1, QD_QP_RB2};
-        char t[12];
-        int fb, ox, oy;
-        qd_quad_algo(pp[QD_QP_ALGO], v->mod, &fb, &ox, &oy);
-        v->fb = (uint8_t)fb;
-        v->outx = (uint8_t)ox;
-        v->outy = (uint8_t)oy;
-        for (k = 0; k < 4; k++)
-            v->ratio[k] = ratio_of_text(qd_quad_value_text(RID[k], pp[RID[k]], t));
+    if (pg->draw == UI_SD_OSC) {                        /* EvilGenius: the oscillator, its wave and its sync / ring */
+        v->pv[0] = pg->arg;
+        v->pv[1] = pp[QD_QP_W1 + 5 * pg->arg];
+        v->pv[2] = pp[QD_QP_M1 + 5 * pg->arg];
     } else if (pg->draw == UI_SD_LFO) {
         v->pv[0] = pp[QD_QP_LFO(pg->arg, QD_QL_WAVE)];
         v->pv[1] = pp[QD_QP_LFO(pg->arg, QD_QL_TRIG)];
         v->pv[2] = pp[QD_QP_LFO(pg->arg, QD_QL_FADE)];
     } else if (pg->draw == UI_SD_FILTER) {             /* E2: the machine, its shape, its gain */
         v->pv[0] = pp[QD_QP_FTYPE];
-        v->pv[1] = pp[QD_QP_FSHAPE];
-        v->pv[2] = pp[QD_QP_FGAIN];
+        v->pv[1] = pp[QD_QP_FROUTE];
+        v->pv[2] = pp[QD_QP_CHIP];
     } else if (pg->draw == UI_SD_MOD) {                /* E4: the eight slots; ALGORITHM the chosen one */
         int ms;
         static char slot[4];
@@ -2184,10 +2160,7 @@ static void fill_prj(const qd_app_t *a, ui_prj_t *v)
 static __attribute__((noinline)) void fill_fx(const qd_app_t *a, ui_fx_t *v)   /* (noinline: the Bluetooth package's
                                                          * second blob, build.py BLE_X2_FN) */
 {
-    static const char *const LAB[QD_NFXP] = {"TIME", "TIME", "SPREAD", "SPREAD", "FDBK", "SYNC", "MODE", "TONE", "WOW",
-                                             "SIZE", "DAMP", "DECAY", "PRE", "MOD", "LOW CUT", "WIDTH", "WIDTH",
-                                             "LOW", "HIGH", "SLOPE", "FILTER", "RATE", "DEPTH",
-                                             "MODE", "ORDER", "DRY", "", ""};   /* (the routing) */
+    /* (EvilGenius: the cells' names are the effects' own, qd_fx_name) */
     const qd_ui_t *u = &a->ui;
     const qd_fxpage_t *pg = &QD_FX_PAGES[u->fx_page];
     int k, i;
@@ -2230,7 +2203,7 @@ static __attribute__((noinline)) void fill_fx(const qd_app_t *a, ui_fx_t *v)   /
             const int id = qd_fx_cell_id(c);
             int lo, hi;
             qd_fx_range(id, &lo, &hi, 0);
-            v->lab[k] = LAB[id];
+            v->lab[k] = qd_fx_name(id);
             qd_fx_text(id, qd_fx_get(id), v->txt[k]);
             v->x[k] = hi > lo ? (float)(qd_fx_get(id) - lo) / (float)(hi - lo) : 0.f;
         }
@@ -2245,7 +2218,7 @@ static __attribute__((noinline)) void fill_fx(const qd_app_t *a, ui_fx_t *v)   /
             qd_view_kst(a, v->kst, 0);
     }
     {   /* the routing: the mode, the order, a block's key held (its lift over 120 ms), the chain amounts dim in PARALLEL */
-        static const int8_t BLK[QD_FX_NKEY] = {-1, QD_RT_CHORUS, QD_RT_DELAY, QD_RT_REVERB, QD_RT_FILTER, -1};
+        static const int8_t BLK[QD_FX_NKEY] = {-1, -1, -1, -1, -1, -1, -1, -1, -1};
         v->rt_mode = qd_fx_get(QD_FXP_RMODE);
         for (i = 0; i < 4; i++)
             v->rt_order[i] = qd_fx_route_block(i);
@@ -2270,10 +2243,8 @@ static __attribute__((noinline)) void fill_fx(const qd_app_t *a, ui_fx_t *v)   /
     v->width = (float)qd_fx_get(QD_FXP_RWIDTH) / 127.f;
     v->depth = (float)qd_fx_get(QD_FXP_CDEPTH) / 127.f;
     v->cwidth = (float)qd_fx_get(QD_FXP_CWIDTH) / 127.f;
-    v->flow = (float)qd_fx_get(QD_FXP_FLOW) / 127.f;
-    v->fhigh = (float)qd_fx_get(QD_FXP_FHIGH) / 127.f;
-    v->fslope = qd_fx_get(QD_FXP_FSLOPE);
-    v->fon = qd_fx_get(QD_FXP_FON);
+    v->flow = v->fhigh = 0.f;                         /* (EvilGenius: no master filter) */
+    v->fslope = v->fon = 0;
     v->last = u->menu_knob;
     v->step = u->nheld > 0 || u->wk_pending;            /* P1.6d (P1.6h: from the key's press) */
     v->nsel = u->nheld;

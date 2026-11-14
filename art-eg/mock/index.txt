@@ -1,0 +1,30 @@
+01-boot	Boot / idle	Power-on and after two minutes untouched: the villain at his console, the name in the BIG font at 2x, the lift sliding. Any key wakes it.
+02-home-sid	HOME, SID	The room. The agent runs with the notes (its speed is the tempo, its direction the last note's step), a patrol robot per voice zaps while its voice sounds. Head: the preset; ALGORITHM's box: the engine. Foot: the preset's four macros.
+03-home-vox	HOME, VOX	The same room with the speech engine: the villain's mouth moves while a word sounds, the word being said is written in the terminal's green above the agent.
+04-sid-wave	SID 1 WAVE	EDIT, page 1 of the SID engine. The drawing is the wave the chip makes: ALGORITHM picks the wave program (one shape, the C64 chord arps, drums), KNOB 1 the waveform bits, KNOB 2 the pulse width, KNOB 3 the PWM sweep, KNOB 4 the coarse tune.
+05-sid-env	SID 2 ENV	The SID's own ADSR, 0..15 each as the chip has it. The white squares are the corners each knob moves.
+06-sid-filter	SID 3 FILTER	The chip's one filter per chip (shared by its voices, as on the C64). ALGORITHM: LP / BP / HP / NOTCH / OFF. KNOB 3 sweeps the cutoff per frame, KNOB 4 picks the 6581's warm S-curve or the 8580's clean one.
+07-sid-mod	SID 4 MOD	Sync and ring: the note takes two of a chip's voices, the second a silent source at its own interval (KNOB 2) and sweep (KNOB 3). The top wave is the source, the bottom what you hear.
+08-sid-vib	SID 5 VIBRATO	The driver's triangle vibrato: delay (frames), speed, depth. The mod wheel adds depth. KNOB 4: the glide between notes.
+09-sid-voice	SID 6 VOICES	How the chips are played: one chip (3 voices) or two (6), mono with legato, the driver's frame rate (50 Hz PAL, 2x, 4x multispeed) and the chip's master volume. Each box is a voice; a lit one sounds.
+10-vox-word	VOX 1 WORD	The speech engine does what 1984's games did: 4-bit samples written to the SID's master volume register ($D418) thousands of times a second, through the emulated chip. The terminal shows the word and its 16-level wave; the white line is where it's playing. ALGORITHM: WORD (every key says the word at its pitch, faster and higher up the keys) or SPELL (each key says its own word).
+11-vox-digi	VOX 2 DIGI	The register itself: the four volume bits lit as the sample writes them. KNOB 1 the bits kept (4 is the real thing, 1 a buzz), KNOB 2 the rate the word was sampled at (the games' 4-8 kHz), KNOB 3 the chip: digis are loud on the 6581 and almost silent on the 8580 (as on the real chips), KNOB 4 a boost for the 8580's.
+12-vox-shape	VOX 3 SHAPE	Where in the word to start and stop (KNOB 1, 2), looped or not (KNOB 3: OFF / FWD / BOUNCE: a stutter, a drone of a vowel), and the release after the key (KNOB 4).
+13-vox-bed	VOX 4 BED	The chip's three voices still play under the speech, as a game's music did: KNOB 1 picks a SID patch for them (or OFF), KNOB 2 their level, KNOB 3 their octave, KNOB 4 ducks them while a word sounds.
+14-arp	ARP	ARP (button) for both engines: the held keys stepped at the C64 driver's frame rate or the tempo. The ladder is the pattern; the lit rung is now.
+15-fx-tower	FX TOWER	FX (button): the chain as a tower of eight rooms, the signal going down the lift. A lit room is on. The black keys B1..B8 open a room's page; SHIFT + a black key turns it on or off. KNOB 1..4: the chain's dry/wet, tempo, input drive, output.
+16-fx-crush	FX 1 CRUSH	The lo-fi DAC: bits and sample rate down to the 4-bit volume-register 'digis' of the C64. The staircase is the crushed wave.
+17-fx-robot	FX 2 ROBOT	Ring modulator: a carrier fixed or following the key (KNOB 2), wobbled by its LFO. The robot's antenna sparks at the carrier's rate.
+18-fx-warp	FX 3 WARP	A short comb / flanger: the metallic 'teleporter' sound. The comb's teeth are its notches; feedback raises them.
+19-fx-glitch	FX 4 GLITCH	A beat-repeat in tempo: by chance (KNOB 2) a slice (KNOB 1) is caught and repeated, each repeat pitched (KNOB 3) like a cartridge game crashing.
+20-fx-chorus	FX 5 CHORUS	The detuned 'PAL' chorus: two delayed copies swaying apart.
+21-fx-echo	FX 6 ECHO	A tempo echo whose repeats darken and crumble (KNOB 3 LOFI), ping-ponged. The balls are the repeats.
+22-fx-room	FX 7 ROOM	A small reverb: the room's size is drawn as the room.
+23-fx-tv	FX 8 TV	The family telly the C64 was plugged into: a small speaker's band, the 50 Hz hum and a little drive. Last in the chain.
+24-browse	PRESETS	PRESETS (the knob) searches the terminals: every detent loads and plays the preset; OCT+ keeps it, OCT- puts back what you had. B1..B4 filter (ALL / SID / VOX / USER).
+25-save	SAVE / NAME	SAVE: the typewriter. The 27 keys are letters (B1..B11 = A..K, the white keys L..Z and space; SHIFT: digits). ALGORITHM moves the cursor, PRESETS rolls a villainous name. SAVE again or OCT+ stores it.
+26-takeover	Takeover	A knob whose value the page doesn't show takes the screen for a second (FIZZ's rule): its name in its colour, the value in the BIG font at 2x, the neighbours of a list beside it.
+27-confirm	Confirmation	One word, never a sentence, and the voice says it when VOICE PROMPTS is on.
+28-arm	Arm, then confirm	Destructive actions arm first: the head turns red, the key blinks, the second press in two seconds does it. Here: SHIFT + B11 in the browser, delete a user preset.
+29-shift	SHIFT	GLO held: the black keys' shortcuts drawn where the keys are. Same on every page.
+30-settings	SETTINGS	HOME held: the global settings, a pop-up of four rows, a row per knob (colour = knob); SELECT turns its pages.

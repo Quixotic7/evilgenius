@@ -1,334 +1,297 @@
 /* SPDX-License-Identifier: MPL-2.0
  * This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0. If a copy of the MPL was not
  * distributed with this file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-/* P1.6c: the MIDI FX screen (ui.h ui_mfx_t; mockups/fizz-midifx.html, drawing for drawing). Built through ui_layer.c
- * (the core's source lists stay as they are). */
+/* EvilGenius: the MIDI FX screen (ui.h ui_mfx_t; FIZZ's P1.6c screen redrawn on the 120 x 120 grid, the model
+ * FIZZ's). Built through ui_layer.c (the core's source lists stay as they are).
+ *   the head    the page dots, MIDI FX, the group's number in a hexagon in ALGORITHM's cyan (OFF: a dotted one), the
+ *               routing bypassed a red OFF block, the tracks routed to the group as chips (the selected underlined)
+ *   the rail    the eight slots as tiles: each its effect's 7 x 7 glyph in its colour; empty dotted; bypassed grey and
+ *               struck; the selected raised in a white frame; a note passing flashes it in reverse video; the notes
+ *               run along the rail as 2 x 2 dots (an ARP or REPEAT starts a stream, CHANCE drops some, HARM / CHORD
+ *               stack three); a SELECTOR's block bracketed under it
+ *   the middle  the selected effect's name, then its picture:
+ *               ARP        the walk as lift platforms, the agent running along them; a keybed on the walk's scale at
+ *                          the left, the held keys in their tracks' colours (a padlock: HOLD / 1-ST). Pages 3 and 4:
+ *                          the MOD lane (16 cells, the notes it makes above) and the TRANSPOSE lane (bars)
+ *               CHANCE     the percentage; the notes rolling along a floor, the robot at the trapdoor letting some by
+ *               REPEAT     the robot pacing along the hits' posts (HITS), their heights the velocities (FADE)
+ *               HARM       the voices as platforms from the keybed, their intervals at the right
+ *               TRANSPOSE  the agent riding two lifts: SEMI, then OCT, to the lit floor
+ *               SCALER     a keyboard: the scale's keys light, a note off the scale slides down onto it
+ *               RANDOM     a die rolling over PITCH (a jumping note), VEL (a bar), LENGTH (a note growing)
+ *               CHORD      the chord's name over a keyboard, its keys struck in turn
+ *               MONO       four lanes into one: a new note cuts the one before
+ *               SELECTOR   the lever throwing each note to one of the next slots
+ *               NONE       an empty box, the ten effects orbiting it
+ *   the foot    KNOB 1..4's labels and values in their colours (the turned one underlined)
+ *   PRESETS turned: the types as a rolodex; ALGORITHM turned: the routing map (the tracks wired to the groups); a track
+ *   on no group: OFF, its notes straight to the voices. A bypassed slot's picture is half-toned (the C64's dimming). */
 #include <math.h>
 #include <string.h>
 
 #include "ui.h"
+#include "px.h"
 #include "../seq/chord.h"
 #include "../seq/mfx.h"
 #include "../seq/scale.h"
 
-const qd_rgb UI_MFX_COL[11] = {0x8d8d96u, 0x3f8cffu, 0xff2d45u, 0xff8268u, 0xff6fb4u, 0xa86cffu,
-                               0xffd23fu, 0xff5418u, 0x28e1ffu, 0x6f72ffu, 0xffa21fu};
-static const qd_rgb MF_TP[8] = {0x3f7dffu, 0x1fd47eu, 0xf1f0eau, 0xff6a2cu, 0xff3ca0u, 0xffd23fu, 0x9664ffu, 0x28e1ffu};
-#define MF_MINT UI_MFX_MINT
-#define MF_TAU 6.28318530718f
+/* each effect's colour, the C64's: NONE grey, ARP yellow (the lifts), CHANCE red, REPEAT orange, HARM purple,
+ * TRANSPOSE green, SCALER light grey, RANDOM light red, CHORD cyan, MONO light green, SELECTOR light blue */
+const qd_rgb UI_MFX_COL[11] = {PX_GREY, PX_YELLOW, PX_RED, PX_ORANGE, PX_PURPLE, PX_GREEN,
+                               PX_LGREY, PX_LRED, PX_CYAN, PX_LGREEN, PX_LBLUE};
+#define MF_MINT UI_KALG                 /* a group: ALGORITHM's colour (ALGORITHM picks the track's group) */
+static const qd_rgb MF_KC[4] = {UI_K1, UI_K2, UI_K3, UI_K4};
+#define MF_RY 22                        /* the rail's line (120-space) */
+#define MF_TW 11                        /* a slot's tile */
+#define MF_TOP 38                       /* the picture's area */
+#define MF_BOT 88
 
-/* ---------------------------------------------------------------- the helpers (the mock-up's) */
+/* ---------------------------------------------------------------- the helpers */
+static int mf_r(float x) { return (int)floorf(x + 0.5f); }
+static int mf_g(float v) { return (int)floorf(v * 0.5f + 0.25f); }   /* FIZZ's 240-space to the grid */
 static float mf_clamp(float x, float a, float b) { return x < a ? a : x > b ? b : x; }
-static float mf_ease(float x) { x = mf_clamp(x, 0.f, 1.f); return x * x * (3.f - 2.f * x); }
-static float mf_lerp(float a, float b, float u) { return a + (b - a) * u; }
-static float mf_hash(float n)
+static int mf_clampi(int x, int a, int b) { return x < a ? a : x > b ? b : x; }
+static float mf_ease(float x)
 {
-    const float s = sinf(n * 127.1f + 311.7f) * 43758.5453f;
-    return s - floorf(s);
+    x = mf_clamp(x, 0.f, 1.f);
+    return x * x * (3.f - 2.f * x);
 }
-static void mf_alpha(float a)
+static int mf_lerpi(int a, int b, float u) { return a + mf_r((float)(b - a) * u); }
+static uint32_t mf_hash(uint32_t n)
 {
-    qd_save();
-    qd_alpha(qd_get_alpha() * mf_clamp(a, 0.f, 1.f));
+    n ^= n >> 16;
+    n *= 0x7feb352du;
+    n ^= n >> 15;
+    n *= 0x846ca68bu;
+    return n ^ (n >> 16);
 }
-static void mf_P(const float *p, int n, qd_rgb c, float lw, float a)
+static int mf_pct(int n) { return (int)(mf_hash((uint32_t)n) % 100u); }
+static int mf_ms(float t) { return t > 0.f ? (int)(t * 1000.f) : 0; }
+static int mf_rx(int i) { return 4 + i * 14; }          /* slot i's tile */
+static int mf_black(int p) { return (int)((0x54au >> (((p % 12) + 12) % 12)) & 1u); }   /* C# D# F# G# A# */
+
+/* a dotted line: Bresenham, `on` pixels lit of every `per` */
+static void mf_dline(int x0, int y0, int x1, int y1, qd_rgb c, int on, int per)
 {
-    mf_alpha(a);
-    ui_P(p, n, c, lw, 0, QD_NONE);
-    qd_restore();
-}
-static void mf_Pd(const float *p, int n, qd_rgb c, float lw, float a, float on, float off)
-{
-    const float d[2] = {on, off};
-    mf_alpha(a);
-    qd_dash(d, 2);
-    ui_P(p, n, c, lw, 0, QD_NONE);
-    qd_restore();
-}
-static void mf_L(float x0, float y0, float x1, float y1, qd_rgb c, float lw, float a)
-{
-    const float p[4] = {x0, y0, x1, y1};
-    mf_P(p, 2, c, lw, a);
-}
-static void mf_G(const float *p, int n, qd_rgb c, float lw, float a)   /* neon: P2.6f (the owner: the glows slowed the
-                                                         * unit's frames) the line alone, no wide faint stroke under it */
-{
-    mf_P(p, n, c, lw, a);
-}
-static void mf_O(float x, float y, float r, qd_rgb col, float lw, qd_rgb fill, float a)
-{
-    mf_alpha(a);
-    ui_O(x, y, r < 0.1f ? 0.1f : r, col, lw, fill);
-    qd_restore();
-}
-static void mf_dot(float x, float y, float r, qd_rgb c, float a)   /* (P2.6f: no halo) */
-{
-    mf_O(x, y, r, QD_NONE, 1.f, c, a);
-}
-static void mf_RR(float x, float y, float w, float h, float r, qd_rgb col, float lw, qd_rgb fill, float a, int dash)
-{
-    const float d[2] = {2.f, 2.f};
-    mf_alpha(a);
-    if (dash)
-        qd_dash(d, 2);
-    ui_RR(x, y, w, h, r, col, lw, fill);
-    qd_restore();
-}
-static void mf_Q(float x0, float y0, float cx, float cy, float x1, float y1, qd_rgb c, float lw, float a)
-{
-    float p[2 * 17];
-    int i;
-    for (i = 0; i <= 16; i++) {
-        const float u = (float)i / 16.f;
-        p[2 * i] = (1.f - u) * (1.f - u) * x0 + 2.f * (1.f - u) * u * cx + u * u * x1;
-        p[2 * i + 1] = (1.f - u) * (1.f - u) * y0 + 2.f * (1.f - u) * u * cy + u * u * y1;
-    }
-    mf_P(p, 17, c, lw, a);
-}
-static void mf_GQ(float x0, float y0, float cx, float cy, float x1, float y1, qd_rgb c, float lw, float a)   /* (P2.6f: the
-                                                         * curve alone) */
-{
-    mf_Q(x0, y0, cx, cy, x1, y1, c, lw, a);
-}
-static void mf_qpt(float x0, float y0, float cx, float cy, float x1, float y1, float u, float *x, float *y)
-{
-    *x = (1.f - u) * (1.f - u) * x0 + 2.f * (1.f - u) * u * cx + u * u * x1;
-    *y = (1.f - u) * (1.f - u) * y0 + 2.f * (1.f - u) * u * cy + u * u * y1;
-}
-static void mf_along(const float *p, int n, float u, float *x, float *y)   /* a point a fraction u along a polyline */
-{
-    float L = 0.f, seg[16], d;
-    int i;
-    for (i = 1; i < n && i <= 16; i++) {
-        seg[i - 1] = hypotf(p[2 * i] - p[2 * i - 2], p[2 * i + 1] - p[2 * i - 1]);
-        L += seg[i - 1];
-    }
-    d = mf_clamp(u, 0.f, 1.f) * L;
-    for (i = 0; i < n - 1; i++) {
-        if (d <= seg[i] || i == n - 2) {
-            const float v = seg[i] > 0.f ? d / seg[i] : 0.f;
-            *x = mf_lerp(p[2 * i], p[2 * i + 2], v);
-            *y = mf_lerp(p[2 * i + 1], p[2 * i + 3], v);
-            return;
+    const int dx = x1 > x0 ? x1 - x0 : x0 - x1, dy = y1 > y0 ? y0 - y1 : y1 - y0;
+    const int sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
+    int e = dx + dy, n = 0, guard = 512;
+    while (guard--) {
+        int e2;
+        if (n++ % per < on)
+            px_pset(x0, y0, c);
+        if (x0 == x1 && y0 == y1)
+            break;
+        e2 = 2 * e;
+        if (e2 >= dy) {
+            e += dy;
+            x0 += sx;
         }
-        d -= seg[i];
+        if (e2 <= dx) {
+            e += dx;
+            y0 += sy;
+        }
     }
-    *x = p[0], *y = p[1];
 }
-static void mf_T(const char *s, float x, float y, float size, int w, float ls, qd_rgb col, int al, float a)
+static void mf_dbox(int x, int y, int w, int h, qd_rgb c)   /* a dotted box */
 {
-    mf_alpha(a);
-    ui_T(s, x, y, size, w, ls, col, al);
-    qd_restore();
+    px_dots(x, y, w, c, 2);
+    px_dots(x, y + h - 1, w, c, 2);
+    px_vdots(x, y, h, c, 2);
+    px_vdots(x + w - 1, y, h, c, 2);
 }
-static void mf_hexagon(float x, float y, float r, qd_rgb col, float lw, int dashed, float a)
+
+/* a small bitmap, rows of '#', top-left at x, y, scale sc */
+static void mf_bits(const char *const *rows, int nr, int x, int y, int sc, qd_rgb c)
 {
-    float p[14];
-    int k;
-    for (k = 0; k <= 6; k++) {
-        const float an = -UI_PI / 2.f + (float)(k % 6) * MF_TAU / 6.f;
-        p[2 * k] = x + cosf(an) * r, p[2 * k + 1] = y + sinf(an) * r;
+    int r;
+    for (r = 0; r < nr; r++) {
+        int i = 0;
+        while (rows[r][i]) {
+            int n = 0;
+            if (rows[r][i] != '#') {
+                i++;
+                continue;
+            }
+            while (rows[r][i + n] == '#')
+                n++;
+            px_rect(x + i * sc, y + r * sc, n * sc, sc, c);
+            i += n;
+        }
     }
-    if (dashed)
-        mf_Pd(p, 7, col, lw, a, 2.f, 2.f);
-    else
-        mf_P(p, 7, col, lw, a);
+}
+
+/* the effects' glyphs, 7 x 7 (the C64's icons) */
+static const char *const MF_GLYPH[QD_MFX_NTYPE][7] = {
+    {"#.#.#.#", ".......", "#.....#", ".......", "#.....#", ".......", "#.#.#.#"},   /* NONE: an empty box */
+    {".......", "....###", "....#..", "..###..", "..#....", "###....", "......."},   /* ARP: the stairs */
+    {"##....#", "##...#.", "....#..", "...#...", "..#....", ".#...##", "#....##"},   /* CHANCE: % */
+    {"#......", "#.#....", "#.#.#..", "#.#.#.#", "#.#.#.#", "#.#.#.#", "#.#.#.#"},   /* REPEAT: the hits */
+    {"#######", "#......", "#####..", "#......", "###....", "#......", "#......"},   /* HARM: the voices */
+    {"...####", ".....##", "....#.#", "...#..#", "..#....", ".#.....", "#......"},   /* TRANSPOSE: up */
+    {"#######", "#.#.#.#", "#.#.#.#", "#.#.#.#", "#..#..#", "#..#..#", "#######"},   /* SCALER: the keys */
+    {"#######", "#.....#", "#.#.#.#", "#..#..#", "#.#.#.#", "#.....#", "#######"},   /* RANDOM: a die */
+    {"...#...", "..###..", "...#...", ".......", ".#...#.", "###.###", ".#...#."},   /* CHORD: a triad */
+    {"#......", ".#.....", "..#....", "#######", "..#....", ".#.....", "#......"},   /* MONO: into one */
+    {"....###", "...#...", "..#....", "##..###", ".......", ".......", "....###"},   /* SELECTOR: the switch */
+};
+static void mf_glyph_px(int ty, int x, int y, int sc, qd_rgb c)
+{
+    if (ty >= 0 && ty < QD_MFX_NTYPE)
+        mf_bits(MF_GLYPH[ty], 7, x, y, sc, c);
+}
+
+/* each type's small glyph, in a box of 2 s px (240-space; 7 x 7 pixels, doubled from s 14, tripled from 21) */
+void ui_mfx_glyph(int ty, float cx, float cy, float s, qd_rgb col, float lw)
+{
+    const int sc = s >= 21.f ? 3 : s >= 14.f ? 2 : 1;
+    (void)lw;
+    if (ty <= QD_MFX_NONE || ty >= QD_MFX_NTYPE)
+        return;
+    mf_glyph_px(ty, mf_g(cx) - 7 * sc / 2, mf_g(cy) - 7 * sc / 2, sc, col);
+}
+
+/* a hexagon, its point up, radius r (120-space): each slanted edge drawn from its vertex outward (mirror-exact) */
+static void mf_hexagon(int cx, int cy, int r, qd_rgb c, int dashed)
+{
+    const int w = (r * 7 + 4) / 8, h = r / 2, on = 1, per = dashed ? 2 : 1;
+    mf_dline(cx, cy - r, cx + w, cy - h, c, on, per);
+    mf_dline(cx, cy - r, cx - w, cy - h, c, on, per);
+    mf_dline(cx, cy + r, cx + w, cy + h, c, on, per);
+    mf_dline(cx, cy + r, cx - w, cy + h, c, on, per);
+    mf_dline(cx + w, cy - h, cx + w, cy + h, c, on, per);
+    mf_dline(cx - w, cy - h, cx - w, cy + h, c, on, per);
+}
+static void mf_hexn(int cx, int cy, int r, int n, qd_rgb c, int dashed)   /* .. with a group's number in it */
+{
+    mf_hexagon(cx, cy, r, c, dashed);
+    if (n > 0) {
+        const char s[2] = {(char)('0' + n % 10), 0};
+        if (r >= 13)
+            px_ctext(cx + 1, cy - 6, s, c, PX_FB, 2);
+        else if (r >= 8)
+            px_ctext(cx + 1, cy - 3, s, c, PX_FB, 1);
+        else
+            px_ctext(cx + 1, cy - 2, s, c, PX_FS, 1);
+    }
 }
 void ui_mfx_hex(float x, float y, float r, int n, qd_rgb col, float lw, int dashed)
 {
-    mf_hexagon(x, y, r, col, lw, dashed, 1.f);
-    if (n > 0) {
-        char s[2] = {(char)('0' + n % 10), 0};
-        const float sz = r * 1.2f < 12.f ? 12.f : r * 1.2f;
-        ui_T(s, x, y + sz * 0.36f, sz, 600, 0.f, col, QD_CENTER);
-    }
-}
-static void mf_sq(float x, float y, int n, float s, int ring)   /* a track's colour square */
-{
-    ui_RR(x, y, s, s, 2.f, QD_NONE, 1.f, MF_TP[(n - 1) & 7]);
-    if (ring)
-        ui_RR(x - 3.f, y - 3.f, s + 6.f, s + 6.f, 3.5f, UI_K3, 1.2f, QD_NONE);
+    const int rr = mf_r(r * 0.5f) < 3 ? 3 : mf_r(r * 0.5f);
+    mf_hexn(mf_g(x), mf_g(y), rr, n, col, dashed);
+    if (lw >= 2.5f)
+        mf_hexagon(mf_g(x), mf_g(y), rr - 1, col, dashed);
 }
 
-/* each type's small glyph, in a box of 2 s px (the mock-up's glyph()) */
-void ui_mfx_glyph(int ty, float cx, float cy, float s, qd_rgb col, float lw)
+/* a slot's tile, w square at x, y: its glyph in its colour; glow 0.5: a note going by (the glyph lit white), 1: a note
+ * passing through it (reverse video) */
+static void mf_tile(int x, int y, int w, int ty, int sel, int byp, float glow)
 {
-    const float u = s / 8.f;
-#define X_(v) (cx + (v) * u)
-#define Y_(v) (cy + (v) * u)
-#define DOT(x, y, r) ui_O(X_(x), Y_(y), (r) * u, QD_NONE, 1.f, col)
-#define RING(x, y, r) ui_O(X_(x), Y_(y), (r) * u, col, lw, QD_NONE)
-    switch (ty) {
-    case QD_MFX_ARP: {
-        const float p[12] = {X_(-7), Y_(6), X_(-3), Y_(6), X_(-3), Y_(1), X_(1), Y_(1), X_(1), Y_(-4), X_(6), Y_(-4)};
-        ui_P(p, 6, col, lw, 0, QD_NONE);
-        DOT(6, -4, 1.9f);
-        break;
-    }
-    case QD_MFX_CHANCE: {
-        const float p[4] = {X_(1.5f), Y_(-7), X_(1.5f), Y_(3)};
-        DOT(-6.5f, -2, 1.7f), DOT(-2, -2, 1.7f), DOT(5.5f, -2, 1.7f);
-        ui_P(p, 2, col, lw, 0, QD_NONE);
-        RING(5.5f, 5.5f, 1.7f);
-        break;
-    }
-    case QD_MFX_REPEAT: {
-        static const float H[4][3] = {{-7, -2, 6}, {-2, 2, 4}, {2, 5, 2.4f}, {5, 7.2f, 1.2f}};
-        int k;
-        for (k = 0; k < 4; k++)
-            mf_Q(X_(H[k][0]), Y_(6), X_((H[k][0] + H[k][1]) / 2.f), Y_(6 - 2 * H[k][2]), X_(H[k][1]), Y_(6), col, lw, 1.f);
-        DOT(-4.5f, -0.2f, 2);
-        break;
-    }
-    case QD_MFX_HARM: {
-        const float a[4] = {X_(-7), Y_(-5), X_(7), Y_(-5)}, b[4] = {X_(-7), Y_(0), X_(3), Y_(0)},
-                    c[4] = {X_(-7), Y_(5), X_(-1), Y_(5)}, d[4] = {X_(-7), Y_(-7.5f), X_(-7), Y_(7.5f)};
-        ui_P(a, 2, col, lw, 0, QD_NONE), ui_P(b, 2, col, lw, 0, QD_NONE);
-        ui_P(c, 2, col, lw, 0, QD_NONE), ui_P(d, 2, col, lw, 0, QD_NONE);
-        break;
-    }
-    case QD_MFX_TRANSPOSE: {
-        const float a[4] = {X_(5.5f), Y_(-5), X_(2), Y_(-6.6f)}, b[4] = {X_(5.5f), Y_(-5), X_(3.6f), Y_(-1.8f)};
-        DOT(-5, 5, 2.2f);
-        mf_Q(X_(-3.5f), Y_(2.5f), X_(-3), Y_(-6), X_(5.5f), Y_(-5), col, lw, 1.f);
-        ui_P(a, 2, col, lw, 0, QD_NONE), ui_P(b, 2, col, lw, 0, QD_NONE);
-        break;
-    }
-    case QD_MFX_SCALER: {
-        const float a[4] = {X_(-2.5f), Y_(-6), X_(-2.5f), Y_(6)}, b[4] = {X_(2.5f), Y_(-6), X_(2.5f), Y_(6)};
-        ui_RR(X_(-7.5f), Y_(-6.5f), 15 * u, 13 * u, 1.5f * u, col, lw, QD_NONE);
-        ui_P(a, 2, col, lw, 0, QD_NONE), ui_P(b, 2, col, lw, 0, QD_NONE);
-        ui_RR(X_(-4), Y_(-6.5f), 3 * u, 7 * u, 0.6f, QD_NONE, 1.f, col);
-        ui_RR(X_(1), Y_(-6.5f), 3 * u, 7 * u, 0.6f, QD_NONE, 1.f, col);
-        break;
-    }
-    case QD_MFX_RANDOM:
-        ui_RR(X_(-7), Y_(-7), 14 * u, 14 * u, 2.5f * u, col, lw, QD_NONE);
-        DOT(-3.3f, -3.3f, 1.3f), DOT(3.3f, -3.3f, 1.3f), DOT(0, 0, 1.3f), DOT(-3.3f, 3.3f, 1.3f), DOT(3.3f, 3.3f, 1.3f);
-        break;
-    case QD_MFX_CHORD: {
-        const float a[4] = {X_(1.2f), Y_(5), X_(1.2f), Y_(-8)};
-        DOT(-1.5f, 5, 2.3f), DOT(-1.5f, 0.5f, 2.3f), DOT(-1.5f, -4, 2.3f);
-        ui_P(a, 2, col, lw, 0, QD_NONE);
-        break;
-    }
-    case QD_MFX_MONO: {
-        const float a[6] = {X_(-7), Y_(-5.5f), X_(-3), Y_(-5.5f), X_(1.5f), Y_(0)}, b[4] = {X_(-7), Y_(0), X_(1.5f), Y_(0)},
-                    c[6] = {X_(-7), Y_(5.5f), X_(-3), Y_(5.5f), X_(1.5f), Y_(0)}, d[4] = {X_(1.5f), Y_(0), X_(6.5f), Y_(0)};
-        ui_P(a, 3, col, lw, 0, QD_NONE), ui_P(b, 2, col, lw, 0, QD_NONE);
-        ui_P(c, 3, col, lw, 0, QD_NONE), ui_P(d, 2, col, lw, 0, QD_NONE);
-        DOT(6.8f, 0, 1.6f);
-        break;
-    }
-    case QD_MFX_SELECTOR: {
-        const float a[4] = {X_(-7), Y_(0), X_(-2), Y_(0)}, b[4] = {X_(-2), Y_(0), X_(7), Y_(-5.5f)},
-                    c[4] = {X_(-2), Y_(0), X_(7), Y_(0)}, d[4] = {X_(-2), Y_(0), X_(7), Y_(5.5f)};
-        ui_P(a, 2, col, lw, 0, QD_NONE);
-        DOT(-2, 0, 1.6f);
-        ui_P(b, 2, col, lw, 0, QD_NONE);
-        mf_P(c, 2, col, lw, 0.4f), mf_P(d, 2, col, lw, 0.4f);
-        break;
-    }
-    default:
-        break;
-    }
-#undef X_
-#undef Y_
-#undef DOT
-#undef RING
-}
-
-/* a slot's tile */
-static void mf_tile(float x, float y, float w, int ty, int sel, int byp, float glow, float a)
-{
-    if (sel) {
-        y -= 3.f;
-        mf_RR(x + 1.f, y + w + 2.f, w - 2.f, 3.f, 1.5f, QD_NONE, 1.f, 0x1d1d24u, a, 0);
-    }
+    const int sc = w >= 20 ? 2 : 1, gx = x + (w - 7 * sc) / 2, gy = y + (w - 7 * sc) / 2;
     if (!ty) {
-        mf_RR(x, y, w, w, 4.f, QD_NONE, 1.f, UI_BG, a, 0);
-        mf_RR(x, y, w, w, 4.f, sel ? UI_K3 : UI_G2, sel ? 1.8f : 1.f, QD_NONE, a * (sel ? 0.95f : 0.55f), !sel);
+        px_rect(x, y, w, w, UI_BG);
+        px_rbox(x, y, w, w, sel ? UI_K3 : UI_G3, QD_NONE);
         return;
     }
     {
-        const qd_rgb col = UI_MFX_COL[ty];
-        const float ta = (byp ? 0.32f : 1.f) * a;
-        mf_RR(x, y, w, w, 4.f, QD_NONE, 1.f, UI_BG, a, 0);
-        if (glow > 0.f)
-            mf_RR(x - 2.f, y - 2.f, w + 4.f, w + 4.f, 6.f, QD_NONE, 1.f, col, 0.22f * glow * a, 0);
+        const qd_rgb col = byp ? UI_G2 : UI_MFX_COL[ty];
+        if (glow >= 0.9f && !byp) {
+            px_rbox(x, y, w, w, col, col);
+            mf_glyph_px(ty, gx, gy, sc, UI_BG);
+        } else {
+            px_rbox(x, y, w, w, col, UI_BG);
+            mf_glyph_px(ty, gx, gy, sc, glow >= 0.4f && !byp ? UI_K3 : col);
+        }
         if (sel)
-            mf_RR(x - 2.5f, y - 2.5f, w + 5.f, w + 5.f, 6.f, UI_K3, 1.8f, QD_NONE, a, 0);
-        mf_RR(x, y, w, w, 4.f, col, 1.4f, QD_NONE, ta * (sel ? 1.f : 0.8f), 0);
-        mf_alpha(ta);
-        ui_mfx_glyph(ty, x + w / 2.f, y + w / 2.f, w * 0.31f, col, w > 30.f ? 2.f : 1.35f);
-        qd_restore();
+            px_rbox(x - 1, y - 1, w + 2, w + 2, UI_K3, QD_NONE);
         if (byp)
-            mf_L(x + 2.5f, y + w - 2.5f, x + w - 2.5f, y + 2.5f, UI_G1, 1.5f, a);
+            px_line(x + 1, y + w - 2, x + w - 2, y + 1, UI_G1);
+    }
+}
+
+/* the vertical keybed beside the ARP's and HARM's drawings: a row a semitone (rows ya(p)..yb(p)); lit: fill[] */
+static void mf_vkeys(int x, int lo, int hi, int (*yrow)(int, int, int), int a, int b, const qd_rgb *lit)
+{
+    int p;
+    for (p = lo; p <= hi; p++) {
+        int ya = yrow(p + 1, a, b) + 1;
+        const int yb = yrow(p, a, b), bk = mf_black(p);
+        const qd_rgb c = lit && lit[p - lo] != QD_NONE ? lit[p - lo] : bk ? UI_G2 : PX_LGREY;
+        if (ya > yb)
+            ya = yb;
+        px_rect(x, ya, bk && (!lit || lit[p - lo] == QD_NONE) ? 5 : 8, yb - ya + 1, c);
+        if (!bk && (p % 12 == 0 || p % 12 == 5) && yb - ya >= 2)   /* (E-F, B-C: a seam) */
+            px_hline(x, yb, 8, UI_BG);
     }
 }
 
 /* ---------------------------------------------------------------- the head, the rail, the foot */
-#define MF_RX(i) (10.f + (float)(i) * 28.f)
-#define MF_RY 44.f
-#define MF_RW 22.f
-static float mf_head(int npg, int pg, const char *title, qd_rgb tcol, int g, const uint8_t *tr, int ntr, int track)
+static void mf_head(int npg, int pg, int g, const uint8_t *tr, int ntr, int track, int off)
 {
-    float x = 8.f;
-    int i;
+    int x = 4, i;
     if (npg > 1) {
         for (i = 0; i < npg; i++)
-            ui_O(x + 3.f + (float)i * 9.f, 13.f, 2.6f, i == pg ? QD_NONE : UI_G1, 1.f, i == pg ? UI_K3 : QD_NONE);
-        x += (float)npg * 9.f + 4.f;
+            px_rect(x + i * 4, 5, 2, 2, i == pg ? UI_K3 : UI_G2);
+        x += npg * 4 + 2;
     }
-    ui_T(title, x, 17.f, 12.f, 600, 1.f, tcol, QD_LEFT);
-    x += ui_TW(title, 12.f, 600, 1.f) + 15.f;
+    x = px_text(x, 4, "MIDI FX", UI_K3, PX_FS, 1) + 5;  /* (the hexagon's centre) */
     if (g > 0)
-        ui_mfx_hex(x, 12.5f, 10.f, g, MF_MINT, 1.5f, 0);
+        mf_hexn(x, 6, 5, g, MF_MINT, 0);
     else if (g == 0)
-        mf_hexagon(x, 12.5f, 10.f, UI_G1, 1.5f, 1, 1.f);
-    for (i = 0; i < ntr; i++) {
-        const int n = tr[ntr - 1 - i];
-        mf_sq(222.f - (float)i * 17.f, 7.5f, n, 10.f, n == track);
+        mf_hexagon(x, 6, 5, UI_G1, 1);
+    if (off) {                                          /* the routing bypassed: OFF, reverse video */
+        px_rect(x + 7, 3, 13, 7, UI_RED);
+        px_text(x + 8, 4, "OFF", UI_K3, PX_FS, 1);
     }
-    mf_L(8.f, 25.f, 232.f, 25.f, UI_G3, 1.f, 1.f);
-    return x;                                           /* (the hexagon's centre) */
+    for (i = 0; i < ntr; i++) {                         /* the tracks on the group: chips, the selected underlined */
+        const int n = tr[ntr - 1 - i], cx = 112 - i * 6;
+        const char d[2] = {(char)('0' + n % 10), 0};
+        px_rect(cx, 3, 5, 7, UI_TRACK_PAL[(n - 1) & 7]);
+        px_text(cx + 1, 4, d, UI_BG, PX_FS, 1);
+        if (n == track)
+            px_hline(cx, 11, 5, UI_K3);
+    }
+    px_dots(0, 12, 120, UI_G3, 2);
 }
 
 /* notes running along the rail: a dot stream; an ARP or REPEAT starts a faster stream, CHANCE drops some, HARM / CHORD
- * stack three (the mock-up's railFlow) */
+ * stack three (FIZZ's railFlow, in whole pixels) */
 static void mf_flow(const uint8_t *type, const uint8_t *byp, float t, float *hits)
 {
-    struct { float x, rate; qd_rgb col; int id; } st[9];
-    int ns = 0, si, i;
-    float items_x[8];
-    st[ns].x = 2.f, st[ns].rate = 1.7f, st[ns].col = UI_K3, st[ns].id = 0, ns++;
+    struct {
+        float x, rate;
+        qd_rgb col;
+        int id;
+    } st[9];
+    float cx[8];
+    int ns = 1, si, i;
+    st[0].x = 1.f, st[0].rate = 1.7f, st[0].col = UI_K3, st[0].id = 0;
     for (i = 0; i < 8; i++) {
-        items_x[i] = MF_RX(i) + MF_RW / 2.f;
+        cx[i] = (float)(mf_rx(i) + MF_TW / 2);
         if (type[i] && !byp[i] && (type[i] == QD_MFX_ARP || type[i] == QD_MFX_REPEAT))
-            st[ns].x = items_x[i], st[ns].rate = 6.f, st[ns].col = UI_MFX_COL[type[i]], st[ns].id = i + 1, ns++;
+            st[ns].x = cx[i], st[ns].rate = 6.f, st[ns].col = UI_MFX_COL[type[i]], st[ns].id = i + 1, ns++;
     }
     for (si = 0; si < ns; si++) {
-        const float end = si + 1 < ns ? st[si + 1].x : 238.f, speed = 64.f, life = (end - st[si].x) / speed;
+        const float end = si + 1 < ns ? st[si + 1].x : 118.f, speed = 32.f, life = (end - st[si].x) / speed;
         int k;
         for (k = (int)floorf((t - life) * st[si].rate) - 1; k <= (int)floorf(t * st[si].rate); k++) {
             const float age = t - (float)k / st[si].rate, x = st[si].x + age * speed;
             qd_rgb col = st[si].col;
-            int mult = 1, m;
-            float fell = -1.f;
+            int mult = 1, m, fell = -1, xi;
             if (age < 0.f || age > life)
                 continue;
             for (i = 0; i < 8; i++) {
-                const float sx = items_x[i];
+                const float sx = cx[i];
                 if (!type[i] || byp[i] || sx <= st[si].x + 0.5f || sx > end)
                     continue;
-                if (fabsf(x - sx) < 13.f) {
-                    const float h = 1.f - fabsf(x - sx) / 13.f;
+                if (fabsf(x - sx) < 6.5f) {
+                    const float h = 1.f - fabsf(x - sx) / 6.5f;
                     hits[i] = h > hits[i] ? h : hits[i];
                 }
                 if (sx > x)
                     continue;
-                if (type[i] == QD_MFX_CHANCE && mf_hash((float)k * 7.31f + (float)i * 3.f + (float)st[si].id * 17.f) > 0.62f) {
-                    fell = x - sx;
+                if (type[i] == QD_MFX_CHANCE && mf_pct(k * 7 + i * 3 + st[si].id * 17 + 1000) > 62) {
+                    fell = mf_r(x - sx);
                     col = UI_MFX_COL[QD_MFX_CHANCE];
                     break;
                 }
@@ -336,12 +299,14 @@ static void mf_flow(const uint8_t *type, const uint8_t *byp, float t, float *hit
                     mult = 3;
                 col = UI_MFX_COL[type[i]];
             }
-            if (fell >= 0.f) {
-                mf_O(x, MF_RY + fell * 0.7f, 1.6f, QD_NONE, 1.f, col, 1.f - fell / 22.f);
+            xi = mf_r(x);
+            if (fell >= 0) {                            /* (dropped: falling off the rail) */
+                if (fell < 10)
+                    px_rect(xi - 1, MF_RY - 1 + fell * 2 / 3, 2, 2, fell < 5 ? col : UI_G2);
                 continue;
             }
             for (m = 0; m < mult; m++)
-                mf_dot(x, MF_RY + ((float)m - (float)(mult - 1) / 2.f) * 4.4f, 1.8f, col, 1.f);
+                px_rect(xi - 1, MF_RY - 1 + (m - (mult - 1) / 2) * 3, 2, 2, col);
         }
     }
 }
@@ -355,370 +320,507 @@ static int mf_dpos(int i, int from, int to)
         return i + 1;
     return i;
 }
-static void mf_tri(float x, float y, float dir, qd_rgb c, float a)   /* a small arrow head, pointing dir (-1 / +1) */
+static void mf_tri(int x, int y, int dir, qd_rgb c)    /* a small arrow head pointing dir (-1 / +1), its tip at x */
 {
-    const float p[6] = {x - 2.5f * dir, y - 4.f, x + 2.5f * dir, y, x - 2.5f * dir, y + 4.f};
-    mf_alpha(a);
-    ui_P(p, 3, c, 1.6f, 1, c);
-    qd_restore();
+    px_pset(x, y, c);
+    px_vline(x - dir, y - 1, 3, c);
+    px_vline(x - 2 * dir, y - 2, 5, c);
 }
 
 static void mf_rail(const ui_mfx_t *v)
 {
-    float hits[8] = {0}, arrow[6] = {232.f, MF_RY - 3.5f, 237.f, MF_RY, 232.f, MF_RY + 3.5f};
+    float hits[8] = {0};
     int i;
-    mf_L(2.f, MF_RY, 238.f, MF_RY, UI_G2, 1.2f, 1.f);
-    mf_P(arrow, 3, UI_G2, 1.2f, 1.f);
+    const int ty0 = MF_RY - MF_TW / 2;
+    px_hline(0, MF_RY, 118, UI_G2);
+    px_line(115, MF_RY - 3, 118, MF_RY, UI_G2);
+    px_line(115, MF_RY + 3, 118, MF_RY, UI_G2);
     if (v->flow)
         mf_flow(v->type, v->byp, v->t, hits);
     for (i = 0; i < 8; i++) {                           /* a SELECTOR's block: its next slots bracketed */
         if (v->type[i] == QD_MFX_SELECTOR && !v->byp[i]) {
             const int n = v->v[QD_ML_LEN] < 0 ? 0 : v->v[QD_ML_LEN], e = i + n > 7 ? 7 : i + n;
             if (n > 0 && i < 7) {
-                const float p[8] = {MF_RX(i + 1) - 1.f, 62.f, MF_RX(i + 1) - 1.f, 64.f, MF_RX(e) + MF_RW + 1.f, 64.f,
-                                    MF_RX(e) + MF_RW + 1.f, 62.f};
-                mf_P(p, 4, UI_MFX_COL[QD_MFX_SELECTOR], 1.2f, 0.8f);
+                const int x1 = mf_rx(i + 1) - 1, x2 = mf_rx(e) + MF_TW;
+                px_hline(x1, 30, x2 - x1 + 1, UI_MFX_COL[QD_MFX_SELECTOR]);
+                px_pset(x1, 29, UI_MFX_COL[QD_MFX_SELECTOR]);
+                px_pset(x2, 29, UI_MFX_COL[QD_MFX_SELECTOR]);
             }
         }
     }
     for (i = 0; i < 8; i++) {
-        float x = MF_RX(i);
-        const float y = MF_RY - MF_RW / 2.f;
-        float g = hits[i] > v->glow[i] ? hits[i] : v->glow[i];
-        float yo = 0.f;
-        if (v->lift_from >= 0 && i == v->lift_to)    /* (the data already moved: the carried one is there) */
+        int x = mf_rx(i), y = ty0;
+        const float g = v->glow[i] >= 0.5f ? 1.f : hits[i] >= 0.6f ? 0.5f : 0.f;   /* (the player's pass: reversed; a
+                                                         * dot of the rail's going by: the glyph lit) */
+        const int sel = i == v->sel && v->lift_from < 0;
+        if (v->lift_from >= 0 && i == v->lift_to)       /* (the data already moved: the carried one is there) */
             continue;
         if (v->drag_from >= 0) {                        /* P1.6e: a slot held: drawn apart; the others making room */
             if (i == v->drag_from)
                 continue;
-            x = mf_lerp(MF_RX(mf_dpos(i, v->drag_from, v->drag_prev)), MF_RX(mf_dpos(i, v->drag_from, v->drag_to)),
-                        mf_ease(v->drag_u));
+            x = mf_lerpi(mf_rx(mf_dpos(i, v->drag_from, v->drag_prev)), mf_rx(mf_dpos(i, v->drag_from, v->drag_to)),
+                         mf_ease(v->drag_u));
         }
         if (v->drop >= 0 && i == v->drop)               /* .. dropped: landing */
-            yo = -7.f * (1.f - mf_ease(v->drop_u));
+            y -= mf_r(4.f * (1.f - mf_ease(v->drop_u)));
         if (v->lift_from >= 0 && v->lift_to > v->lift_from && i >= v->lift_from && i < v->lift_to)
-            x = mf_lerp(MF_RX(i + 1), MF_RX(i), mf_ease((v->lift_u - 0.2f) / 0.5f));
+            x = mf_lerpi(mf_rx(i + 1), mf_rx(i), mf_ease((v->lift_u - 0.2f) / 0.5f));
         if (v->lift_from >= 0 && v->lift_to < v->lift_from && i > v->lift_to && i <= v->lift_from)
-            x = mf_lerp(MF_RX(i - 1), MF_RX(i), mf_ease((v->lift_u - 0.2f) / 0.5f));
-        if (v->arm > 0.f && i == v->sel)
-            x += sinf(v->t * 46.f) * 2.2f * v->arm;
-        mf_tile(x, y + yo, MF_RW, v->type[i], i == v->sel && v->lift_from < 0, v->byp[i], g, 1.f);
+            x = mf_lerpi(mf_rx(i - 1), mf_rx(i), mf_ease((v->lift_u - 0.2f) / 0.5f));
+        if (v->arm > 0.f && i == v->sel)                /* (armed: shaking) */
+            x += sinf(v->t * 46.f) > 0.f ? 1 : -1;
+        if (sel) {                                      /* the selected: raised, its shadow under it */
+            y -= 2;
+            px_hline(x + 1, MF_RY + MF_TW / 2 + 1, MF_TW - 2, UI_G2);
+        }
+        mf_tile(x, y, MF_TW, v->type[i], sel, v->byp[i], g);
         if (i == v->f1_src) {                           /* P1.6e: F1's copy came from here: marked */
-            mf_RR(x - 3.5f, y - 6.5f, MF_RW + 7.f, MF_RW + 7.f, 6.f, UI_K2, 1.4f, QD_NONE, 1.f, 1);
-            ui_icon(UI_IC_COPY, x + MF_RW / 2.f, y + MF_RW + 12.f, 0.9f, UI_K2);
+            mf_dbox(x - 2, y - 2, MF_TW + 4, MF_TW + 4, UI_K2);
+            ui_icon(UI_IC_COPY, (float)(2 * (x + MF_TW / 2) + 1), (float)(2 * (y + MF_TW + 6)), 1.f, UI_K2);
         }
         if (v->arm > 0.f && i == v->sel) {
-            mf_L(x - 1.f, y - 4.f, x + MF_RW + 1.f, y + MF_RW - 2.f, UI_RED, 2.2f, 1.f);
-            mf_L(x + MF_RW + 1.f, y - 4.f, x - 1.f, y + MF_RW - 2.f, UI_RED, 2.2f, 1.f);
+            px_line(x - 1, y - 1, x + MF_TW, y + MF_TW, UI_RED);
+            px_line(x + MF_TW, y - 1, x - 1, y + MF_TW, UI_RED);
         }
     }
     if (v->drag_from >= 0) {                            /* P1.6e: the slot held: lifted, at its preview place; arrows
                                                          * either side (it can move) */
-        const float x = mf_lerp(MF_RX(v->drag_prev), MF_RX(v->drag_to), mf_ease(v->drag_u));
-        const float y = MF_RY - MF_RW / 2.f - 7.f * v->drag_up;
+        const int x = mf_lerpi(mf_rx(v->drag_prev), mf_rx(v->drag_to), mf_ease(v->drag_u));
+        const int y = ty0 - mf_r(3.f * v->drag_up);
         if (v->drag_up > 0.05f)
-            mf_RR(x + 2.f, MF_RY + MF_RW / 2.f + 1.f, MF_RW - 4.f, 3.f, 1.5f, QD_NONE, 1.f, 0x2a2a33u, v->drag_up, 0);
-        mf_tile(x, y, MF_RW, v->type[v->drag_from], 1, v->byp[v->drag_from], v->drag_up, 1.f);
-        if (v->drag_up > 0.f) {
-            const float pa = v->drag_up * (v->drag_moved ? 0.55f : 0.65f + 0.35f * sinf(v->t * 9.f));
-            const float off = v->drag_moved ? 0.f : 1.5f * sinf(v->t * 9.f);
+            px_hline(x + 2, MF_RY + MF_TW / 2 + 1, MF_TW - 4, UI_G2);
+        mf_tile(x, y, MF_TW, v->type[v->drag_from], 1, v->byp[v->drag_from], 0.f);
+        if (v->drag_up > 0.3f) {
+            const int off = v->drag_moved ? 0 : (sinf(v->t * 9.f) > 0.f ? 1 : 0);
+            const qd_rgb c = v->drag_moved ? UI_G1 : UI_K3;
             if (v->drag_to > 0)
-                mf_tri(x - 6.f - off, y + MF_RW / 2.f, -1.f, UI_K3, pa);
+                mf_tri(x - 3 - off, y + MF_TW / 2, -1, c);
             if (v->drag_to < 7)
-                mf_tri(x + MF_RW + 6.f + off, y + MF_RW / 2.f, 1.f, UI_K3, pa);
+                mf_tri(x + MF_TW + 2 + off, y + MF_TW / 2, 1, c);
         }
     }
     if (v->lift_from >= 0) {                            /* picked up: raised above the rail, carried, dropped */
         const float u = v->lift_u;
         const float up = u < 0.15f ? mf_ease(u / 0.15f) : u > 0.75f ? 1.f - mf_ease((u - 0.75f) / 0.15f) : 1.f;
-        const float x = mf_lerp(MF_RX(v->lift_from), MF_RX(v->lift_to), mf_ease((u - 0.2f) / 0.5f));
-        const float y = MF_RY - MF_RW / 2.f - 9.f * up;
+        const int x = mf_lerpi(mf_rx(v->lift_from), mf_rx(v->lift_to), mf_ease((u - 0.2f) / 0.5f));
+        const int y = ty0 - mf_r(5.f * up);
         if (up > 0.05f)
-            mf_RR(x + 2.f, MF_RY + MF_RW / 2.f + 1.f, MF_RW - 4.f, 3.f, 1.5f, QD_NONE, 1.f, 0x2a2a33u, up, 0);
-        mf_tile(x, y, MF_RW, v->type[v->lift_to], 1, 0, 0.f, 1.f);
+            px_hline(x + 2, MF_RY + MF_TW / 2 + 1, MF_TW - 4, UI_G2);
+        mf_tile(x, y, MF_TW, v->type[v->lift_to], 1, 0, 0.f);
     }
 }
 
-static void mf_foot(const ui_mfx_t *v, float a)
+static void mf_foot(const ui_mfx_t *v, int dim)
 {
-    static const qd_rgb KC[4] = {UI_K1, UI_K2, UI_K3, UI_K4};
-    int i;
-    for (i = 0; i < 4; i++) {
-        const float x = 31.f + (float)i * 59.3f;
-        float s = 19.f;
-        if (!v->has[i])
+    int k;
+    px_dots(3, 89, 114, UI_G3, 2);
+    for (k = 0; k < 4; k++) {
+        const int x0 = 3 + k * 29, cx = x0 + 14;
+        int f = PX_FB, w, x;
+        if (!v->has[k])
             continue;
-        mf_T(v->lab[i] ? v->lab[i] : "", x, 204.f, 12.f, 500, 0.f, UI_G1, QD_CENTER, a);
-        while (s > 12.f && ui_TW(v->val[i], s, 400, 0.f) > 55.f)   /* (P1.6g: AS PLAYED fits: down to 12 px) */
-            s -= 1.f;
-        mf_T(v->val[i], x, 228.f, s, 400, 0.f, KC[i], QD_CENTER, a);
-        if (v->last == i)
-            mf_L(x - 12.f, 209.f, x + 12.f, 209.f, KC[i], 1.6f, a);
+        px_ctext(cx + 1, 92, v->lab[k] ? v->lab[k] : "", dim ? UI_G2 : UI_G1, PX_FS, 1);
+        if (v->last == k)
+            px_hline(cx - 9, 99, 19, MF_KC[k]);
+        w = px_text_w(v->val[k], PX_FB, 1);
+        if (w > 27) {                                   /* (AS PLAYED, 100%: the small font, kept on the screen) */
+            f = PX_FS;
+            w = px_text_w(v->val[k], PX_FS, 1);
+        }
+        x = cx + 1 - (w + 1) / 2;
+        x = x < 1 ? 1 : x + w > 119 ? 119 - w : x;
+        px_text(x, f == PX_FB ? 105 : 107, v->val[k], MF_KC[k], f, 1);
     }
 }
 
-/* ---------------------------------------------------------------- the big drawings (the middle, y 84..188) */
-static float mf_arp_y(int p, int lo) { return 178.f - (float)(p - lo) * 3.55f; }
-/* P1.6g: the ARP's picture: the PATTERN's real walk (its notes in play, or C E G dim) as a staircase of clean, even
- * lines over RANGE octaves (the MOD lane's rests gaps, the TRANSPOSE lane's offsets in it), morphing from the last one
- * when it changes, the playing step's dot running along it; at the left a small vertical keyboard on the same scale,
- * its keys lit for the notes the arp plays from (a latch over it in HOLD / 1-ST) */
+/* ---------------------------------------------------------------- the pictures (MF_TOP .. MF_BOT) */
+/* ARP: a pitch's height, lo at y 85 .. lo + span at y 55 */
+static int mf_ay(int p, int lo, int span) { return 85 - (p - lo) * 30 / span; }
+
+/* P1.6g: the ARP's picture: the PATTERN's real walk (its notes in play, or C E G grey) as lift platforms over RANGE
+ * octaves (the MOD lane's rests gaps, the TRANSPOSE lane's offsets in it), morphing from the last one when it
+ * changes; the agent running along the playing step; at the left a keybed on the same scale, the notes the arp plays
+ * from lit in their tracks' colours (a padlock over it in HOLD / 1-ST) */
 static void mf_arp(const ui_mfx_t *v)
 {
-    const qd_rgb col = UI_MFX_COL[QD_MFX_ARP];
-    const int ns = v->nseq > 0 ? v->nseq : 1, latched = v->v[QD_MA_MODE] == QD_AM_HOLD || v->v[QD_MA_MODE] == QD_AM_1ST;
-    const float x0 = 50.f, da = v->nheld ? 1.f : 0.6f, mo = mf_ease(v->morph);
-    float ys[48], w, f;
-    int i, lo = 127, hi = 0, cur;
+    const int ns = v->nseq > 0 ? (v->nseq < 48 ? v->nseq : 48) : 1, held = v->nheld > 0, ms = mf_ms(v->t);
+    const int latched = v->v[QD_MA_MODE] == QD_AM_HOLD || v->v[QD_MA_MODE] == QD_AM_1ST;
+    const int x0 = 17, xw = 99, gate = mf_clampi(v->v[QD_MA_GATE], 5, 100);
+    const float mo = mf_ease(v->morph);
+    int ys[48], i, lo = 127, hi = 0, span, cur, run;
     for (i = 0; i < ns; i++)
         lo = v->seq[i] < lo ? v->seq[i] : lo, hi = v->seq[i] > hi ? v->seq[i] : hi;
-    for (i = 0; i < v->nheld; i++)
-        lo = v->held_p[i] < lo ? v->held_p[i] : lo;
-    lo -= 1;
-    if (hi - lo > 28)                                   /* (a wide range: squeezed into the middle) */
-        lo = hi - 28;
-    for (i = 0; i < ns; i++) {                          /* the walk's heights, morphing from the last one */
-        const float yn = mf_clamp(mf_arp_y(v->seq[i], lo), 88.f, 184.f);
-        if (mo < 1.f && v->nprev > 0) {
-            const float yp = mf_clamp(mf_arp_y(v->prev[i < v->nprev ? i : v->nprev - 1], lo), 88.f, 184.f);
-            ys[i] = mf_lerp(yp, yn, mo);
-        } else {
+    for (i = 0; i < v->nheld && i < 8; i++)
+        lo = v->held_p[i] < lo ? v->held_p[i] : lo, hi = v->held_p[i] > hi ? v->held_p[i] : hi;
+    if (hi - lo > 30)                                   /* (a wide walk: its top 30 semitones) */
+        lo = hi - 30;
+    span = hi - lo;
+    if (span < 12) {                                    /* (a narrow one: centred on an octave) */
+        lo -= (12 - span) / 2;
+        span = 12;
+    }
+    for (i = 0; i < ns; i++) {                          /* the platforms' heights, morphing from the last walk */
+        const int yn = mf_clampi(mf_ay(v->seq[i], lo, span), 52, 85);
+        if (mo < 1.f && v->nprev > 0)
+            ys[i] = mf_lerpi(mf_clampi(mf_ay(v->prev[i < v->nprev ? i : v->nprev - 1], lo, span), 52, 85), yn, mo);
+        else
             ys[i] = yn;
-        }
     }
-    mf_Pd((const float[]){46.f, mf_arp_y(lo + 13, lo) + 0.5f, 230.f, mf_arp_y(lo + 13, lo) + 0.5f}, 2, UI_G3, 1.f, 1.f, 2.f, 4.f);
-    mf_Pd((const float[]){46.f, mf_arp_y(lo + 25, lo) + 0.5f, 230.f, mf_arp_y(lo + 25, lo) + 0.5f}, 2, UI_G3, 1.f, 1.f, 2.f, 4.f);
-    {   /* the keyboard strip: a key a semitone, on the staircase's scale; lit: the notes in play */
-        int p;
-        for (p = lo + 1; p <= lo + 28 && p < 128; p++) {
-            const float y = mf_arp_y(p, lo);
-            const int bk = (0x54a >> (p % 12)) & 1;     /* (C# D# F# G# A#) */
-            int in = -1, k;
-            if (y < 90.f || y > 184.f)
-                continue;
-            for (k = 0; k < v->nheld; k++)
-                if (v->held_p[k] == p)
-                    in = k;
-            if (in >= 0)
-                mf_RR(14.f, y - 1.5f, bk ? 13.f : 22.f, 3.f, 1.f, QD_NONE, 1.f,
-                      MF_TP[(v->held_t[in] - 1) & 7], 1.f, 0);
-            else
-                mf_RR(14.f, y - 1.5f, bk ? 13.f : 22.f, 3.f, 1.f, QD_NONE, 1.f, bk ? UI_G3 : UI_G2, 1.f, 0);
+    {   /* the keybed, lit: the notes held */
+        qd_rgb lit[32];
+        int p, k;
+        for (p = 0; p <= span && p < 32; p++) {
+            lit[p] = QD_NONE;
+            for (k = 0; k < v->nheld && k < 8; k++)
+                if (v->held_p[k] == lo + p)
+                    lit[p] = UI_TRACK_PAL[(v->held_t[k] - 1) & 7];
         }
-        if (latched) {                                  /* HOLD / 1-ST: a latch over the strip */
-            const float hy = 86.f;
-            mf_O(14.f, hy, 3.f, col, 1.4f, UI_BG, 1.f);
-            mf_L(17.f, hy, 36.f, hy, col, 1.4f, 1.f);
-            mf_L(36.f, hy, 36.f, hy + 5.f, col, 1.4f, 1.f);
-        }
+        mf_vkeys(4, lo, lo + (span < 31 ? span : 31), mf_ay, lo, span, lit);
     }
-    w = (228.f - x0) / (float)ns;
-    cur = v->arp_run && v->nheld ? v->arp_step % ns : (int)(v->t * 5.f) % ns;
-    f = v->arp_run && v->nheld ? 0.5f : fmodf(v->t * 5.f, 1.f);
-    {
-        const float gate = mf_clamp((float)v->v[QD_MA_GATE] / 100.f, 0.05f, 1.f);
-        for (i = 0; i < ns; i++) {                      /* each step a clean line, even (no glow) */
-            const float x = x0 + (float)i * w;
-            if (v->gap[i])
-                continue;
-            if (i > 0 && !v->gap[i - 1])
-                mf_L(x, ys[i - 1], x, ys[i], col, 1.f, 0.45f * da);
-            mf_L(x + 1.f, ys[i], x + 1.f + mf_clamp((w - 2.f) * gate, 1.5f, w), ys[i], col, 2.f, (i == cur ? 1.f : 0.7f) * da);
-        }
-        if (!v->gap[cur]) {                             /* the playing step: its dot, a clean ring as it strikes */
-            const float xc = x0 + (float)cur * w + 1.f + (w - 2.f) * gate * mf_clamp(f / gate, 0.f, 1.f);
-            mf_dot(xc, ys[cur], 3.2f, v->nheld ? MF_TP[(v->held_t[0] - 1) & 7] : UI_K3, da);
-            if (f < 0.3f)
-                mf_O(x0 + (float)cur * w + 1.f, ys[cur], 4.f + f * 26.f, col, 1.f, QD_NONE, (1.f - f / 0.3f) * da);
-        }
+    if (latched) {                                      /* HOLD / 1-ST: the padlock (MODE: KNOB 1's, page 2) */
+        static const char *const LOCK[8] = {"..###..", ".#...#.", ".#...#.", "#######", "###.###", "###.###", "#######",
+                                            "......."};
+        mf_bits(LOCK, 7, 5, 41, 1, UI_K1);
     }
-}
-
-static void mf_chance(int pct, float t, float a)
-{
-    const qd_rgb col = UI_MFX_COL[QD_MFX_CHANCE];
-    const float y = 162.f, gx = 122.f, speed = 56.f, rate = 3.f;
-    char s[8];
-    int k;
-    s[0] = 0;
-    {
-        char *q = ui_itoa(s, pct);
-        strcat(q, "%");
-    }
-    mf_T(s, 120.f, 134.f, 42.f, 300, 0.f, col, QD_CENTER, a);
-    mf_G((const float[]){gx, y - 19.f, gx, y - 8.f}, 2, col, 2.2f, a);
-    mf_G((const float[]){gx, y + 8.f, gx, y + 19.f}, 2, col, 2.2f, a);
-    for (k = (int)floorf((t - 5.f) * rate); (float)k <= t * rate; k++) {
-        const float age = t - (float)k / rate, x = 10.f + age * speed;
-        const int pass = mf_hash((float)k * 3.17f) < (float)pct / 100.f;
-        if (x < 10.f || x > 232.f)
+    for (i = 1; i <= 2; i++)                            /* the octaves above the lowest note: dotted */
+        if (lo + 12 * i <= hi)
+            px_dots(x0, mf_ay(lo + 12 * i, lo, span), xw, UI_G3, 3);
+    run = v->arp_run && held;
+    cur = run ? v->arp_step % ns : (ms / 200) % ns;
+    for (i = 0; i < ns; i++) {                          /* each step a platform, GATE wide; the lifts between */
+        const int x = x0 + i * xw / ns, xn = x0 + (i + 1) * xw / ns;
+        const int pw = mf_clampi((xn - x - 1) * gate / 100, 1, xn - x);
+        const qd_rgb top = i == cur ? UI_K3 : held ? PX_YELLOW : PX_GREY, under = held ? PX_ORANGE : UI_G2;
+        if (v->gap[i])
             continue;
-        if (x < gx || pass) {
-            mf_dot(x, y, 3.3f, x < gx ? UI_K3 : col, a * (x > 210.f ? (232.f - x) / 22.f : 1.f));
-        } else {
-            const float d = x - gx;
-            mf_O(gx + d * 0.45f, y + d * d * 0.02f, 3.3f, col, 1.3f, QD_NONE, a * mf_clamp(1.f - d / 55.f, 0.f, 1.f));
-        }
+        if (i > 0 && !v->gap[i - 1] && ys[i - 1] != ys[i])
+            px_vline(x, ys[i - 1] < ys[i] ? ys[i - 1] : ys[i], (ys[i - 1] > ys[i] ? ys[i - 1] - ys[i] : ys[i] - ys[i - 1]) + 1,
+                     UI_G3);
+        px_hline(x, ys[i], pw, top);
+        px_hline(x, ys[i] + 1, pw, under);
+    }
+    {   /* the agent: on the playing step's platform, running (over a rest: a somersault) */
+        const int x = x0 + cur * xw / ns, xn = x0 + (cur + 1) * xw / ns;
+        const int pw = mf_clampi((xn - x - 1) * gate / 100, 1, xn - x);
+        const int f = run ? pw / 2 : (ms % 200) * pw / 200;
+        const int ax = mf_clampi(x + f - 4, 13, 108);
+        if (v->gap[cur])
+            px_sprite(ax - 1, ys[cur] - 14, PXS_AGENT_FLIP, 0);
+        else
+            px_sprite(ax, ys[cur] - 15, PXS_AGENT_RUN1 + (ms / 90) % 3, 0);
     }
 }
 
+/* the arp's lanes: 16 cells, a cell 7 px */
+static int mf_lx(int i) { return 4 + i * 7; }
+static void mf_lane_len(int len)                        /* the lane's LENGTH (KNOB 4): a marker after its last cell */
+{
+    const int x = mf_lx(len) - 1;
+    px_vline(x, 40, 48, UI_K4);
+    px_hline(x - 2, 40, 2, UI_K4);
+}
+static void mf_modlane(const ui_mfx_t *v)
+{
+    const qd_rgb col = UI_MFX_COL[QD_MFX_ARP];
+    const int len = mf_clampi(v->v[QD_MA_MLEN], 1, 16), sel = v->lane_sel & 15;
+    const int cur = v->lane_cur >= 0 ? v->lane_cur : (mf_ms(v->t) / 200) % len;
+    static const int SEQ[6] = {0, 4, 7, 12, 16, 19};
+    int i, ai = 0, last[3] = {0, 0, 0}, nl = 0;
+#define MF_LY(p) (69 - ((p) + 12) * 26 / 43)
+    for (i = 0; i < 16; i++) {                          /* the cells */
+        const int x = mf_lx(i), in = i < len;
+        if (i == cur && in)
+            px_rect(x, 76, 6, 11, UI_G3);
+        if (in)
+            px_box(x, 76, 6, 11, UI_G2);
+        else
+            mf_dbox(x, 76, 6, 11, UI_G3);
+    }
+    for (i = 0; i < len; i++) {                         /* what the lane makes of the arp: each step's notes above it */
+        const int m = v->lane[0][i], on = i == cur, x = mf_lx(i);
+        const qd_rgb c = on ? UI_K3 : col;
+        int ps[6], np = 0, k;
+        switch (m) {
+        case QD_AL_PLAY: ps[np++] = SEQ[ai % 6], ai++; break;
+        case QD_AL_REPEAT:
+            for (k = 0; k < nl; k++)
+                ps[np++] = last[k];
+            break;
+        case QD_AL_LO: ps[np++] = -12; break;
+        case QD_AL_HI: ps[np++] = 31; break;
+        case QD_AL_CHORD: ps[np++] = 0, ps[np++] = 4, ps[np++] = 7; break;
+        case QD_AL_PWR: ps[np++] = 0, ps[np++] = 19; break;
+        case QD_AL_TIE:
+            if (nl)
+                px_rect(x - 2, MF_LY(last[0]), 8, 2, c);
+            break;
+        case QD_AL_REST: break;
+        default: ps[np++] = SEQ[(m - QD_AL_N1) % 6]; break;
+        }
+        for (k = 0; k < np; k++) {
+            px_hline(x, MF_LY(ps[k]), 6, c);
+            px_hline(x, MF_LY(ps[k]) + 1, 6, on ? UI_G1 : PX_ORANGE);
+        }
+        if (np) {
+            nl = np > 3 ? 3 : np;
+            for (k = 0; k < nl; k++)
+                last[k] = ps[k];
+        }
+    }
+#undef MF_LY
+    for (i = 0; i < 16; i++) {                          /* the cells' values (the selected: KNOB 1's) */
+        char s[12];
+        const int in = i < len;
+        qd_mfx_lane_text(0, v->lane[0][i], s);
+        if (!strcmp(s, "x"))
+            strcpy(s, "\xc3\x97");                      /* (x: a times sign) */
+        px_ctext(mf_lx(i) + 3, 79, s, i == sel ? UI_K1 : in ? (i == cur ? UI_K3 : col) : UI_G2, PX_FS, 1);
+    }
+    px_rbox(mf_lx(sel) - 1, 74, 8, 14, UI_K3, QD_NONE);
+    mf_lane_len(len);
+}
+static int mf_trh(int v)                                /* a transpose's bar: 2 px a semitone, then squeezed */
+{
+    const int a = v < 0 ? -v : v, h = a <= 8 ? 2 * a : 16 + (a - 8) / 5;
+    return v < 0 ? -(h > 21 ? 21 : h) : (h > 24 ? 24 : h);
+}
+static void mf_trlane(const ui_mfx_t *v)
+{
+    const qd_rgb col = UI_MFX_COL[QD_MFX_ARP];
+    const int len = mf_clampi(v->v[QD_MA_TLEN], 1, 16), sel = v->lane_sel & 15;
+    const int cur = v->lane_cur >= 0 ? v->lane_cur : (mf_ms(v->t) / 200) % len, z = 64;
+    int i;
+    for (i = 0; i < 16; i++) {
+        const int x = mf_lx(i), in = i < len, val = v->lane[1][i], on = i == cur;
+        const qd_rgb c = i == sel ? UI_K1 : on ? UI_K3 : col;
+        if (!in) {
+            px_dots(x, z, 6, UI_G3, 2);
+            continue;
+        }
+        px_hline(x, z, 6, UI_G2);
+        if (val) {
+            const int h = mf_trh(val);
+            if (h > 0)
+                px_rect(x + 1, z - h, 4, h, c);
+            else
+                px_rect(x + 1, z + 1, 4, -h, c);
+        } else {
+            px_hline(x + 2, z - 1, 2, c);
+        }
+        if (on)
+            px_hline(x, 87, 6, UI_K3);
+    }
+    {   /* the selected step: framed, its offset beside it (KNOB 1's) */
+        const int sx = mf_lx(sel);
+        char s[12];
+        int w;
+        px_rbox(sx - 1, 38, 8, 50, UI_K3, QD_NONE);
+        qd_mfx_lane_text(1, v->lane[1][sel], s);
+        w = px_text_w(s, PX_FB, 1);
+        px_text(sx > 70 ? sx - 3 - w : sx + 9, 41, s, UI_K1, PX_FB, 1);
+    }
+    mf_lane_len(len);
+}
+
+/* CHANCE: the percentage (KNOB 1's); the notes rolling along the floor, the robot on its ledge over the trapdoor
+ * opening it under the ones it drops */
+static void mf_chance(int pct, int ms)
+{
+    const int door = 84, fy = 82, period = 333, speed = 24;
+    char s[8];
+    int k, j, open = 0;
+    strcat(ui_itoa(s, pct), "%");
+    px_text(4, 41, s, UI_K1, PX_FB, 2);
+    for (k = (ms - 5000) / period - 1; k <= ms / period; k++) {
+        const int age = ms - k * period, x = 4 + age * speed / 1000;
+        if (age < 0 || x > 113)
+            continue;
+        if (x >= door - 2 && mf_pct(k * 31 + 7) >= pct) {   /* dropped: through the trapdoor */
+            const int d = x - (door - 2), y = fy - 3 + d * d / 5;
+            if (y < 88)
+                px_rect(door + 2, y, 3, 3, d < 4 ? UI_K3 : UI_G1);
+            open |= y < 88;
+        } else {
+            px_rect(x, fy - 3, 3, 3, UI_K3);
+        }
+    }
+    for (j = 0; j < 14; j++)                            /* the floor, the trapdoor open under a note it drops */
+        if (4 + j * 8 != door || !open)
+            px_sprite(4 + j * 8, fy, PXS_FLOOR, 0);
+    px_sprite(door, 67, PXS_LIFT, 0);                   /* the robot's ledge */
+    px_sprite(door - 2, 55, open ? PXS_ROBOT2 : PXS_ROBOT1, 0);
+    if (open)
+        px_vdots(door + 3, 71, 9, UI_MFX_COL[QD_MFX_CHANCE], 2);
+}
+
+/* REPEAT: the robot pacing along the hits' posts (HITS, KNOB 2's), each post as tall as its velocity (FADE, KNOB 3's
+ * caps), striking each in turn */
 static void mf_repeat(const ui_mfx_t *v)
 {
-    const qd_rgb col = UI_MFX_COL[QD_MFX_REPEAT];
-    const int n = v->v[QD_MR_HITS] < 1 ? 1 : v->v[QD_MR_HITS] > 6 ? 6 : v->v[QD_MR_HITS], fade = v->v[QD_MR_FADE];
-    const float fl = 180.f, period = 2.2f, u = fmodf(v->t, period) / period, pos = u * ((float)n + 0.6f);
-    const int cur = (int)pos;
-    const float f = pos - (float)cur, span = 176.f / (float)n;
-    float vel[6], bx, by;
-    int i;
+    const int n = mf_clampi(v->v[QD_MR_HITS], 1, 8), fade = v->v[QD_MR_FADE], fy = 83, ms = mf_ms(v->t);
+    const float u = (float)(ms % 2200) / 2200.f, pos = u * ((float)n + 0.6f);
+    const int cur = (int)pos, span = 88 / n;
+    const float f = pos - (float)cur;
+    int i, j, rx;
+    for (j = 0; j < 14; j++)
+        px_sprite(4 + j * 8, fy, PXS_FLOOR, 0);
+    px_rect(5, 42, 4, 4, UI_K3);                        /* the note coming in */
+    px_vdots(6, 47, fy - 48, UI_G2, 2);
     for (i = 0; i < n; i++) {
         const int a = fade < 0 ? 100 : 100 - fade, b = fade < 0 ? 100 + fade : 100;
-        vel[i] = (float)(n > 1 ? a + (b - a) * i / (n - 1) : b) / 100.f;
+        const int vel = n > 1 ? a + (b - a) * i / (n - 1) : b, h = 4 + 26 * vel / 100;
+        const int x = 26 + i * span, lit = cur == i && f >= 0.3f && f < 0.6f;
+        px_rect(x, fy - h, 2, h, lit ? UI_K3 : UI_K2);
+        px_hline(x - 1, fy - h - 1, 4, UI_K3);
     }
-    mf_L(12.f, fl, 228.f, fl, UI_G2, 1.2f, 1.f);
-    mf_dot(22.f, 104.f, 4.f, UI_K3, 1.f);
-    mf_Pd((const float[]){22.f, 110.f, 22.f, fl - 2.f}, 2, UI_G2, 1.f, 1.f, 2.f, 3.f);
-    for (i = 0; i < n; i++) {
-        const float x = 52.f + (float)i * span, h = 74.f * vel[i];
-        const int lit = cur == i && f < 0.35f;
-        mf_G((const float[]){x, fl, x, fl - h}, 2, col, lit ? 3.4f : 2.4f, (lit ? 1.f : 0.55f) * (0.45f + 0.55f * vel[i]));
-        if (lit)
-            mf_O(x, fl, 6.f + f * 40.f, col, 1.2f, QD_NONE, 1.f - f / 0.35f);
+    {   /* the robot: to the next post, then the strike */
+        const int at = cur < n ? cur : n - 1, xb = 26 + at * span - 12;
+        const int xa = cur >= n ? xb : cur == 0 ? 2 : 26 + (cur - 1) * span - 12;
+        const int zap = cur < n && f >= 0.3f && f < 0.6f;
+        rx = mf_lerpi(xa, xb, cur < n ? mf_ease(f / 0.3f) : 1.f);
+        rx = rx < 2 ? 2 : rx;
+        px_sprite(rx, fy - 12, zap ? PXS_ROBOT2 : PXS_ROBOT1, 0);
+        if (zap)                                        /* (the zap) */
+            px_hline(rx + 11, fy - 7, 26 + at * span - rx - 11, UI_K3);
     }
-    if (cur >= n) {
-        bx = 52.f + (float)(n - 1) * span + f * 30.f;
-        by = fl - 6.f - 10.f * sinf(UI_PI * mf_clamp(f, 0.f, 1.f));
-    } else {
-        const float xa = cur == 0 ? 22.f : 52.f + (float)(cur - 1) * span, xb = 52.f + (float)cur * span;
-        const float H = cur == 0 ? 70.f : 64.f * vel[cur - 1];
-        bx = mf_lerp(xa, xb, f);
-        by = cur == 0 ? mf_lerp(104.f, fl - 6.f, f * f) : fl - 6.f - H * 4.f * f * (1.f - f);
-    }
-    mf_dot(bx, by, 5.5f, col, cur >= n ? 1.f - f : 1.f);
 }
 
-static float mf_harm_y(int p) { return 176.f - (float)p * 5.5f; }
-static void mf_harm(const ui_mfx_t *v, float a, int still)
+/* HARM: the keybed, the voices as platforms out of it (NOTE 2..7 in KNOB 1..3's colours, page by page; the note
+ * itself, ORIG, KNOB 4's), their intervals at the right */
+static int mf_hy(int p, int lo, int ph) { return 86 - (p - lo) * ph; }
+static void mf_harm(const ui_mfx_t *v)
 {
-    const qd_rgb col = UI_MFX_COL[QD_MFX_HARM];
     static const uint8_t ID[6] = {QD_MH_N2, QD_MH_N3, QD_MH_N4, QD_MH_N5, QD_MH_N6, QD_MH_N7};
     static const qd_rgb KC[6] = {UI_K1, UI_K2, UI_K3, UI_K1, UI_K2, UI_K3};
-    const float kx = 14.f, kw = 26.f, u = fmodf(v->t, 2.2f) / 2.2f;
-    int p, j, nn = 0, ints[7], ik[7];
-    mf_RR(kx, mf_harm_y(15) - 2.75f, kw, mf_harm_y(-1) - mf_harm_y(15) + 2.75f, 2.f, UI_G2, 1.2f, QD_NONE, a, 0);
-    for (p = 0; p <= 15; p++) {
-        const int pc = p % 12;
-        if (pc == 1 || pc == 3 || pc == 6 || pc == 8 || pc == 10) {
-            mf_RR(kx, mf_harm_y(p) - 2.2f, 15.f, 4.4f, 1.f, QD_NONE, 1.f, UI_G2, a, 0);
-            mf_L(kx + 15.f, mf_harm_y(p), kx + kw, mf_harm_y(p), UI_G3, 1.f, a);
-        }
-        if (pc == 4 || pc == 11)
-            mf_L(kx, mf_harm_y(p) - 2.75f, kx + kw, mf_harm_y(p) - 2.75f, UI_G3, 1.f, a);
-    }
+    const int ms = mf_ms(v->t);
+    const float u = (float)(ms % 2200) / 2200.f;
+    int j, nn = 0, ints[7], ik[7], lo = 0, hi = 12, ph, ly[7], lx[7];
     if (v->v[QD_MH_ORIG])
         ints[nn] = 0, ik[nn++] = -1;
     for (j = 0; j < 6; j++)
-        if (v->v[ID[j]] && v->v[ID[j]] >= -1 && v->v[ID[j]] <= 16)
+        if (v->v[ID[j]])
             ints[nn] = v->v[ID[j]], ik[nn++] = j;
-    for (j = 0; j < nn; j++) {
-        const float g = still ? 1.f : mf_ease((u - (float)j * 0.1f) / 0.12f), y = mf_harm_y(ints[j] < 0 ? 0 : ints[j]);
-        const float x1 = mf_lerp(48.f, 176.f, g);
-        char s[8];
-        if (g <= 0.f)
-            continue;
-        mf_G((const float[]){48.f, y, x1, y}, 2, ik[j] >= 0 ? col : UI_K3, 3.2f, a * (ik[j] >= 0 ? 1.f : 0.9f));
-        mf_dot(kx + kw - 4.f, y, 2.4f, ik[j] >= 0 ? col : UI_K3, a);
-        if (ik[j] >= 0) {
+    for (j = 0; j < nn; j++)
+        lo = ints[j] < lo ? ints[j] : lo, hi = ints[j] > hi ? ints[j] : hi;
+    lo -= 1, hi += 1;
+    ph = 46 / (hi - lo + 1);
+    ph = ph < 1 ? 1 : ph > 3 ? 3 : ph;
+    {   /* the keybed: the incoming note's key white, the voices' in their colours */
+        qd_rgb lit[100];
+        int p;
+        for (p = 0; p <= hi - lo && p < 100; p++)
+            lit[p] = lo + p == 0 ? UI_G1 : QD_NONE;
+        for (j = 0; j < nn; j++)
+            if (ints[j] - lo >= 0 && ints[j] - lo < 100)
+                lit[ints[j] - lo] = ik[j] >= 0 ? KC[ik[j]] : UI_K4;
+        mf_vkeys(4, lo, hi, mf_hy, lo, ph, lit);
+    }
+    for (j = 0; j < nn; j++) {                          /* the voices, a note running out along each in turn */
+        const float w = u * 1.6f - (float)j * 0.12f;
+        const int y = mf_hy(ints[j], lo, ph) - (ph > 1 ? 1 : 0);
+        const qd_rgb c = ik[j] >= 0 ? KC[ik[j]] : UI_K4;
+        px_rect(15, y, 69, ph > 2 ? 2 : 1, c);
+        if (w >= 0.f && w < 1.f)
+            px_rect(15 + mf_r(66.f * w), y - 1, 3, ph > 2 ? 4 : 3, UI_K3);
+        ly[j] = -100, lx[j] = 0;
+        if (ik[j] >= 0) {                               /* the interval, kept clear of the others' */
+            char s[12];
+            int k, x = 88, yy = y - 2;
             s[0] = ints[j] > 0 ? '+' : 0, s[1] = 0;
             ui_itoa(s + (ints[j] > 0), ints[j]);
-            mf_T(s, 186.f, y + 5.f, 15.f, 500, 0.f, KC[ik[j]], QD_LEFT, a * g);
+            for (k = 0; k < j; k++)
+                if (lx[k] == x && ly[k] > yy - 6 && ly[k] < yy + 6)
+                    x += 15, k = -1;
+            if (x > 116)
+                continue;
+            px_text(x, yy, s, c, PX_FS, 1);
+            ly[j] = yy, lx[j] = x;
         }
     }
 }
 
-static void mf_notehead(float x, float y, qd_rgb col, int fill, float a)
-{
-    float p[2 * 17];
-    int i;
-    for (i = 0; i <= 16; i++) {
-        const float an = (float)i / 16.f * MF_TAU, ex = cosf(an) * 8.f, ey = sinf(an) * 5.6f;
-        p[2 * i] = x + ex * cosf(-0.35f) - ey * sinf(-0.35f);
-        p[2 * i + 1] = y + ex * sinf(-0.35f) + ey * cosf(-0.35f);
-    }
-    mf_alpha(a);
-    ui_P(p, 17, col, 1.6f, 1, fill ? col : QD_NONE);
-    qd_restore();
-}
+/* TRANSPOSE: three floors and two lifts: the agent rides SEMI (KNOB 1's lift), then OCT (KNOB 2's) to the lit floor */
 static void mf_transpose(const ui_mfx_t *v)
 {
-    const qd_rgb col = UI_MFX_COL[QD_MFX_TRANSPOSE];
-    const float Ax = 34.f, Ay = 150.f, Mx = 118.f, My = 126.f, Bx = 204.f, By = 172.f, u = fmodf(v->t, 2.4f) / 2.4f;
-    char s[8];
-    mf_Pd((const float[]){14.f, 150.f, 226.f, 150.f}, 2, UI_G3, 1.f, 1.f, 2.f, 4.f);
-    mf_GQ(Ax + 6.f, Ay - 6.f, 70.f, 76.f, Mx, My, UI_K1, 1.6f, 0.85f);
-    mf_GQ(Mx, My, 168.f, 92.f, Bx - 7.f, By - 7.f, UI_K2, 1.6f, 0.85f);
-    mf_P((const float[]){Bx - 7.f, By - 7.f, Bx - 15.f, By - 9.f}, 2, UI_K2, 1.6f, 1.f);
-    mf_P((const float[]){Bx - 7.f, By - 7.f, Bx - 9.f, By - 15.f}, 2, UI_K2, 1.6f, 1.f);
-    mf_O(Mx, My, 3.f, UI_G1, 1.2f, UI_BG, 1.f);
-    mf_notehead(Ax, Ay, UI_K3, 1, 1.f);
-    mf_notehead(Bx, By, col, u > 0.75f, u > 0.75f ? 1.f : 0.6f);
-    s[0] = v->v[QD_MT_SEMI] > 0 ? '+' : 0, s[1] = 0;
-    ui_itoa(s + (v->v[QD_MT_SEMI] > 0), v->v[QD_MT_SEMI]);
-    ui_T(s, 64.f, 104.f, 16.f, 500, 0.f, UI_K1, QD_CENTER);
-    s[0] = v->v[QD_MT_OCT] > 0 ? '+' : 0, s[1] = 0;
-    ui_itoa(s + (v->v[QD_MT_OCT] > 0), v->v[QD_MT_OCT]);
-    ui_T(s, 170.f, 112.f, 16.f, 500, 0.f, UI_K2, QD_CENTER);
-    if (u < 0.75f) {
-        const float w = u / 0.75f;
-        float x, y;
-        if (w < 0.5f)
-            mf_qpt(Ax + 6.f, Ay - 6.f, 70.f, 76.f, Mx, My, w * 2.f, &x, &y);
-        else
-            mf_qpt(Mx, My, 168.f, 92.f, Bx - 7.f, By - 7.f, w * 2.f - 1.f, &x, &y);
-        mf_dot(x, y, 4.2f, col, 1.f);
-    } else {
-        mf_O(Bx, By, 8.f + (u - 0.75f) * 60.f, col, 1.3f, QD_NONE, 1.f - (u - 0.75f) / 0.25f);
+    const int semi = v->v[QD_MT_SEMI], oct = v->v[QD_MT_OCT], ms = mf_ms(v->t), p = ms % 3000;
+    const int b = semi, c = semi + 12 * oct;
+    const int lo = b < c ? (b < 0 ? b : 0) : (c < 0 ? c : 0), hi = b > c ? (b > 0 ? b : 0) : (c > 0 ? c : 0);
+    const float s = hi > lo ? mf_clamp(20.f / (float)(hi - lo), 0.f, 2.f) : 0.f;
+    const int base = 82 - (20 - mf_r((float)(hi - lo) * s)) / 2;
+    const int yA = base - mf_r((float)(0 - lo) * s), yB = base - mf_r((float)(b - lo) * s), yC = base - mf_r((float)(c - lo) * s);
+    int ax, ay, l1, l2, j, run = 1;
+    char t[12];
+    for (j = 0; j < 3; j++)
+        px_sprite(4 + j * 8, yA, PXS_FLOOR, 0);
+    for (j = 0; j < 4; j++)
+        px_sprite(40 + j * 8, yB, PXS_FLOOR, 0);
+    for (j = 0; j < 4; j++)
+        px_sprite(84 + j * 8, yC, p >= 2200 ? PXS_FLOOR_LIT : PXS_FLOOR, 0);
+    /* the agent's run: A to the first lift, up (down) it, B to the second, up it, on to C */
+    if (p < 600)
+        ax = mf_lerpi(8, 33, (float)p / 600.f), ay = yA;
+    else if (p < 1100)
+        ax = 33, ay = mf_lerpi(yA, yB, mf_ease((float)(p - 600) / 500.f)), run = 0;
+    else if (p < 1700)
+        ax = mf_lerpi(33, 77, (float)(p - 1100) / 600.f), ay = yB;
+    else if (p < 2200)
+        ax = 77, ay = mf_lerpi(yB, yC, mf_ease((float)(p - 1700) / 500.f)), run = 0;
+    else if (p < 2700)
+        ax = mf_lerpi(77, 100, (float)(p - 2200) / 500.f), ay = yC;
+    else
+        ax = 100, ay = yC, run = 0;
+    l1 = p < 600 ? yA : p < 1100 ? ay : p < 2200 ? yB : mf_lerpi(yB, yA, mf_ease((float)(p - 2200) / 500.f));
+    l2 = p < 1700 ? yB : p < 2200 ? ay : p < 2700 ? yC : mf_lerpi(yC, yB, mf_ease((float)(p - 2700) / 300.f));
+    {   /* the shafts: their rails, the lifts */
+        const int t1 = (yA < yB ? yA : yB) - 16, b1 = yA > yB ? yA : yB, t2 = (yB < yC ? yB : yC) - 16, b2 = yB > yC ? yB : yC;
+        px_vline(29, t1, b1 - t1 + 4, UI_G2), px_vline(38, t1, b1 - t1 + 4, UI_G2);
+        px_vline(73, t2, b2 - t2 + 4, UI_G2), px_vline(82, t2, b2 - t2 + 4, UI_G2);
+        px_sprite(30, l1, PXS_LIFT, 0);
+        px_sprite(74, l2, PXS_LIFT, 0);
+        t[0] = semi > 0 ? '+' : 0, t[1] = 0;            /* SEMI over its lift, OCT over its */
+        ui_itoa(t + (semi > 0), semi);
+        px_ctext(34, t1 - 7 < 39 ? 39 : t1 - 7, t, UI_K1, PX_FS, 1);
+        t[0] = oct > 0 ? '+' : 0, t[1] = 0;
+        ui_itoa(t + (oct > 0), oct);
+        px_ctext(78, t2 - 7 < 39 ? 39 : t2 - 7, t, UI_K2, PX_FS, 1);
     }
+    px_sprite(ax - 4, ay - 15, run ? PXS_AGENT_RUN1 + (ms / 90) % 3 : PXS_AGENT_STAND, 0);
 }
 
-/* a horizontal keyboard: nw white keys kw wide from x0 (C first); pos[pitch 0..23] its dot */
-static void mf_keyboard(float x0, float y0, float kw, int nw, float h, float bh, uint32_t inscale, int mark_out,
-                        float *px, float *py)
-{
-    static const int WP[7] = {0, 2, 4, 5, 7, 9, 11};
-    int i;
-    for (i = 0; i < nw; i++) {
-        const int p = (i / 7) * 12 + WP[i % 7];
-        const float x = x0 + (float)i * kw;
-        ui_RR(x, y0, kw - 1.5f, h, 2.f, mark_out && !((inscale >> (p % 12)) & 1u) ? UI_G3 : UI_G2, 1.1f, 0x050507u);
-        if (p < 24)
-            px[p] = x + (kw - 1.5f) / 2.f, py[p] = y0 + h - 9.f;
-    }
-    for (i = 0; i < nw - 1; i++) {
-        const int p = (i / 7) * 12 + WP[i % 7];
-        float x;
-        if (p % 12 == 4 || p % 12 == 11)
-            continue;
-        x = x0 + (float)(i + 1) * kw - 0.75f - kw * 0.32f;
-        ui_RR(x, y0 - 1.f, kw * 0.64f, bh, 2.f, UI_G1, 1.f, 0x121216u);
-        if (p + 1 < 24)
-            px[p + 1] = x + kw * 0.32f, py[p + 1] = y0 + bh - 8.f;
-    }
-}
+/* SCALER: a keyboard of a C to the E an octave up: the scale's keys light (SCALE: KNOB 1's dots, ROOT: KNOB 2's), a
+ * note off the scale drops onto its key and slides down onto the scale */
 static void mf_scaler(const ui_mfx_t *v, uint32_t mask)
 {
-    const qd_rgb col = UI_MFX_COL[QD_MFX_SCALER];
-    float px[24], py[24];
-    int p, k, from = -1, to = -1, n = 0;
-    memset(px, 0, sizeof px), memset(py, 0, sizeof py);
-    mf_keyboard(10.f, 112.f, 22.f, 10, 72.f, 42.f, mask, 1, px, py);
-    for (p = 0; p < 17; p++)
-        if ((mask >> (p % 12)) & 1u)
-            mf_dot(px[p], py[p], 2.6f, col, 0.55f);
-    for (p = 1; p < 17; p++)                            /* the notes out of the scale, in turn: each slides down */
+    static const int WP[7] = {0, 2, 4, 5, 7, 9, 11};
+    const int ms = mf_ms(v->t), root = ((v->v[QD_MZ_ROOT] % 12) + 12) % 12;
+    int px[17] = {0}, py[17] = {0}, i, p, k, from = -1, to = -1, n = 0;
+    for (i = 0; i < 10; i++) {                          /* the white keys */
+        const int x = 5 + i * 11, q = (i / 7) * 12 + WP[i % 7], in = (int)((mask >> (q % 12)) & 1u);
+        px_rect(x, 52, 10, 33, in ? PX_LGREY : UI_G2);
+        if (in)
+            px_rect(x + 3, 79, 4, 3, q % 12 == root ? UI_K2 : UI_K1);
+        if (q < 17)
+            px[q] = x + 5, py[q] = 77;
+    }
+    for (i = 0; i < 9; i++) {                           /* the black keys */
+        const int q = (i / 7) * 12 + WP[i % 7] + 1, x = 5 + (i + 1) * 11 - 4;
+        int in;
+        if (WP[i % 7] == 4 || WP[i % 7] == 11)
+            continue;
+        in = (int)((mask >> (q % 12)) & 1u);
+        px_rect(x - 1, 52, 9, 21, UI_BG);
+        px_rect(x, 52, 7, 20, in ? PX_GREY : UI_BG);
+        if (!in)
+            px_box(x, 52, 7, 20, UI_G2);
+        else
+            px_rect(x + 2, 66, 3, 3, q % 12 == root ? UI_K2 : UI_K1);
+        if (q < 17)
+            px[q] = x + 3, py[q] = 63;
+    }
+    for (p = 1; p < 17; p++)                            /* the notes off the scale, in turn: each slides down */
         n += !((mask >> (p % 12)) & 1u);
     if (n) {
-        const int pick = (int)(v->t / 1.5f) % n;
+        const int pick = (ms / 1500) % n;
         for (k = 0, p = 1; p < 17; p++)
             if (!((mask >> (p % 12)) & 1u) && k++ == pick)
                 from = p;
@@ -726,178 +828,231 @@ static void mf_scaler(const ui_mfx_t *v, uint32_t mask)
             ;
     }
     if (from >= 0) {
-        const float u = fmodf(v->t, 1.5f) / 1.5f, Ax = px[from], Ay = py[from], Bx = px[to], By = py[to];
+        const float u = (float)(ms % 1500) / 1500.f;
+        const int Ax = px[from], Ay = py[from], Bx = px[to], By = py[to];
+        int x, y;
+        qd_rgb c = UI_K3;
         if (u < 0.3f) {
-            mf_dot(Ax, mf_lerp(90.f, Ay, mf_ease(u / 0.3f)), 4.f, UI_K3, 1.f);
+            x = Ax, y = mf_lerpi(40, Ay, mf_ease(u / 0.3f));
         } else if (u < 0.45f) {
-            mf_dot(Ax, Ay, 4.f, UI_K3, 1.f);
+            x = Ax, y = Ay;
         } else if (u < 0.8f) {
-            const float w = mf_ease((u - 0.45f) / 0.35f), mx = (Ax + Bx) / 2.f, my = (Ay < By ? Ay : By) - 22.f;
-            float x, y;
-            mf_qpt(Ax, Ay, mx, my, Bx, By, w, &x, &y);
-            mf_dot(x, y, 4.f, w > 0.5f ? col : UI_K3, 1.f);
+            const float w = mf_ease((u - 0.45f) / 0.35f);
+            x = mf_lerpi(Ax, Bx, w), y = mf_lerpi(Ay, By, w) - mf_r(10.f * 4.f * w * (1.f - w));
         } else {
-            mf_dot(Bx, By, 4.4f, col, 1.f);
-            mf_O(Bx, By, 5.f + (u - 0.8f) * 60.f, col, 1.2f, QD_NONE, 1.f - (u - 0.8f) / 0.2f);
+            x = Bx, y = By, c = UI_K1;
         }
+        px_rect(x - 2, y - 2, 5, 5, UI_BG);
+        px_rect(x - 1, y - 1, 3, 3, c);
     }
 }
 
+/* RANDOM: a die rolling; PITCH (KNOB 1's) a note jumping over its rows, VEL (KNOB 2's) a bar's top landing anywhere in
+ * its range, LENGTH (KNOB 3's) a note that only grows */
+static void mf_die(int x, int y, int face)
+{
+    static const uint8_t PIP[7][6] = {{0}, {4}, {0, 8}, {0, 4, 8}, {0, 2, 6, 8}, {0, 2, 4, 6, 8}, {0, 2, 3, 5, 6, 8}};
+    int k;
+    px_rbox(x, y, 11, 11, UI_K3, UI_K3);
+    for (k = 0; k < face; k++)
+        px_rect(x + 2 + (PIP[face][k] % 3) * 3, y + 2 + (PIP[face][k] / 3) * 3, 2, 2, UI_BG);
+}
 static void mf_random(const ui_mfx_t *v)
 {
-    const qd_rgb col = UI_MFX_COL[QD_MFX_RANDOM];
-    const int tick = (int)floorf(v->t * 2.4f);
-    const float f = fmodf(v->t * 2.4f, 1.f), fresh = 1.f - mf_clamp(f / 0.3f, 0.f, 1.f);
-    const int pr = (int)(mf_hash((float)tick * 1.3f) * 7.f), ppr = (int)(mf_hash((float)(tick - 1) * 1.3f) * 7.f);
-    const float pw = (float)v->v[QD_MD_PITCH] / 12.f, vw = (float)v->v[QD_MD_VEL] / 127.f, lw = (float)v->v[QD_MD_LEN] / 100.f;
-    const float d[2] = {4.f, 3.f};
+    const int ms = mf_ms(v->t), tick = ms / 5000 * 12 + ms % 5000 * 12 / 5000, fresh = ms % 5000 * 12 / 5 % 1000 < 300;
+    const int pr = mf_pct(tick * 13) % 7, ppr = mf_pct((tick - 1) * 13) % 7;
+    const int sp = mf_clampi(v->v[QD_MD_PITCH], 0, 12), vw = mf_clampi(v->v[QD_MD_VEL], 0, 127);
+    const int lw = mf_clampi(v->v[QD_MD_LEN], 0, 100);
     int r;
-    qd_save(), qd_dash(d, 2);
-    ui_RR(16.f, 90.f, 52.f, 94.f, 5.f, UI_K1, 1.3f, QD_NONE);
-    ui_RR(90.f, 104.f, 52.f, 46.f, 5.f, UI_K2, 1.3f, QD_NONE);
-    ui_RR(164.f, 126.f, 64.f, 24.f, 5.f, UI_K3, 1.3f, QD_NONE);
-    qd_restore();
-    for (r = 0; r < 7; r++)                             /* PITCH: the box's rows, the note's own white */
-        mf_L(24.f, 99.f + (float)r * 13.f, 60.f, 99.f + (float)r * 13.f, r == 3 ? UI_K3 : UI_G3, r == 3 ? 1.4f : 1.f,
-             r == 3 ? 0.7f : 1.f);
+    mf_die(55, fresh ? 38 : 39, 1 + mf_pct(tick * 5 + 3) % 6);
+    mf_dbox(4, 51, 32, 37, UI_G3);                     /* PITCH: seven rows, the note's own in the middle */
+    for (r = 0; r < 7; r++)
+        px_dots(8, 54 + r * 5, 22, r == 3 ? UI_G1 : UI_G3, 2);
     {
-        const float sp = pw * 3.f;
-        const float y = 99.f + (3.f + ((float)pr - 3.f) * mf_clamp(sp / 3.f, 0.f, 1.f)) * 13.f;
-        const float yp = 99.f + (3.f + ((float)ppr - 3.f) * mf_clamp(sp / 3.f, 0.f, 1.f)) * 13.f;
-        mf_dot(42.f, yp, 3.f, col, 0.25f * (1.f - fresh));
-        mf_dot(42.f, y, 4.f, col, 1.f);
-        if (fresh > 0.f)
-            mf_O(42.f, y, 5.f + (1.f - fresh) * 10.f, col, 1.2f, QD_NONE, fresh);
+        const int y = 54 + (3 + (pr - 3) * sp / 12) * 5, yp = 54 + (3 + (ppr - 3) * sp / 12) * 5, rr = 3 * sp / 12;
+        px_vline(32, 54 + (3 - rr) * 5, 10 * rr + 1, UI_K1);   /* (its range) */
+        if (!fresh)
+            px_rect(16, yp - 1, 6, 3, UI_G2);
+        px_rect(16, y - 1, 6, 3, UI_K1);
+        if (fresh)
+            px_box(14, y - 3, 10, 7, UI_K1);
     }
-    {   /* VELOCITY: a bar whose top lands anywhere in its range */
-        const float vy = 127.f + (mf_hash((float)tick * 2.7f + 5.f) * 2.f - 1.f) * 19.f * vw;
-        mf_L(96.f, 127.f, 136.f, 127.f, UI_K3, 1.4f, 0.7f);
-        mf_G((const float[]){116.f, 184.f, 116.f, vy}, 2, col, 3.f, 1.f);
-        mf_dot(116.f, vy, 3.6f, col, 1.f);
+    mf_dbox(42, 51, 34, 37, UI_G3);                    /* VELOCITY: a bar, its top anywhere in its range */
+    {
+        const int vy = 69 + (mf_pct(tick * 27 + 5) - 50) * 15 * vw / (50 * 127);
+        px_dots(46, 69, 26, UI_G1, 2);
+        px_rect(56, vy, 6, 87 - vy, UI_K2);
+        px_hline(54, vy, 10, UI_K3);
     }
-    {   /* LENGTH: a note bar that only grows */
-        const float lx = 208.f + mf_hash((float)tick * 3.9f + 2.f) * 18.f * lw;
-        mf_L(170.f, 132.f, 170.f, 144.f, UI_K3, 1.2f, 0.7f);
-        mf_L(208.f, 128.f, 208.f, 148.f, UI_K3, 1.4f, 0.7f);
-        mf_G((const float[]){170.f, 138.f, lx, 138.f}, 2, col, 4.f, 1.f);
-        mf_L(lx, 133.f, lx, 143.f, col, 1.6f, 1.f);
+    mf_dbox(82, 51, 34, 37, UI_G3);                    /* LENGTH: a note bar, longer, never shorter */
+    {
+        const int lx = 100 + mf_pct(tick * 39 + 2) * 14 * lw / 10000;
+        px_vline(86, 65, 9, UI_G1);
+        px_vline(100, 63, 13, UI_G1);
+        px_rect(86, 68, lx - 86 + 1, 3, UI_K3);
+        px_vline(lx, 65, 9, UI_K3);
     }
 }
 
+/* CHORD: the chord's name (KNOB 1's) over two octaves of keys, its notes struck in turn (on A) */
 static void mf_chord(const ui_mfx_t *v, const uint8_t *off, int n)
 {
-    const qd_rgb col = UI_MFX_COL[QD_MFX_CHORD];
-    const float u = fmodf(v->t, 1.8f) / 1.8f;
-    float px[24], py[24];
-    int j;
-    memset(px, 0, sizeof px), memset(py, 0, sizeof py);
-    mf_keyboard(8.f, 140.f, 16.f, 14, 46.f, 27.f, 0xFFFu, 0, px, py);
-    mf_T(v->chord, 120.f, 124.f, 34.f, 300, 0.f, col, QD_CENTER, mf_ease(u / 0.35f));
+    static const int WP[7] = {0, 2, 4, 5, 7, 9, 11};
+    const float u = (float)(mf_ms(v->t) % 1800) / 1800.f;
+    qd_rgb fill[24];
+    int i, j;
+    if (px_text_w(v->chord, PX_FB, 2) <= 112)
+        px_ctext(60, 39, v->chord, UI_K1, PX_FB, 2);
+    else
+        px_ctext(60, 42, v->chord, UI_K1, PX_FB, 1);
+    for (i = 0; i < 24; i++)
+        fill[i] = QD_NONE;
     for (j = 0; j < n; j++) {
-        const float g = mf_ease((u - (float)j * 0.08f) / 0.1f);
-        const int p = 9 + off[j];                       /* (on A) */
-        if (g <= 0.f || p >= 24)
+        const int p = 9 + off[j];
+        if (p < 24 && u >= (float)j * 0.08f)
+            fill[p] = j ? UI_MFX_COL[QD_MFX_CHORD] : UI_K3;
+    }
+    for (i = 0; i < 14; i++) {
+        const int p = (i / 7) * 12 + WP[i % 7];
+        px_rect(4 + i * 8, 58, 7, 29, fill[p] != QD_NONE ? fill[p] : PX_GREY);
+    }
+    for (i = 0; i < 13; i++) {
+        const int p = (i / 7) * 12 + WP[i % 7] + 1, x = 4 + (i + 1) * 8 - 3;
+        if (WP[i % 7] == 4 || WP[i % 7] == 11)
             continue;
-        mf_dot(px[p], py[p], j ? 3.2f : 3.6f, j ? col : UI_K3, g);
-        if (j)
-            mf_L(px[p], py[p] - 6.f, px[p], mf_lerp(py[p] - 6.f, py[p] - 14.f, g), col, 1.f, 0.4f * g);
+        px_rect(x - 1, 58, 7, 18, UI_BG);
+        if (fill[p] != QD_NONE)
+            px_rect(x, 58, 5, 17, fill[p]);
     }
 }
 
-static void mf_mono(float t)
+/* MONO: four lanes into one: each new note cuts the one before it */
+static void mf_along(const int *p, int n, float u, int *x, int *y)   /* a point a fraction u along a polyline */
 {
+    float L = 0.f, seg[8], d;
+    int i;
+    for (i = 1; i < n && i <= 8; i++) {
+        const float dx = (float)(p[2 * i] - p[2 * i - 2]), dy = (float)(p[2 * i + 1] - p[2 * i - 1]);
+        seg[i - 1] = sqrtf(dx * dx + dy * dy);
+        L += seg[i - 1];
+    }
+    d = mf_clamp(u, 0.f, 1.f) * L;
+    for (i = 0; i < n - 1; i++) {
+        if (d <= seg[i] || i == n - 2) {
+            const float w = seg[i] > 0.f ? d / seg[i] : 0.f;
+            *x = mf_lerpi(p[2 * i], p[2 * i + 2], w);
+            *y = mf_lerpi(p[2 * i + 1], p[2 * i + 3], w);
+            return;
+        }
+        d -= seg[i];
+    }
+    *x = p[0], *y = p[1];
+}
+static void mf_mono(int ms)
+{
+    static const int YS[4] = {44, 54, 66, 76};
     const qd_rgb col = UI_MFX_COL[QD_MFX_MONO];
-    static const float YS[4] = {96.f, 122.f, 150.f, 176.f};
-    const float mx = 136.f, my = 136.f, per = 0.75f;
-    const int n0 = (int)floorf(t / per);
+    const int mx = 62, my = 60, per = 750;
+    const int n0 = ms / per;
     int i, n;
-    for (i = 0; i < 4; i++)
-        mf_G((const float[]){14.f, YS[i], 66.f, YS[i], mx, my}, 3, col, 1.4f, 0.45f);
-    mf_G((const float[]){mx, my, 228.f, my}, 2, col, 1.6f, 0.45f);
-    mf_O(mx, my, 4.f, col, 1.6f, UI_BG, 1.f);
+    for (i = 0; i < 4; i++) {
+        px_hline(4, YS[i], 26, UI_G2);
+        px_line(30, YS[i], mx, my, UI_G2);
+    }
+    px_hline(mx, my, 54, UI_G2);
     for (n = n0 - 3; n <= n0; n++) {
         static const int LN[4] = {0, 2, 1, 3};
-        const float tn = (float)n * per, age = t - tn, travel = 0.55f;
-        const int ln = LN[((n % 4) + 4) % 4];
-        if (age < 0.f)
+        const int age = ms - n * per, travel = 550, ln = LN[((n % 4) + 4) % 4];
+        if (age < 0)
             continue;
         if (age < travel) {
-            const float p[6] = {14.f, YS[ln], 66.f, YS[ln], mx, my};
-            float x, y;
-            mf_along(p, 3, age / travel, &x, &y);
-            mf_dot(x, y, 3.4f, UI_K3, 1.f);
+            const int p[6] = {4, YS[ln], 30, YS[ln], mx, my};
+            int x, y;
+            mf_along(p, 3, (float)age / (float)travel, &x, &y);
+            px_rect(x - 1, y - 1, 3, 3, UI_K3);
             continue;
         }
         {
-            const float out = age - travel, x = mx + (out < per ? out : per) * 120.f;
+            const int out = age - travel, x = mx + (out < per ? out : per) * 60 / 1000;
             if (out < per) {
-                mf_G((const float[]){mx, my, x, my}, 2, col, 3.4f, 1.f);
-                mf_dot(x, my, 3.6f, UI_K3, 1.f);
-            } else {
-                const float fz = (out - per) / 0.25f;
-                if (fz < 1.f)
-                    mf_L(mx + (x - mx) * fz, my, x, my, col, 3.f, 1.f - fz);
+                px_rect(mx + 3, my - 1, x - mx - 3, 3, col);
+                px_rect(x - 1, my - 1, 3, 3, UI_K3);
+            } else if (out - per < 250) {               /* (cut: gone from the left) */
+                const int x0 = mx + 3 + (x - mx - 3) * (out - per) / 250;
+                px_rect(x0, my - 1, x - x0, 3, UI_G2);
             }
         }
     }
+    px_rect(mx - 2, my - 2, 5, 5, col);
+    px_pset(mx, my, UI_BG);
 }
 
+/* SELECTOR: the lever (MODE: KNOB 1's) throwing each note to one of the next LENGTH (KNOB 2's) slots */
 static void mf_selector(const ui_mfx_t *v)
 {
     const qd_rgb col = UI_MFX_COL[QD_MFX_SELECTOR];
-    const float sx = 72.f, sy = 136.f, tx = 146.f, ox = 228.f, per = 1.3f;
-    const int n = (int)floorf(v->t / per), len = v->v[QD_ML_LEN] < 1 ? 1 : v->v[QD_ML_LEN] > 3 ? 3 : v->v[QD_ML_LEN];
-    const float u = fmodf(v->t, per) / per;
-    float ty[3];
-    int ch, prev, i;
+    const int ms = mf_ms(v->t), per = 1300, sx = 34, sy = 62, tx = 62, ox = 116;
+    const int n = ms / per, ln = v->v[QD_ML_LEN] < 1 ? 1 : v->v[QD_ML_LEN], len = ln > 3 ? 3 : ln;
+    const float u = (float)(ms % per) / (float)per;
+    int ty[3], ch, prev, i;
     for (i = 0; i < len; i++)
-        ty[i] = len == 1 ? sy : 104.f + (168.f - 104.f) * (float)i / (float)(len - 1);
-    ch = v->v[QD_ML_MODE] == QD_SM_UP ? n % len : v->v[QD_ML_MODE] == QD_SM_DOWN ? (len - 1 - n % len)
-                                                  : (int)(mf_hash((float)n * 5.3f) * (float)len);
-    prev = v->v[QD_ML_MODE] == QD_SM_UP ? (n + len - 1) % len : v->v[QD_ML_MODE] == QD_SM_DOWN ? (len - 1 - (n + len - 1) % len)
-                                                                  : (int)(mf_hash((float)(n - 1) * 5.3f) * (float)len);
-    mf_G((const float[]){12.f, sy, sx, sy}, 2, col, 1.6f, 0.7f);
+        ty[i] = len == 1 ? sy : 44 + 36 * i / (len - 1);
+    ch = v->v[QD_ML_MODE] == QD_SM_UP ? n % len : v->v[QD_ML_MODE] == QD_SM_DOWN ? len - 1 - n % len
+                                                : mf_pct(n * 53) % len;
+    prev = v->v[QD_ML_MODE] == QD_SM_UP ? (n + len - 1) % len : v->v[QD_ML_MODE] == QD_SM_DOWN ? len - 1 - (n + len - 1) % len
+                                                                : mf_pct((n - 1) * 53) % len;
+    px_hline(4, sy, sx - 4, UI_G2);
     for (i = 0; i < len; i++) {
-        mf_G((const float[]){sx, sy, tx - 18.f, ty[i]}, 2, col, 1.6f, i == ch ? 0.75f : 0.22f);
-        mf_G((const float[]){tx + 18.f, ty[i], 204.f, sy, ox, sy}, 3, col, 1.4f, i == ch ? 0.6f : 0.22f);
+        px_line(sx, sy, tx - 2, ty[i], i == ch ? col : UI_G2);
+        px_line(tx + MF_TW + 1, ty[i], 98, sy, i == ch ? col : UI_G2);
     }
-    for (i = 0; i < len; i++) {
+    px_hline(98, sy, ox - 98, UI_G2);
+    for (i = 0; i < len; i++) {                         /* the next slots, the one chosen flashing as the note lands */
         const int k = v->sel + 1 + i;
-        mf_tile(tx - 16.f, ty[i] - 16.f, 32.f, k < 8 ? v->type[k] : 0, 0, 0, i == ch && u > 0.45f && u < 0.7f ? 1.f : 0.f,
-                i == ch ? 1.f : 0.45f);
+        mf_tile(tx, ty[i] - MF_TW / 2, MF_TW, k < 8 ? v->type[k] : 0, 0, 0, i == ch && u > 0.45f && u < 0.7f ? 1.f : 0.f);
     }
-    {
-        const float a0 = atan2f(ty[prev] - sy, tx - 18.f - sx), a1 = atan2f(ty[ch] - sy, tx - 18.f - sx);
-        const float an = mf_lerp(a0, a1, mf_ease(u / 0.18f));
-        float x, y;
-        mf_G((const float[]){sx, sy, sx + cosf(an) * 26.f, sy + sinf(an) * 26.f}, 2, UI_K3, 2.6f, 1.f);
-        mf_O(sx, sy, 4.f, UI_K3, 1.6f, UI_BG, 1.f);
+    if (ln > 3) {                                       /* (more than three: the count) */
+        char s[12] = "+";
+        ui_itoa(s + 1, ln - 3);
+        px_text(tx + MF_TW + 3, 80, s, UI_K2, PX_FS, 1);
+    }
+    {   /* the lever, swinging from the last choice to this one; the note along the way */
+        const float w = mf_ease(u / 0.18f);
+        const int ex = sx + 10, ey = sy + mf_r(((float)(ty[prev] - sy) + (float)(ty[ch] - ty[prev]) * w) * 10.f / (float)(tx - sx));
+        int x, y;
+        px_line(sx, sy, ex, ey, UI_K1);
+        px_line(sx, sy + 1, ex, ey + 1, UI_K1);
+        px_rect(sx - 2, sy - 2, 5, 5, UI_K1);
+        px_pset(sx, sy, UI_BG);
         if (u < 0.25f) {
-            mf_along((const float[]){12.f, sy, sx, sy}, 2, u / 0.25f, &x, &y);
-            mf_dot(x, y, 3.6f, UI_K3, 1.f);
+            const int p[4] = {4, sy, sx, sy};
+            mf_along(p, 2, u / 0.25f, &x, &y);
+            px_rect(x - 1, y - 1, 3, 3, UI_K3);
         } else if (u < 0.45f) {
-            mf_along((const float[]){sx, sy, tx - 18.f, ty[ch]}, 2, (u - 0.25f) / 0.2f, &x, &y);
-            mf_dot(x, y, 3.6f, col, 1.f);
+            const int p[4] = {sx, sy, tx - 2, ty[ch]};
+            mf_along(p, 2, (u - 0.25f) / 0.2f, &x, &y);
+            px_rect(x - 1, y - 1, 3, 3, col);
         } else if (u >= 0.65f) {
-            mf_along((const float[]){tx + 18.f, ty[ch], 204.f, sy, ox, sy}, 3, (u - 0.65f) / 0.35f, &x, &y);
-            mf_dot(x, y, 3.6f, col, 1.f);
+            const int p[6] = {tx + MF_TW + 1, ty[ch], 98, sy, ox, sy};
+            mf_along(p, 3, (u - 0.65f) / 0.35f, &x, &y);
+            px_rect(x - 1, y - 1, 3, 3, col);
         }
     }
 }
 
+/* NONE: an empty box (PRESETS fills it), the ten effects orbiting it */
 static void mf_empty(float t)
 {
-    const float cx = 120.f, cy = 136.f, pulse = 0.5f + 0.5f * sinf(t * 3.f);
-    const int hi = (int)(t * 1.5f) % 10;
+    const int ms = mf_ms(t), hi = (int)(t * 1.5f) % 10, cx = 60, cy = 62;
+    const qd_rgb c = (ms / 400) & 1 ? UI_K3 : UI_G1;
     int i;
-    mf_RR(cx - 27.f, cy - 27.f, 54.f, 54.f, 9.f, UI_K3, 1.7f, QD_NONE, 0.45f + 0.35f * pulse, 1);
-    mf_L(cx - 9.f, cy, cx + 9.f, cy, UI_K3, 1.8f, 0.6f + 0.3f * pulse);
-    mf_L(cx, cy - 9.f, cx, cy + 9.f, UI_K3, 1.8f, 0.6f + 0.3f * pulse);
+    mf_dbox(cx - 13, cy - 13, 27, 27, c);
+    px_hline(cx - 4, cy, 9, c);
+    px_vline(cx, cy - 4, 9, c);
     for (i = 0; i < 10; i++) {
-        const float an = -UI_PI / 2.f + (float)i * MF_TAU / 10.f + t * 0.25f;
-        mf_alpha(i == hi ? 1.f : 0.3f);
-        ui_mfx_glyph(i + 1, cx + cosf(an) * 86.f, cy + sinf(an) * 43.f, 7.f, UI_MFX_COL[i + 1], 1.4f);
-        qd_restore();
+        const float an = -UI_PI / 2.f + (float)i * UI_TAU / 10.f + t * 0.25f;
+        const int gx = cx + mf_r(cosf(an) * 46.f), gy = cy + mf_r(sinf(an) * 18.f);
+        mf_glyph_px(i + 1, gx - 3, gy - 3, 1, i == hi ? UI_MFX_COL[i + 1] : UI_G2);
     }
 }
 
@@ -907,221 +1062,143 @@ static void mf_roll(float pos)
     int k;
     for (k = 0; k < QD_MFX_NTYPE; k++) {
         const float d = (float)k - pos, ad = fabsf(d) < 1.f ? fabsf(d) : 1.f;
-        const float y = 136.f + d * 20.f + (d < 0.f ? -1.f : d > 0.f ? 1.f : 0.f) * ad * 12.f;
-        const float s = mf_lerp(22.f, 14.f, ad), a = mf_clamp(1.f - fabsf(d) * 0.4f, 0.f, 1.f);
+        const int y = 61 + mf_r(d * 13.f + (d < 0.f ? -1.f : d > 0.f ? 1.f : 0.f) * ad * 5.f);
         const qd_rgb col = k ? UI_MFX_COL[k] : UI_G1;
-        const float gs = mf_lerp(13.f, 7.f, ad);
-        if (fabsf(d) > 1.75f)
+        if (fabsf(d) > 2.4f)
             continue;
-        if (ad < 0.5f)
-            mf_RR(34.f, y - 25.f, 172.f, 50.f, 8.f, col, 1.8f, QD_NONE, 1.f - ad * 2.f, 0);
-        if (k) {
-            mf_alpha(a);
-            ui_mfx_glyph(k, 64.f, y, gs, col, mf_lerp(2.f, 1.4f, ad));
-            qd_restore();
+        if (ad < 0.5f) {                                /* the one under the cursor: framed, big */
+            px_rbox(10, y - 10, 102, 21, col, QD_NONE);
+            mf_glyph_px(k, 15, y - 7, 2, col);
+            px_text(36, y - 3, qd_mfx_type_name(k), col, PX_FB, 1);
         } else {
-            mf_RR(64.f - gs, y - gs, gs * 2.f, gs * 2.f, 3.f, UI_G1, 1.2f, QD_NONE, a, 1);
+            mf_glyph_px(k, 19, y - 3, 1, fabsf(d) < 1.5f ? col : UI_G2);
+            px_text(36, y - 2, qd_mfx_type_name(k), fabsf(d) < 1.5f ? UI_G1 : UI_G2, PX_FS, 1);
         }
-        mf_T(qd_mfx_type_name(k), 86.f, y + s * 0.36f, s < 12.f ? 12.f : s, 400, 0.f, ad < 0.5f ? col : UI_K3, QD_LEFT, a);
     }
     {
-        const float at = pos / (float)(QD_MFX_NTYPE - 1);
-        mf_L(229.f, 90.f, 229.f, 184.f, UI_G3, 2.f, 1.f);
-        mf_L(229.f, 90.f + 94.f * at - 6.f, 229.f, 90.f + 94.f * at + 6.f, MF_MINT, 3.f, 1.f);
+        const int at = mf_r(pos * 46.f / (float)(QD_MFX_NTYPE - 1));
+        px_vline(116, 35, 54, UI_G3);
+        px_rect(115, 35 + at, 3, 8, UI_K3);
     }
 }
 
-/* the arp's lanes */
-static void mf_lane_cells(int len, int sel, int cur)
+/* ALGORITHM: the routing map (FIZZ's mfxMap): the six tracks on the left, OFF and the five groups with their eight
+ * slots on the right; a wire from each track to its group in its kind's colour (the selected one in ALGORITHM's cyan,
+ * doubled, gliding to where ALGORITHM puts it, the place it left dotted while it glides); a track on OFF a stub, its
+ * icon grey; a group no track is on grey */
+static int mf_gy(float p) { return 21 + mf_r(p * 16.f); }
+static void mf_wire(int y0, float p, qd_rgb c, int thick, int dash)
 {
-    int i;
-    for (i = 0; i < 16; i++) {
-        const float x = 8.f + (float)i * 14.f;
-        const int in = i < len;
-        if (i == sel)
-            continue;
-        mf_RR(x, 152.f, 13.f, 32.f, 3.f, in ? UI_G1 : UI_G3, 1.f, i == cur ? 0x132548u : QD_NONE, in ? 0.8f : 0.6f, !in);
-    }
-}
-static void mf_modlane(const ui_mfx_t *v)
-{
-    const qd_rgb col = UI_MFX_COL[QD_MFX_ARP];
-    const int len = v->v[QD_MA_MLEN] < 1 ? 1 : v->v[QD_MA_MLEN] > 16 ? 16 : v->v[QD_MA_MLEN], sel = v->lane_sel;
-    const int cur = v->lane_cur >= 0 ? v->lane_cur : (int)(v->t * 5.f) % len;
-    static const int SEQ[6] = {0, 4, 7, 12, 16, 19};
-    int i, ai = 0, last[3], nl = 0;
-#define PY(p) (140.f - ((float)(p) + 12.f) * 1.05f)
-    mf_lane_cells(len, sel, cur);
-    for (i = 0; i < len; i++) {                         /* what the lane makes of the arp: each step's notes above it */
-        const int m = v->lane[0][i], on = i == cur;
-        const float x = 8.f + (float)i * 14.f;
-        int ps[6], np = 0, k;
-        switch (m) {
-        case QD_AL_PLAY: ps[np++] = SEQ[ai % 6], ai++; break;
-        case QD_AL_REPEAT: for (k = 0; k < nl; k++) ps[np++] = last[k]; break;
-        case QD_AL_LO: ps[np++] = -12; break;
-        case QD_AL_HI: ps[np++] = 31; break;
-        case QD_AL_CHORD: ps[np++] = 0, ps[np++] = 4, ps[np++] = 7; break;
-        case QD_AL_PWR: ps[np++] = 0, ps[np++] = 19; break;
-        case QD_AL_TIE:
-            if (nl)
-                mf_G((const float[]){x - 4.f, PY(last[0]), x + 11.f, PY(last[0])}, 2, col, 3.4f, on ? 1.f : 0.55f);
-            break;
-        case QD_AL_REST: break;
-        default: ps[np++] = SEQ[(m - QD_AL_N1) % 6]; break;
-        }
-        for (k = 0; k < np; k++)
-            mf_G((const float[]){x + 2.f, PY(ps[k]), x + 11.f, PY(ps[k])}, 2, col, 3.4f, on ? 1.f : 0.55f);
-        if (np) {
-            nl = np > 3 ? 3 : np;
-            for (k = 0; k < nl; k++)
-                last[k] = ps[k];
-        }
-    }
-#undef PY
-    for (i = 0; i < 16; i++) {
-        char s[12];
-        const int in = i < len;
-        qd_mfx_lane_text(0, v->lane[0][i], s);
-        if (!strcmp(s, "x"))
-            strcpy(s, "\xc3\x97");                      /* (x: a times sign) */
-        mf_T(s, 8.f + (float)i * 14.f + 6.5f, i == sel ? 172.f : 174.f, 14.f, 600, 0.f,
-             i == sel ? UI_K3 : in ? (i == cur ? UI_K3 : col) : UI_G2, QD_CENTER, 1.f);
-    }
-    mf_RR(8.f + (float)sel * 14.f - 2.f, 148.f, 17.f, 37.f, 4.f, UI_K3, 1.8f, QD_NONE, 1.f, 0);
-}
-static void mf_trlane(const ui_mfx_t *v)
-{
-    const qd_rgb col = UI_MFX_COL[QD_MFX_ARP];
-    const int len = v->v[QD_MA_TLEN] < 1 ? 1 : v->v[QD_MA_TLEN] > 16 ? 16 : v->v[QD_MA_TLEN], sel = v->lane_sel;
-    const int cur = v->lane_cur >= 0 ? v->lane_cur : (int)(v->t * 5.f) % len;
-    const float z = 172.f;
-    int i;
-    for (i = 0; i < 16; i++) {
-        const float x = 8.f + (float)i * 14.f;
-        const int in = i < len, val = v->lane[1][i], on = i == cur;
-        if (in)
-            mf_L(x + 1.f, z, x + 12.f, z, UI_G1, 1.f, 1.f);
-        else
-            mf_Pd((const float[]){x + 1.f, z, x + 12.f, z}, 2, UI_G3, 1.f, 1.f, 2.f, 2.f);
-        if (!in)
-            continue;
-        if (val) {
-            const float h = (float)val * 1.6f;
-            mf_G((const float[]){x + 6.5f, z - 3.f, x + 6.5f, z - 3.f - (h > 75.f ? 75.f : h < -10.f ? -10.f : h)}, 2,
-                 i == sel ? UI_K3 : col, 5.f, on || i == sel ? 1.f : 0.55f);
-        } else {
-            mf_O(x + 6.5f, z - 4.f, 1.6f, QD_NONE, 1.f, col, on ? 1.f : 0.5f);
-        }
-        if (on)
-            mf_L(x + 1.f, z + 6.f, x + 12.f, z + 6.f, UI_K3, 2.f, 1.f);
-    }
-    {
-        const float sx = 8.f + (float)sel * 14.f;
-        char s[12];
-        mf_RR(sx - 2.f, 92.f, 17.f, 90.f, 4.f, UI_K3, 1.6f, QD_NONE, 1.f, 0);
-        qd_mfx_lane_text(1, v->lane[1][sel], s);
-        ui_T(s, sx > 160.f ? sx - 10.f : sx + 26.f, 108.f, 18.f, 400, 0.f, UI_K1, sx > 160.f ? QD_RIGHT : QD_LEFT);
-    }
-}
-
-/* ALGORITHM: the routing map (2026-11-10, mockups/fizz-overview.html mfxMap): the six tracks' icons on the left, the
- * five groups' hexagons with their eight slots on the right, OFF on top (2026-11-10: the first choice first); a curve from each track to its group in its
- * kind's colour (the selected one thick, gliding to where ALGORITHM puts it, the place it left dashed while it
- * glides); a track on OFF a stub, its icon grey; a group no track is on grey */
-static float mg_y(float p) { return 46.f + p * 35.5f; }   /* (0 OFF on top, 1..5 below it) */
-static void mg_wire(float y0, float p, qd_rgb c, float lw, float a, int dash)
-{
-    const float ey = mg_y(p), ex = p < 1.f ? 136.f : 138.f;
-    float q[26];
-    int i;
-    for (i = 0; i <= 12; i++) {                         /* (a cubic: level out of the icon, level into the hexagon) */
+    const int ey = mf_gy(p), ex = p < 0.5f ? 60 : 63;
+    int i, px0 = 17, py0 = y0;
+    for (i = 1; i <= 12; i++) {                         /* (a cubic: level out of the icon, level into the hexagon) */
         const float u = (float)i / 12.f, w = 1.f - u;
-        q[2 * i] = w * w * w * 36.f + 3.f * w * u * 90.f + u * u * u * ex;
-        q[2 * i + 1] = mf_lerp(y0, ey, mf_ease(u));
+        const int x = mf_r(w * w * w * 17.f + 3.f * w * u * 45.f + u * u * u * (float)ex);
+        const int y = mf_lerpi(y0, ey, mf_ease(u));
+        if (dash)
+            mf_dline(px0, py0, x, y, c, 2, 4);
+        else {
+            px_line(px0, py0, x, y, c);
+            if (thick)
+                px_line(px0, py0 + 1, x, y + 1, c);
+        }
+        px0 = x, py0 = y;
     }
-    if (dash)
-        mf_Pd(q, 13, c, lw, a, 3.f, 4.f);
-    else
-        mf_P(q, 13, c, lw, a);
 }
 static void mf_gsel(const ui_mfx_t *v)
 {
-    const int sel = (v->track - 1) % UI_NTRACK, to = v->tgrp[sel], from = (int)(v->gsel_from + 0.5f);
+    const int sel = (v->track - 1) % UI_NTRACK, to = v->tgrp[sel], from = mf_r(v->gsel_from);
     int g, k, i;
+    px_ctext(68, 19, "OFF", UI_G1, PX_FS, 1);
     for (g = 1; g <= 5; g++) {
-        const float y = mg_y((float)g);
+        const int y = mf_gy((float)g);
         int on = 0;
         for (i = 0; i < UI_NTRACK; i++)
             on |= v->tgrp[i] == g;
-        ui_mfx_hex(150.f, y, 11.f, g, on ? MF_MINT : UI_G2, 1.5f, 0);
-        for (k = 0; k < 8; k++) {
-            const int ty = v->gtype[g - 1][k] & 0x7f;
-            mf_RR(170.f + (float)k * 8.f, y - 3.5f, 6.f, 7.f, 2.f, ty ? QD_NONE : UI_G3, 1.f, ty ? UI_MFX_COL[ty] : QD_NONE,
-                  ty && v->gtype[g - 1][k] & 0x80 ? 0.3f : 1.f, 0);
+        mf_hexn(68, y, 5, g, on ? MF_MINT : UI_G2, 0);
+        for (k = 0; k < 8; k++) {                       /* the group's slots: filled in their colours (bypassed: half) */
+            const int ty = v->gtype[g - 1][k] & 0x7f, x = 77 + k * 5;
+            if (!ty)
+                px_rect(x + 1, y, 2, 1, UI_G2);
+            else if (v->gtype[g - 1][k] & 0x80)
+                px_checker(x, y - 2, 4, 5, UI_MFX_COL[ty], 0);
+            else
+                px_rect(x, y - 2, 4, 5, UI_MFX_COL[ty]);
         }
     }
-    ui_T("OFF", 150.f, 50.f, 12.f, 600, 0.f, UI_G1, QD_CENTER);
     for (i = 1; i <= UI_NTRACK; i++) {                  /* (the selected last: on top) */
         const int t = (sel + i) % UI_NTRACK, kd = ui_track_kind(t + 1), s = t == sel;
-        const float y = 50.f + (float)t * 32.5f, p = s ? v->gsel_pos : (float)v->tgrp[t];
-        const qd_rgb c = kd >= 0 ? UI_PK_COL[kd] : MF_TP[t & 7];
+        const int y = 25 + t * 16;
+        const float p = s ? v->gsel_pos : (float)v->tgrp[t];
+        const qd_rgb c = s ? MF_MINT : kd >= 0 ? UI_PK_COL[kd] : UI_TRACK_PAL[t & 7];
         if (s) {
-            mf_RR(4.f, y - 14.f, 28.f, 28.f, 7.f, UI_K3, 1.6f, QD_NONE, 1.f, 0);
-            if (from && from != to)                     /* the place it left, dashed, fading as it glides */
-                mg_wire(y, (float)from, c, 1.4f, 0.6f * fabsf((float)to - p) / fabsf((float)to - v->gsel_from), 1);
+            px_rbox(2, y - 7, 15, 15, UI_K3, QD_NONE);
+            if (from != to && fabsf((float)to - p) > 0.05f)   /* the place it left, dotted while it glides */
+                mf_wire(y, (float)from, UI_G1, 0, 1);
         }
         if (kd >= 0)
-            ui_kind_icon(kd, 18.f, y, 1.3f, p > 0.02f ? c : UI_G2);
-        else
-            mf_sq(13.f, y - 5.f, t + 1, 10.f, 0);
+            ui_kind_icon(kd, (float)(2 * 9 + 1), (float)(2 * y + 1), 1.f, p > 0.02f ? UI_PK_COL[kd] : UI_G2);
+        else {
+            const char d[2] = {(char)('1' + t), 0};
+            px_rect(6, y - 3, 7, 7, p > 0.02f ? UI_TRACK_PAL[t & 7] : UI_G2);
+            px_text(8, y - 2, d, UI_BG, PX_FS, 1);
+        }
         if (p > 0.02f)
-            mg_wire(y, p, c, s ? 2.6f : 1.4f, s ? 1.f : 0.55f, 0);
+            mf_wire(y, p, c, s, 0);
         else
-            mf_L(36.f, y, 46.f, y, UI_G2, 1.5f, 1.f);
+            px_hline(17, y, 5, UI_G2);
     }
 }
 
-/* a track routed OFF: the notes straight to the voices; the five groups dim at the foot */
+/* a track routed OFF: its notes straight to the voices; ALGORITHM picks a group (its badge, the five dotted) */
 static void mf_off(const ui_mfx_t *v)
 {
-    const float y = 160.f;
+    static const char *const SPK[7] = {"....##", "...#.#", "####.#", "#....#", "####.#", "...#.#", "....##"};
+    const qd_rgb tc = UI_TRACK_PAL[(v->track - 1) & 7];
+    const int ms = mf_ms(v->t), y = 64;
+    const char d[2] = {(char)('0' + v->track % 10), 0};
     int k, gi;
-    mf_Pd((const float[]){2.f, MF_RY, 238.f, MF_RY}, 2, UI_G3, 1.2f, 1.f, 2.f, 4.f);
-    ui_T("OFF", 120.f, 128.f, 38.f, 300, 0.f, UI_G1, QD_CENTER);
-    mf_sq(14.f, y - 7.f, v->track, 14.f, 0);
-    mf_G((const float[]){34.f, y, 196.f, y}, 2, MF_TP[(v->track - 1) & 7], 1.4f, 0.5f);
-    mf_alpha(1.f);
-    ui_P((const float[]){204.f, y - 6.f, 210.f, y - 6.f, 218.f, y - 12.f, 218.f, y + 12.f, 210.f, y + 6.f, 204.f, y + 6.f}, 6,
-         UI_K3, 1.4f, 1, QD_NONE);
-    qd_restore();
+    px_dots(0, MF_RY, 120, UI_G3, 3);
+    px_ctext(60, 34, "OFF", UI_G1, PX_FB, 2);
+    px_rect(4, y - 4, 7, 9, tc);
+    px_text(6, y - 2, d, UI_BG, PX_FS, 1);
+    px_hline(13, y, 85, UI_G2);
     for (k = 0; k < 6; k++)
-        mf_dot(36.f + fmodf(v->t * 60.f + (float)k * 30.f, 160.f), y, 3.f, MF_TP[(v->track - 1) & 7], 1.f);
+        px_rect(14 + (ms * 30 / 1000 + k * 15) % 80, y - 1, 3, 3, tc);
+    mf_bits(SPK, 7, 101, y - 3, 1, UI_K3);
+    px_rect(38, 92, 7, 7, UI_KALG);                     /* ALGORITHM's badge, its word */
+    px_text(40, 93, "A", UI_BG, PX_FS, 1);
+    px_text(48, 93, "ALGORITHM", UI_KALG, PX_FS, 1);
     for (gi = 1; gi <= 5; gi++)
-        ui_mfx_hex(60.f + (float)(gi - 1) * 30.f, 216.f, 10.f, gi, UI_G2, 1.5f, 1);
-    ui_O(30.f, 216.f, 7.f, QD_NONE, 1.f, UI_KALG);        /* ALGORITHM picks the group: its badge, its word */
-    ui_T("A", 30.f, 220.f, 12.f, 700, 0.f, UI_BG, QD_CENTER);
-    ui_T("ALGORITHM", 120.f, 199.f, 12.f, 600, 0.f, UI_KALG, QD_CENTER);
+        mf_hexn(24 + (gi - 1) * 20, 107, 5, gi, UI_G2, 1);
+}
+
+static void mf_frame(int on)                            /* P1.6e: STEPS' steps held: the step's frame */
+{
+    if (on) {
+        px_box(0, 0, 120, 120, UI_STEP_FRAME);
+        px_box(1, 1, 118, 118, UI_STEP_FRAME);
+    }
+}
+static void mf_arrow(int x, int y, qd_rgb c)            /* an arrow 16 long from x */
+{
+    px_hline(x, y, 13, c);
+    mf_tri(x + 15, y, 1, c);
 }
 
 void ui_mfx_draw(const ui_mfx_t *v)
 {
     const int ty = v->sel >= 0 && v->sel < 8 ? v->type[v->sel] : 0;
-    const int npg = ty ? qd_mfx_npages(ty) : 0;
-    if (v->gsel) {                                      /* ALGORITHM turning: the five groups */
-        mf_head(0, 0, "MIDI FX", MF_MINT, (int)(v->gsel_pos + 0.5f), v->tr, v->ntr, v->track);
+    const int npg = ty ? qd_mfx_npages(ty) : 0, bob = sinf(v->t * 4.f) > 0.f ? 1 : 0;
+    if (v->gsel) {                                      /* ALGORITHM turning: the routing map */
+        mf_head(0, 0, mf_r(v->gsel_pos), v->tr, v->ntr, v->track, 0);
         mf_gsel(v);
         return;
     }
-    {
-        const float hx = mf_head(npg, v->page, "MIDI FX", MF_MINT, v->g, v->tr, v->ntr, v->track);
-        if (v->route_off)                               /* 2026-10-25: the routing bypassed (ARP held / SHIFT + ARP) */
-            ui_T("OFF", hx + 14.f, 17.f, 12.f, 700, 1.f, UI_RED, QD_LEFT);
-    }
+    mf_head(npg, v->page, v->g, v->tr, v->ntr, v->track, v->route_off);
     if (!v->g && !((v->f1 || v->f2) && v->fstep)) {
         mf_off(v);
-        if (v->steps_frame)
-            ui_RR(0.f, 0.f, 240.f, 240.f, 8.f, UI_STEP_FRAME, 3.f, QD_NONE);
+        mf_frame(v->steps_frame);
         return;
     }
     if (v->g)
@@ -1130,51 +1207,43 @@ void ui_mfx_draw(const ui_mfx_t *v)
                                                          * where it goes (the step view's F1 / F2) */
         const int full = v->f2 ? v->f2_hand >= 0 : v->st_copied;
         const qd_rgb ac = v->f1 || full ? UI_K2 : UI_K4;
-        ui_step_card(40.f, 100.f + (full ? 2.f * sinf(v->t * 4.f) : 0.f), 64.f, 60.f, full, v->st_type, v->st_nnote,
-                     v->st_note);
-        if (full) {
-            mf_L(112.f, 130.f, 140.f, 130.f, ac, 1.6f, 1.f);
-            mf_tri(142.f, 130.f, 1.f, ac, 1.f);
-        }
+        ui_step_card(40.f, 100.f + (full ? 2.f * (float)bob : 0.f), 64.f, 60.f, full, v->st_type, v->st_nnote, v->st_note);
+        if (full)
+            mf_arrow(58, 65, ac);
         ui_icon(full ? UI_IC_PASTE : v->f1 ? UI_IC_COPY : UI_IC_CUT, 176.f, 130.f, 2.6f, ac);
-        if (v->steps_frame)
-            ui_RR(0.f, 0.f, 240.f, 240.f, 8.f, UI_STEP_FRAME, 3.f, QD_NONE);
+        mf_frame(v->steps_frame);
         return;
     }
     if (v->f1 || v->f2) {                               /* P1.6e: F1 / F2 held: what they do (the step view's) */
         const int copied = v->f1 && v->f1_src >= 0, hand = v->f2 ? v->f2_hand : copied ? v->type[v->f1_src] : -1;
         const qd_rgb ac = v->f1 ? UI_K2 : hand >= 0 ? UI_K2 : UI_K4;
         if (hand >= 0) {                                /* the copy / the hand's effect, lifted, then where it goes */
-            mf_RR(54.f, 166.f, 36.f, 4.f, 2.f, QD_NONE, 1.f, 0x2a2a33u, 1.f, 0);
-            mf_tile(50.f, 108.f + 2.f * sinf(v->t * 4.f), 44.f, hand, 1, 0, 0.6f, 1.f);
-            mf_L(108.f, 130.f, 140.f, 130.f, ac, 1.6f, 1.f);
-            mf_tri(142.f, 130.f, 1.f, ac, 1.f);
+            px_hline(28, 77, 18, UI_G2);
+            mf_tile(25, 52 + bob, 22, hand, 1, 0, 0.f);
+            mf_arrow(54, 65, ac);
             ui_icon(UI_IC_PASTE, 176.f, 130.f, 2.6f, ac);
         } else if (v->f1) {                             /* nothing picked yet: COPY */
-            mf_RR(50.f, 108.f, 44.f, 44.f, 6.f, UI_G2, 1.2f, QD_NONE, 1.f, 1);
+            mf_dbox(25, 54, 22, 22, UI_G2);
             ui_icon(UI_IC_COPY, 72.f, 130.f, 2.2f, UI_G1);
             ui_icon(UI_IC_COPY, 176.f, 130.f, 2.6f, ac);
         } else {                                        /* F2, the hand empty: PICK UP */
-            mf_RR(50.f, 108.f, 44.f, 44.f, 6.f, UI_G2, 1.2f, QD_NONE, 1.f, 1);
+            mf_dbox(25, 54, 22, 22, UI_G2);
             ui_icon(UI_IC_CUT, 176.f, 130.f, 2.6f, ac);
         }
-        if (v->steps_frame)
-            ui_RR(0.f, 0.f, 240.f, 240.f, 8.f, UI_STEP_FRAME, 3.f, QD_NONE);
+        mf_frame(v->steps_frame);
         return;
     }
     if (v->roll) {                                      /* PRESETS: the types' rolodex */
         qd_save();
-        qd_clip_rect(0.f, 84.f, 240.f, 104.f);
+        qd_clip_rect(0.f, 64.f, 240.f, 116.f);
         mf_roll(v->roll_pos);
         qd_restore();
         return;
     }
     if (ty)
-        mf_T(qd_mfx_type_name(ty), 10.f, 80.f, 14.f, 500, 0.5f, UI_MFX_COL[ty], QD_LEFT, v->byp_sel ? 0.45f : 1.f);
+        px_text(4, 33, qd_mfx_type_name(ty), v->byp_sel ? UI_G2 : UI_MFX_COL[ty], PX_FS, 1);
     qd_save();
-    qd_clip_rect(0.f, 84.f, 240.f, 104.f);
-    if (v->byp_sel)                                     /* bypassed: its picture faded, the notes running round it */
-        qd_alpha(qd_get_alpha() * 0.28f);
+    qd_clip_rect(0.f, (float)(2 * MF_TOP), 240.f, (float)(2 * (MF_BOT - MF_TOP)));
     switch (ty) {
     case QD_MFX_NONE: mf_empty(v->t); break;
     case QD_MFX_ARP:
@@ -1185,9 +1254,9 @@ void ui_mfx_draw(const ui_mfx_t *v)
         else
             mf_arp(v);
         break;
-    case QD_MFX_CHANCE: mf_chance(v->v[QD_MC_CHANCE], v->t, 1.f); break;
+    case QD_MFX_CHANCE: mf_chance(v->v[QD_MC_CHANCE], mf_ms(v->t)); break;
     case QD_MFX_REPEAT: mf_repeat(v); break;
-    case QD_MFX_HARM: mf_harm(v, 1.f, 0); break;
+    case QD_MFX_HARM: mf_harm(v); break;
     case QD_MFX_TRANSPOSE: mf_transpose(v); break;
     case QD_MFX_SCALER: {
         uint32_t mask = 0;
@@ -1201,62 +1270,70 @@ void ui_mfx_draw(const ui_mfx_t *v)
     case QD_MFX_CHORD: {
         const qd_shape_t *sh = &QD_SHAPE[v->v[QD_MK_SHAPE] > 0 && v->v[QD_MK_SHAPE] < QD_NSHAPE ? v->v[QD_MK_SHAPE] : 1];
         uint8_t off[6];
-        int n = v->v[QD_MK_NOTES] < 1 ? 1 : v->v[QD_MK_NOTES] > 6 ? 6 : v->v[QD_MK_NOTES], j;
+        int n = mf_clampi(v->v[QD_MK_NOTES], 1, 6), j;
         for (j = 0; j < n; j++)
             off[j] = (uint8_t)((j % (sh->n + 1) ? sh->off[j % (sh->n + 1) - 1] : 0) + 12 * (j / (sh->n + 1)));
         mf_chord(v, off, n);
         break;
     }
-    case QD_MFX_MONO: mf_mono(v->t); break;
+    case QD_MFX_MONO: mf_mono(mf_ms(v->t)); break;
     case QD_MFX_SELECTOR: mf_selector(v); break;
     default: break;
     }
+    if (v->byp_sel)                                     /* bypassed: its picture half-toned, the C64's dimming */
+        px_checker(0, MF_TOP, 120, MF_BOT - MF_TOP, UI_BG, 0);
     qd_restore();
-    if (v->arm > 0.f) {                                 /* B11 armed: a red X over the picture, shaking */
-        const float sh = sinf(v->t * 46.f) * 2.5f;
-        mf_G((const float[]){70.f + sh, 94.f, 170.f + sh, 184.f}, 2, UI_RED, 4.f, 1.f);
-        mf_G((const float[]){170.f + sh, 94.f, 70.f + sh, 184.f}, 2, UI_RED, 4.f, 1.f);
+    if (v->arm > 0.f) {                                 /* B9 armed: a red X over the picture, shaking */
+        const int sh = sinf(v->t * 46.f) > 0.f ? 1 : -1;
+        int d;
+        for (d = 0; d < 2; d++) {
+            px_line(36 + sh + d, 46, 84 + sh + d, 86, UI_RED);
+            px_line(84 + sh + d, 46, 36 + sh + d, 86, UI_RED);
+        }
     }
     if (ty && v->lift_from < 0)
-        mf_foot(v, v->byp_sel ? 0.4f : 1.f);
-    if (v->steps_frame)                                 /* P1.6e: STEPS' steps held: the step's frame */
-        ui_RR(0.f, 0.f, 240.f, 240.f, 8.f, UI_STEP_FRAME, 3.f, QD_NONE);
+        mf_foot(v, v->byp_sel);
+    mf_frame(v->steps_frame);
 }
 
 /* a held step's MIDI FX: m 0 TRACK (the track's group g), 1 OFF, 2.. a group */
 void ui_mfx_step_draw(int step, int m, int g, const uint8_t type[8], const char *trig, float t)
 {
     char head[32], n[12];
-    const float pulse = 0.5f + 0.5f * sinf(t * 3.f);
+    const int pulse = mf_ms(t) / 500 % 2;
     int i;
-    ui_RR(0.f, 0.f, 240.f, 240.f, 8.f, UI_STEP_FRAME, 3.f, QD_NONE);
+    mf_frame(1);
     head[0] = 0;
     strcat(head, "STEP "), strcat(head, ui_itoa(n, step)), strcat(head, " \xc2\xb7 MIDI FX");
-    ui_T(head, 10.f, 19.f, 12.f, 600, 1.f, UI_K3, QD_LEFT);
-    mf_L(10.f, 27.f, 230.f, 27.f, UI_G3, 1.f, 1.f);
-    if (g > 0) {
-        mf_hexagon(120.f, 92.f, 36.f + pulse * 2.f, MF_MINT, 6.f, 0, 0.12f);
-        ui_mfx_hex(120.f, 92.f, 34.f, g, MF_MINT, 2.4f, 0);
+    px_text(4, 4, head, UI_K3, PX_FS, 1);
+    px_dots(3, 12, 114, UI_G3, 2);
+    if (g > 0) {                                        /* the group: its hexagon big (pulsing), its rail */
+        if (pulse)
+            mf_hexagon(60, 39, 19, UI_G3, 0);
+        mf_hexn(60, 39, 16, g, MF_MINT, 0);
+        mf_hexagon(60, 39, 15, MF_MINT, 0);
+        px_hline(2, 76, 116, UI_G2);
         for (i = 0; i < 8; i++)
-            mf_tile(24.f + (float)i * 24.f, 146.f, 18.f, type[i], 0, 0, 0.f, 1.f);
-        mf_L(12.f, 155.f, 24.f, 155.f, UI_G2, 1.f, 1.f);
-        mf_L(216.f, 155.f, 228.f, 155.f, UI_G2, 1.f, 1.f);
-        for (i = 0; i < 7; i++)
-            mf_L(42.f + (float)i * 24.f, 155.f, 48.f + (float)i * 24.f, 155.f, UI_G2, 1.f, 1.f);
+            mf_tile(5 + i * 14, 71, MF_TW, type[i], 0, 0, 0.f);
     } else {
-        mf_hexagon(120.f, 92.f, 34.f, UI_G1, 2.f, 1, 1.f);
-        ui_T("OFF", 120.f, 104.f, 30.f, 300, 0.f, UI_G1, QD_CENTER);
+        mf_hexagon(60, 39, 16, UI_G1, 1);
+        px_ctext(60, 36, "OFF", UI_G1, PX_FB, 1);
     }
     if (m == QD_SMFX_TRACK)                             /* (TRACK: the track's group, said small under it) */
-        ui_T("TRACK", 120.f, 140.f - (g > 0 ? 0.f : -10.f), 12.f, 600, 1.f, UI_G1, QD_CENTER);
-    ui_T("TRIG", 31.f, 204.f, 12.f, 500, 0.f, UI_G1, QD_CENTER);
-    ui_T(trig ? trig : "NOTE", 31.f, 228.f, 19.f, 400, 0.f, UI_K1, QD_CENTER);
-    ui_T("MIDI FX", 90.f, 204.f, 12.f, 500, 0.f, UI_G1, QD_CENTER);
+        px_ctext(60, 62, "TRACK", UI_G1, PX_FS, 1);
+    px_dots(3, 89, 114, UI_G3, 2);
+    px_ctext(18, 92, "TRIG", UI_G1, PX_FS, 1);
+    {
+        const char *s = trig ? trig : "NOTE";
+        const int f = px_text_w(s, PX_FB, 1) > 27 ? PX_FS : PX_FB;
+        px_ctext(18, f == PX_FB ? 105 : 107, s, UI_K1, f, 1);
+    }
+    px_ctext(47, 92, "MIDI FX", UI_G1, PX_FS, 1);
+    px_hline(37, 99, 19, UI_K2);
     if (m == QD_SMFX_TRACK)
-        ui_T("TRACK", 90.f, 228.f, 17.f, 400, 0.f, UI_K2, QD_CENTER);
+        px_ctext(47, 107, "TRACK", UI_K2, PX_FS, 1);
     else if (g > 0)
-        ui_mfx_hex(90.f, 222.f, 11.f, g, UI_K2, 1.5f, 0);
+        mf_hexn(46, 109, 6, g, UI_K2, 0);
     else
-        ui_T("OFF", 90.f, 228.f, 19.f, 400, 0.f, UI_K2, QD_CENTER);
-    mf_L(78.f, 209.f, 102.f, 209.f, UI_K2, 1.6f, 1.f);
+        px_ctext(47, 105, "OFF", UI_K2, PX_FB, 1);
 }

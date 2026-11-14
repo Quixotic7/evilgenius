@@ -18,7 +18,7 @@
  * (P1.5a): the common NOR image (core-glue/common nor.h, the host keeps it: FM1VST's <core-id>/flash.bin) is the app's
  * flash (core/app/persist.h: the library and the projects, written by themselves); flash_sync and shutdown write what
  * is still waiting. SysEx (P1.5r, docs/SYSEX.md): midi_in's CIN 4..7 packets are collected by FM1VST's common
- * sysex.h; a whole frame of FIZZ's (7D 46 5A) goes to the app at once (qd_app_sysex), its replies into sysex.h's ring
+ * sysex.h; a whole frame of FIZZ's (7D 45 47) goes to the app at once (qd_app_sysex), its replies into sysex.h's ring
  * of CIN 4..7 packets, which midi_out_take serves; FIZZ MIDI (c): with the app's MIDI OUT between two replies. */
 #include <stdio.h>
 #include <string.h>
@@ -44,7 +44,7 @@ static fm1sx_in_t fm1core_qd_sx_in;
 static fm1sx_out_t fm1core_qd_sx_out;
 static int fm1core_qd_sx_mid;                           /* (FIZZ MIDI (c): a reply's packets begun, its last not taken) */
 
-/* P1.5r: FIZZ's frames only (7D 46 5A ..): the rest (notes, other managers') never held */
+/* P1.5r: FIZZ's frames only (7D 45 47 ..): the rest (notes, other managers') never held */
 static int fm1core_qd_sx_accept(const uint8_t *f, uint32_t n)
 {
     return n >= 1u && f[0] == QD_SX_ID0 && (n < 2u || f[1] == QD_SX_ID1) && (n < 3u || f[2] == QD_SX_ID2);
@@ -141,7 +141,7 @@ void fm1core_qd_init(int demo)
     memset(&fm1core_qd_bedges, 0, sizeof fm1core_qd_bedges);
     qd_init();
     qd_app_init(&fm1core_qd_app);
-    qd_app_sysex_version(&fm1core_qd_app, "FIZZ " FM1CORE_VERSION);   /* P1.5r: the identity's */
+    qd_app_sysex_version(&fm1core_qd_app, "EVILGENIUS " FM1CORE_VERSION);   /* P1.5r: the identity's */
     fm1sx_in_init(&fm1core_qd_sx_in, fm1core_qd_sx_accept);
     fm1sx_out_reset(&fm1core_qd_sx_out);
     fm1core_qd_sx_mid = 0;

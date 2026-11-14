@@ -341,7 +341,7 @@ static void lb_ctx(const qd_app_t *a, qd_labels_t *o)
     }
     if (step && u->latch == QD_LATCH_FX) {              /* the effects: the page's cells */
         static ui_fx_t fv;
-        static const char *const FXB[QD_FX_NKEY] = {"SENDS", "CHORUS", "DELAY", "REVERB", "MASTER", "ROUTING"};
+        static const char *const FXB[QD_FX_NKEY] = {"SENDS", "CHORUS", "ECHO", "ROOM", "CRUSH", "ROBOT", "WARP", "GLITCH", "TV"};
         fill_fx(a, &fv);
         for (k = 0; k < 4; k++)
             lb_set(o, LB_KNOB(QD_K_1 + k), fv.has[k] && fv.lab[k] ? fv.lab[k] : "");
@@ -475,10 +475,10 @@ static void lb_ctx(const qd_app_t *a, qd_labels_t *o)
         lb_set(o, LB_KNOB(QD_K_ALGO), "STEP");
         lb_set(o, LB_KNOB(QD_K_SELECT), "PAGE");
         lb_set(o, LB_KNOB(QD_K_PRESETS), "PRESETS");
-        lb_set(o, LB_KNOB(QD_K_1), "FREQ");
+        lb_set(o, LB_KNOB(QD_K_1), "CUTOFF");
         lb_set(o, LB_KNOB(QD_K_2), "DECAY");
-        lb_set(o, LB_KNOB(QD_K_3), "HARM");
-        lb_set(o, LB_KNOB(QD_K_4), "FEEDBACK");
+        lb_set(o, LB_KNOB(QD_K_3), "PW");
+        lb_set(o, LB_KNOB(QD_K_4), "RESO");
         return;
     }
     /* ---- the step view */

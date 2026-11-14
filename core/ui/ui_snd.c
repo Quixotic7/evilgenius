@@ -1,1293 +1,616 @@
 /* SPDX-License-Identifier: MPL-2.0
  * This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0. If a copy of the MPL was not
  * distributed with this file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-/* The sound editor's screen (P1.4a; ui.h ui_snd_t). Built through ui_layer.c (it includes this file: its line2 and
- * cat; the core's source lists stay as they are). PLAN §9a's clarity rules: the page's name, the values and their short
- * names are the only text; the rest is drawing, colour and motion. */
-#include <stdlib.h>
-#include <string.h>
+/* EvilGenius: the sound editor, SID TONE's pages (built through ui_layer.c; the model is FIZZ's ui_snd_t). FIZZ's
+ * frame: brown round the track's sound, orange round a step's locks; the head (the group's page dots, STEP n, the
+ * page's name, ALGORITHM's value in its cyan badge); one drawing; the foot: KNOB 1..4's labels and values in their
+ * colours (a lock a chip: filled here, outlined somewhere; an LFO's or a slot's destination marked by its label).
+ * The drawings:
+ *   OSC     the oscillator's wave (its pulse width), the chip's three voices with this one lit, sync / ring drawn
+ *   ENV     the SID's ADSR (0..15 each), LINK a chain to ENV 1
+ *   FILTER  the chip's filter: its mode's response, the cutoff, the resonance's peak, the oscillators routed in
+ *   F ENV   the filter envelope         CHIP  the 6581 or the 8580, key tracking, the oscillators' detune
+ *   WORD    the word in a terminal: its start and end, the loop, the root key
+ *   DIGI    the volume register $D418: the bits kept lit, the digi as a staircase at its rate
+ *   PORT    two platforms and the glide      VOICE the unison's robots    MOD the eight slots
+ *   AMP     LEVEL, velocity, DRIVE           CRUSH a sine as stairs       LFO / its WAVE: the shape, the phase */
+#include "quad_voice.h"                 /* (SID TONE's waves, filter modes, LFO shapes, the slots' sources) */
+static const qd_rgb SNDK[5] = {UI_K1, UI_K2, UI_K3, UI_K4, UI_KALG};
+static const char *const SD_MODE_NAME[6] = {"LOWPASS", "BANDPASS", "HIGHPASS", "NOTCH", "LP+BP", "ALL"};
 
-static const qd_rgb SNDK[5] = {UI_K1, UI_K2, UI_K3, UI_K4, UI_KALG};   /* KNOB 1..4, ALGORITHM */
-#define SD_TOP 32.f                                     /* the drawing's area */
-#define SD_BOT 180.f                                    /* (P1.5j: the foot's labels from 184) */
-/* P1.5j: the foot, four fixed columns inside the frame's 4 px margin (the frame 3 px: its inner edge at 3) */
-#define SD_FOOT_X 7.f
-#define SD_COL_W 56.5f
-#define SD_LAB_Y 193.f                                  /* the labels' baseline (12 px) */
-#define SD_CHIP_Y 200.f                                 /* the chips: every column's the same */
-#define SD_CHIP_W 52.5f
-#define SD_CHIP_H 32.f                                  /* (RATIO B's two lines; its foot at 232: 4 px clear) */
+#define SD_TOP 14                                       /* the drawing's area (120-space) */
+#define SD_BOT 88
 
-static float sd_clampf(float x, float lo, float hi) { return x < lo ? lo : x > hi ? hi : x; }
-
-static void sd_poly(const float *p, int n, qd_rgb col, float lw, int dashed)
+/* ---------------------------------------------------------------- the waves */
+static int32_t sd_wave(int w, float u, float pw)        /* the oscillator's wave at u (0..1): -1..1 x 1000 */
 {
-    static const float DASH[2] = {3.f, 3.f};
-    if (dashed)
-        qd_dash(DASH, 2);
-    ui_P(p, n, col, lw, 0, QD_NONE);
-    if (dashed)
-        qd_dash(0, 0);
-}
-
-static void sd_arrow(float x0, float y0, float x1, float y1, qd_rgb col)
-{
-    const float an = atan2f(y1 - y0, x1 - x0);
-    const float h[6] = {x1 - cosf(an - 0.5f) * 5.f, y1 - sinf(an - 0.5f) * 5.f, x1, y1,
-                        x1 - cosf(an + 0.5f) * 5.f, y1 - sinf(an + 0.5f) * 5.f};
-    line2(x0, y0, x1, y1, col, 1.2f);
-    ui_P(h, 3, col, 1.2f, 0, QD_NONE);
-}
-
-/* a wave of kind w (the LFO's: TRI SINE SQR SAW RAMP EXP RAND) at phase u (cycles), -1..1 */
-static float sd_wave(int w, float u)
-{
-    float f = u - floorf(u);
+    const float t = u - (float)(int)u;
+    float tri = t < 0.5f ? 4.f * t - 1.f : 3.f - 4.f * t, saw = 2.f * t - 1.f, pul = t < pw ? 1.f : -1.f, y;
     switch (w) {
-    case 0: return f < 0.5f ? 4.f * f - 1.f : 3.f - 4.f * f;
-    case 1: return sinf(f * UI_TAU);
-    case 2: return f < 0.5f ? 1.f : -1.f;
-    case 3: return 1.f - 2.f * f;
-    case 4: return 2.f * f - 1.f;
-    case 5: return 2.f * expf(-4.f * f) - 1.f;
-    default: {                                          /* RAND: a step a cycle, fixed values */
-        const int k = (int)floorf(u);
-        const unsigned h = (unsigned)k * 2654435761u;
-        return (float)((h >> 8) & 1023u) / 511.5f - 1.f;
+    case QD_SW_TRI: y = tri; break;
+    case QD_SW_SAW: y = saw; break;
+    case QD_SW_PUL: y = pul; break;
+    case QD_SW_NOI: y = (float)((((uint32_t)(u * 53.f) * 2654435761u) >> 22) & 1023u) / 512.f - 1.f; break;
+    case QD_SW_TS: y = tri > saw ? saw : tri; break;    /* (the combined waves: an AND, roughly) */
+    case QD_SW_PT: y = pul > 0.f ? tri : -1.f; break;
+    case QD_SW_PS: y = pul > 0.f ? saw : -1.f; break;
+    case QD_SW_PTS: y = pul > 0.f ? (tri > saw ? saw : tri) : -1.f; break;
+    default: y = 0.f; break;
     }
+    return (int32_t)(y * 1000.f);
+}
+
+static void sd_scope(int x0, int y0, int w, int h, int wave, float pw, float cycles, qd_rgb c, float sync)
+{
+    int i, prev = -1000;
+    for (i = 0; i < w; i++) {
+        float u = (float)i / (float)w * cycles;
+        int y;
+        if (sync > 0.f)                                 /* hard sync: the wave restarts every master cycle */
+            u = (u - (float)(int)(u / sync) * sync) * 2.3f;
+        y = y0 + h / 2 - (int)(sd_wave(wave, u, pw) * (h / 2 - 1) / 1000);
+        if (prev > -1000 && (y > prev + 1 || y < prev - 1))
+            px_vline(x0 + i, y < prev ? y : prev, (y > prev ? y - prev : prev - y) + 1, c);
+        px_pset(x0 + i, y, c);
+        prev = y;
     }
 }
 
-/* ---------------------------------------------------------------- the pictures */
-/* P1.5j: a colour faded by a share (0..1): towards its grey and darker, never under SD_FADE_FLOOR */
-#define SD_FADE_FLOOR 0.3f
-static qd_rgb sd_fade(qd_rgb c, float share)
+/* the chip: a little SID, its three voices' lanes, this one lit */
+static void sd_chip(int x, int y, int lit, qd_rgb c)
 {
-    const float r = (float)((c >> 16) & 255u), g = (float)((c >> 8) & 255u), b = (float)(c & 255u);
-    const float l = 0.3f * r + 0.59f * g + 0.11f * b, sat = share, br = SD_FADE_FLOOR + (1.f - SD_FADE_FLOOR) * share;
-    const float rr = (l + (r - l) * sat) * br, gg = (l + (g - l) * sat) * br, bb = (l + (b - l) * sat) * br;
-    return (qd_rgb)((uint32_t)(rr > 255.f ? 255.f : rr) << 16 | (uint32_t)(gg > 255.f ? 255.f : gg) << 8 |
-                    (uint32_t)(bb > 255.f ? 255.f : bb));
+    int k;
+    px_rect(x, y, 28, 16, PX_DGREY);
+    for (k = 0; k < 7; k++) {
+        px_rect(x + 2 + k * 4, y - 2, 2, 2, UI_G1);
+        px_rect(x + 2 + k * 4, y + 16, 2, 2, UI_G1);
+    }
+    for (k = 0; k < 3; k++)
+        px_rect(x + 3 + k * 8, y + 4, 6, 8, k == lit ? c : UI_G3);
+    px_pset(x + 1, y + 1, UI_G1);
 }
 
-/* P1.5j / P1.5n: the mix's own row (RATIO's and TONE's, the same place): centred, X's end and Y's in their first
- * carriers' colours (faded by their share), a tick at MIX 0, the handle in KNOB 4's orange */
-static void sd_mixrow(const ui_snd_t *v)
+static void sd_osc(const ui_snd_t *v)
 {
-    const float sx = v->has_mix ? (63.f - (float)v->mix) / 127.f : 1.f, sy = 1.f - sx;
-    int o;
-    if (v->has_mix) {
-        const float x0 = 30.f, x1 = 210.f, yy = 170.f, hx = x0 + (x1 - x0) * ((float)v->mix + 64.f) / 127.f;
-        int cx = -1, cy = -1;
-        for (o = 0; o < 4; o++) {
-            if (cx < 0 && ((v->outx >> o) & 1u))
-                cx = o;
-            if (cy < 0 && ((v->outy >> o) & 1u))
-                cy = o;
+    const int n = v->pv[0] < 0 ? 0 : v->pv[0] > 2 ? 2 : v->pv[0], w = v->pv[1], m = v->pv[2];
+    const float pw = 0.04f + (float)v->v[3] / 127.f * 0.92f;
+    px_box(4, SD_TOP + 2, 112, 42, UI_G3);
+    if (w == QD_SW_OFF) {
+        px_ctext(60, SD_TOP + 19, m ? "SOURCE ONLY" : "OFF", UI_G2, PX_FS, 1);
+    } else {
+        if (m & 1)                                      /* SYNC: the master's cycles ghosted */
+            sd_scope(6, SD_TOP + 4, 108, 38, QD_SW_SAW, 0.5f, 2.f, UI_G3, 0.f);
+        sd_scope(6, SD_TOP + 4, 108, 38, w, pw, 2.5f, SNDK[0], m & 1 ? 1.f : 0.f);
+        if (m & 2) {                                    /* RING: the source's triangle, multiplying */
+            int x;
+            for (x = 6; x < 114; x += 4)
+                px_pset(x, SD_TOP + 23 - (int)(sd_wave(QD_SW_TRI, (float)(x - 6) / 108.f * 7.f, 0.5f) * 16 / 1000),
+                        SNDK[4]);
         }
-        line2(x0, yy, x1, yy, UI_G2, 2.f);
-        line2((x0 + x1) * 0.5f, yy - 4.f, (x0 + x1) * 0.5f, yy + 4.f, UI_G1, 1.2f);   /* MIX 0 */
-        ui_O(x0 - 9.f, yy, 4.5f, cx >= 0 ? sd_fade(SNDK[cx], sx) : UI_G1, 1.6f, UI_BG);   /* X */
-        ui_O(x1 + 9.f, yy, 4.5f, cy >= 0 ? sd_fade(SNDK[cy], sy) : UI_G1, 1.6f, UI_BG);   /* Y */
-        ui_RR(hx - 4.f, yy - 7.f, 8.f, 14.f, 2.5f, QD_NONE, 1.f, SNDK[3]);
+    }
+    sd_chip(8, SD_TOP + 52, n, SNDK[0]);
+    if (m) {                                            /* the source: the oscillator before this one */
+        const int src = (n + 2) % 3;
+        px_line(11 + src * 8 + 3, SD_TOP + 50, 11 + n * 8 + 3, SD_TOP + 48, SNDK[4]);
+        px_text(42, SD_TOP + 56, m == 1 ? "SYNC BY" : m == 2 ? "RING BY" : "S+R BY", SNDK[4], PX_FS, 1);
+        {
+            char d[2] = {(char)('1' + src), 0};
+            px_text(74, SD_TOP + 56, d, UI_K3, PX_FS, 1);
+        }
+    } else {
+        char s[8] = "OSC 1";
+        s[4] = (char)('1' + n);
+        px_text(42, SD_TOP + 56, s, UI_G1, PX_FS, 1);
     }
 }
 
-/* P1.6d (the owner: on TONE "something is missing" lower right): MIX as a glyph in KNOB 4's square, as HARM, DTUNE
- * and FDBK have theirs: X's and Y's outputs as two bars as tall as their shares (their carriers' colours), a short
- * slider under them with KNOB 4's handle, X and Y its ends */
-static void sd_mixcell(const ui_snd_t *v)
+/* an ADSR as a polyline in x0..x0+w, y0 (top) .. y1 (foot); a, d, r of span, s 0..smax */
+static void sd_adsr_shape(int a, int d, int s, int r, int span, int smax, qd_rgb c, int x0, int w, int y0, int y1)
 {
-    const float sx = v->has_mix ? (63.f - (float)v->mix) / 127.f : 1.f, sy = 1.f - sx;
-    const float x0 = 148.f, x1 = 212.f, yy = 150.f, hx = x0 + (x1 - x0) * ((float)v->mix + 64.f) / 127.f;
-    int o, cx = -1, cy = -1;
-    if (!v->has_mix)
+    const int seg = (w - 12) / 3;
+    const int xa = x0 + 2 + a * seg / span, xd = xa + d * seg / span, xr = x0 + w - 2,
+              xs = xr - r * seg / span - 6, sy = y1 - s * (y1 - y0) / smax;
+    px_line(x0 + 2, y1, xa, y0, c);
+    px_line(xa, y0, xd, sy, c);
+    px_line(xd, sy, xs, sy, c);
+    px_line(xs, sy, xr, y1, c);
+    px_rect(xa - 1, y0 - 1, 3, 3, SNDK[0]);
+    px_rect(xd - 1, sy - 1, 3, 3, SNDK[1]);
+    px_rect((xd + xs) / 2 - 1, sy - 1, 3, 3, SNDK[2]);
+    px_rect(xs - 1, sy - 1, 3, 3, SNDK[3]);
+}
+
+static void sd_env(const ui_snd_t *v)
+{
+    px_box(4, SD_TOP + 2, 112, 70, UI_G3);
+    if (v->has[4] && v->v[4]) {                         /* LINK: ENV 1's, ghosted, a chain */
+        int k;
+        sd_adsr_shape(v->v[0], v->v[1], v->v[2], v->v[3], 15, 15, UI_G2, 6, 108, SD_TOP + 8, SD_TOP + 66);
+        for (k = 0; k < 4; k++)
+            px_box(44 + k * 8, SD_TOP + 30 + (k & 1), 6, 4, SNDK[4]);
+        px_ctext(60, SD_TOP + 40, "= ENV 1", SNDK[4], PX_FS, 1);
         return;
-    for (o = 0; o < 4; o++) {
-        if (cx < 0 && ((v->outx >> o) & 1u))
-            cx = o;
-        if (cy < 0 && ((v->outy >> o) & 1u))
-            cy = o;
     }
-    {
-        const qd_rgb xc = cx >= 0 ? SNDK[cx] : UI_G1, yc = cy >= 0 ? SNDK[cy] : UI_G1;
-        const float hmax = 30.f, base = 136.f;
-        ui_RR(160.f, base - 4.f - hmax * sx, 12.f, 4.f + hmax * sx, 3.f, QD_NONE, 1.f, sd_fade(xc, 0.35f + 0.65f * sx));
-        ui_RR(188.f, base - 4.f - hmax * sy, 12.f, 4.f + hmax * sy, 3.f, QD_NONE, 1.f, sd_fade(yc, 0.35f + 0.65f * sy));
-        line2(152.f, base + 1.f, 208.f, base + 1.f, UI_G3, 1.f);
-        line2(x0, yy, x1, yy, UI_G2, 2.f);
-        line2((x0 + x1) * 0.5f, yy - 4.f, (x0 + x1) * 0.5f, yy + 4.f, UI_G1, 1.2f);   /* MIX 0 */
-        ui_O(x0 - 8.f, yy, 4.f, xc, 1.5f, UI_BG);       /* X */
-        ui_O(x1 + 8.f, yy, 4.f, yc, 1.5f, UI_BG);       /* Y */
-        ui_RR(hx - 4.f, yy - 7.f, 8.f, 14.f, 2.5f, QD_NONE, 1.f, SNDK[3]);
-    }
+    sd_adsr_shape(v->v[0], v->v[1], v->v[2], v->v[3], 15, 15, UI_K3, 6, 108, SD_TOP + 8, SD_TOP + 66);
 }
 
-/* the operators wired by the algorithm. P1.5j (the owner): shorter, the bus and the speaker higher (SD_BUS_Y), a deep
- * chain zig-zagging; with MIX (the RATIO page): each operator faded by its output's share (an operator only in X's chain
- * X's, only in Y's Y's, in both full), the wires to the bus as thick as their share, and the mix's own row: a slider
- * centred under the drawing, X's end and Y's marked by their carriers' colours, the handle in KNOB 4's orange */
-#define SD_BUS_Y 150.f
-#define SD_OPR 14.f
-static void sd_algo(const ui_snd_t *v)
-{
-    int dep[4] = {0, 0, 0, 0}, row[4], n[4] = {0, 0, 0, 0}, o, t, it, md = 0;
-    unsigned reach[4];
-    float x[4], y[4], sp, sh[4];
-    const unsigned out = (unsigned)(v->outx | v->outy);
-    const float sx = v->has_mix ? (63.f - (float)v->mix) / 127.f : 1.f, sy = 1.f - sx;
-    for (it = 0; it < 4; it++)                          /* a modulator sits above what it modulates */
-        for (t = 0; t < 4; t++)
-            for (o = 0; o < 4; o++)
-                if (o != t && ((v->mod[t] >> o) & 1u) && dep[o] < dep[t] + 1)
-                    dep[o] = dep[t] + 1;
-    for (o = 0; o < 4; o++) {                           /* which outputs each operator reaches (bit 0 X, 1 Y) */
-        reach[o] = ((v->outx >> o) & 1u) | (((v->outy >> o) & 1u) << 1);
-    }
-    for (it = 0; it < 4; it++)
-        for (t = 0; t < 4; t++)
-            for (o = 0; o < 4; o++)
-                if (o != t && ((v->mod[t] >> o) & 1u))
-                    reach[o] |= reach[t];
-    for (o = 0; o < 4; o++)
-        sh[o] = !v->has_mix || reach[o] == 3u || !reach[o] ? 1.f : reach[o] == 1u ? sx : sy;
-    for (o = 0; o < 4; o++) {
-        row[o] = n[dep[o] > 3 ? 3 : dep[o]]++;
-        md = dep[o] > md ? dep[o] : md;
-    }
-    sp = md >= 3 ? 27.f : md == 2 ? 34.f : 40.f;
-    for (o = 0; o < 4; o++) {
-        const int d = dep[o] > 3 ? 3 : dep[o], cnt = n[d];
-        x[o] = 112.f + ((float)row[o] - (float)(cnt - 1) * 0.5f) * 60.f + (md >= 3 && cnt == 1 ? (d % 2 ? 20.f : -20.f) : 0.f);
-        y[o] = SD_BUS_Y - 26.f - (float)d * sp;
-    }
-    line2(18.f, SD_BUS_Y, 196.f, SD_BUS_Y, UI_G2, 1.2f);   /* the bus, the speaker */
-    {
-        const float by = SD_BUS_Y;
-        const float spk[8] = {200.f, by - 6.f, 206.f, by - 6.f, 206.f, by + 6.f, 200.f, by + 6.f};
-        const float co[8] = {206.f, by - 6.f, 214.f, by - 13.f, 214.f, by + 13.f, 206.f, by + 6.f};
-        const float pulse = v->t * 2.f - floorf(v->t * 2.f);
-        ui_P(spk, 4, UI_G1, 1.2f, 1, QD_NONE);
-        ui_P(co, 4, UI_G1, 1.2f, 1, QD_NONE);
-        qd_save();
-        qd_alpha(1.f - pulse);
-        qd_arc(214.f, by, 8.f + pulse * 8.f, -0.7f, 0.7f, UI_G1, 1.2f);
-        qd_restore();
-    }
-    for (o = 0; o < 4; o++)
-        if ((out >> o) & 1u) {                          /* a carrier into the bus (from above: down its right side) */
-            const float ox = dep[o] ? x[o] + SD_OPR + 4.f : x[o];
-            /* P1.5i: MIX: an output's wires as thick as its share (X: -64, Y: +63); P1.5j: faded with it */
-            const float s1 = v->has_mix ? (((v->outx >> o) & 1u) ? sx : sy) : 1.f;
-            const float lw = v->has_mix ? 1.2f + 2.f * s1 : 1.2f;
-            const qd_rgb wc = v->has_mix ? sd_fade(UI_K3, s1) : UI_G1;
-            if (dep[o])
-                line2(x[o] + SD_OPR, y[o], ox, y[o], wc, lw);
-            line2(ox, dep[o] ? y[o] : y[o] + SD_OPR, ox, SD_BUS_Y, wc, lw);
-            ui_O(ox, SD_BUS_Y, 2.f + (v->has_mix ? s1 : 0.f), QD_NONE, 1.f, wc);
-        }
-    for (t = 0; t < 4; t++)                             /* the modulations: arrows, a dot running along each */
-        for (o = 0; o < 4; o++)
-            if (o != t && ((v->mod[t] >> o) & 1u)) {
-                const float dx = x[t] - x[o], dy = y[t] - y[o], l = sqrtf(dx * dx + dy * dy);
-                const float ux = dx / l, uy = dy / l, u = v->t * 1.2f + (float)(o + t) * 0.27f;
-                const float f = u - floorf(u), r0 = SD_OPR + 1.f, r1 = SD_OPR + 2.f;
-                sd_arrow(x[o] + ux * r0, y[o] + uy * r0, x[t] - ux * r1, y[t] - uy * r1, sd_fade(UI_G1, sh[o]));
-                ui_O(x[o] + ux * r0 + (l - r0 - r1) * f * ux, y[o] + uy * r0 + (l - r0 - r1) * f * uy, 1.8f, QD_NONE, 1.f,
-                     sd_fade(UI_K3, sh[o]));
-            }
-    if (v->fb < 4) {                                    /* the feedback: a loop over its operator */
-        const int f = v->fb;
-        qd_arc(x[f] + SD_OPR - 1.f, y[f] - SD_OPR + 3.f, 7.f, UI_PI * 0.75f, UI_PI * 2.25f, sd_fade(UI_G1, sh[f]), 1.4f);
-    }
-    for (o = 0; o < 4; o++) {                           /* the operators: their waves at their ratios */
-        const float r = sd_clampf(v->ratio[o], 0.25f, 4.f);
-        const qd_rgb oc = sd_fade(SNDK[o], sh[o]);
-        float p[2 * 25];
-        int i;
-        ui_O(x[o], y[o], SD_OPR, oc, 1.6f, UI_BG);
-        for (i = 0; i < 25; i++) {
-            const float u = (float)i / 24.f;
-            p[2 * i] = x[o] - 9.f + u * 18.f;
-            p[2 * i + 1] = y[o] - sinf((u * r * 1.5f - v->t * r) * UI_TAU) * 6.f;
-        }
-        ui_P(p, 25, oc, 1.2f, 0, QD_NONE);
-    }
-    sd_mixrow(v);
-
-}
-
-static void sd_tone(const ui_snd_t *v)
-{
-    const float harm = (float)v->v[0] / 100.f, dt = (float)v->v[1] / 100.f;
-    const int fb = v->v[2];
-    float p[2 * 41];
-    int i;
-    /* HARM: the partials (the bright side up the series, the dark down) */
-    for (i = 1; i <= 8; i++) {
-        const float b = (harm + 26.f) / 52.f, a = powf(1.f / (float)i, 2.4f - 2.2f * b);
-        const float x = 18.f + (float)i * 11.f;
-        line2(x, 100.f, x, 100.f - a * 58.f, SNDK[0], 2.f);
-    }
-    /* DTUNE: two waves drifting apart */
-    for (i = 0; i <= 40; i++) {
-        const float u = (float)i / 40.f;
-        p[2 * i] = 132.f + u * 96.f;
-        p[2 * i + 1] = 66.f - sinf((u * 3.f + v->t * 0.5f) * UI_TAU) * 18.f;
-    }
-    ui_P(p, 41, SNDK[1], 1.2f, 0, QD_NONE);
-    for (i = 0; i <= 40; i++) {
-        const float u = (float)i / 40.f;
-        p[2 * i + 1] = 66.f - sinf((u * 3.f * (1.f + dt / 250.f) + v->t * 0.5f + dt / 60.f) * UI_TAU) * 18.f;
-    }
-    ui_P(p, 41, SNDK[1], 1.2f, 0, QD_NONE);
-    /* FDBK: the loop, its wave from sine to saw to noise */
-    for (i = 0; i <= 40; i++) {
-        const float u = (float)i / 40.f, k = (float)fb / 127.f;
-        float s = sinf(u * 2.f * UI_TAU), w = (1.f - k) * s + k * (1.f - 2.f * (u * 2.f - floorf(u * 2.f)));
-        if (fb > 90)
-            w += ((float)(((unsigned)i * 2654435761u >> 9) & 255u) / 128.f - 1.f) * (float)(fb - 90) / 80.f;
-        p[2 * i] = 20.f + u * 96.f;
-        p[2 * i + 1] = 134.f - sd_clampf(w, -1.2f, 1.2f) * 14.f;   /* (P1.5n: higher, the mix row under it) */
-    }
-    ui_P(p, 41, SNDK[2], 1.2f, 0, QD_NONE);
-    qd_arc(68.f, 134.f, 28.f, UI_PI * 1.15f, UI_PI * 1.85f, UI_G2, 1.f);
-    sd_mixcell(v);                                      /* P1.6d: MIX in its own square, lower right (KNOB 4's) */
-}
-
-static void sd_ofs(const ui_snd_t *v)
-{
-    int k;
-    for (k = 0; k < 4; k++) {
-        const float cx = 32.f + (float)k * 58.f, cy = 104.f, a = -UI_PI * 0.5f + (float)v->v[k] / 100.f * UI_PI * 0.75f;
-        ui_O(cx, cy, 22.f, SNDK[k], 1.5f, QD_NONE);
-        line2(cx, cy - 26.f, cx, cy - 22.f, UI_G1, 1.2f);
-        line2(cx, cy, cx + cosf(a) * 18.f, cy + sinf(a) * 18.f, SNDK[k], 2.f);
-        ui_O(cx, cy, 2.5f, QD_NONE, 1.f, SNDK[k]);
-    }
-}
-
-/* an envelope's points: delay, attack to the top, decay to the level, held (or released) */
-static void sd_env_pts(int dly, int atk, int dec, int lev, float *p, float base, float top)
-{
-    const float x0 = 16.f + (float)dly * 0.3f, xa = x0 + 4.f + (float)atk * 0.45f, xd = xa + 4.f + (float)dec * 0.5f;
-    const float yl = base - (base - top) * (float)lev / 127.f;
-    p[0] = 16.f, p[1] = base;
-    p[2] = x0, p[3] = base;
-    p[4] = xa, p[5] = top;
-    p[6] = xd, p[7] = yl;
-    p[8] = 206.f, p[9] = yl;
-}
-
-static void sd_run_dot(const float *p, int n, float u)   /* a red dot along the curve (it plays) */
-{
-    float tot = 0.f, d;
-    int k;
-    for (k = 0; k + 1 < n; k++)
-        tot += sqrtf((p[2 * k + 2] - p[2 * k]) * (p[2 * k + 2] - p[2 * k]) +
-                     (p[2 * k + 3] - p[2 * k + 1]) * (p[2 * k + 3] - p[2 * k + 1]));
-    d = (u - floorf(u)) * tot;
-    for (k = 0; k + 1 < n; k++) {
-        const float l = sqrtf((p[2 * k + 2] - p[2 * k]) * (p[2 * k + 2] - p[2 * k]) +
-                              (p[2 * k + 3] - p[2 * k + 1]) * (p[2 * k + 3] - p[2 * k + 1]));
-        if (d <= l && l > 0.f) {
-            ui_O(p[2 * k] + (p[2 * k + 2] - p[2 * k]) * d / l, p[2 * k + 1] + (p[2 * k + 3] - p[2 * k + 1]) * d / l,
-                 2.2f, QD_NONE, 1.f, UI_RED);
-            return;
-        }
-        d -= l;
-    }
-}
-
-static void sd_openv(const ui_snd_t *v)
-{
-    const float base = 170.f, top = 44.f;
-    float p[10], q[10];
-    int any = 0, k;
-    for (k = 0; k < 5; k++)
-        any |= v->locked[k];
-    line2(16.f, base, 206.f, base, UI_G3, 1.f);
-    if (v->step && any) {                               /* the track's envelope left behind */
-        sd_env_pts(v->tv[4], v->tv[0], v->tv[1], v->tv[2], q, base, top);
-        sd_poly(q, 5, UI_G2, 1.2f, 1);
-    }
-    sd_env_pts(v->v[4], v->v[0], v->v[1], v->v[2], p, base, top);
-    sd_poly(p, 5, UI_K3, 1.6f, 0);
-    if (v->v[4])
-        ui_O(p[2], p[3], 3.4f, QD_NONE, 1.f, SNDK[4]);
-    ui_O(p[4], p[5], 3.4f, QD_NONE, 1.f, SNDK[0]);
-    ui_O(p[6], p[7], 3.4f, QD_NONE, 1.f, SNDK[1]);
-    ui_O((p[6] + p[8]) * 0.5f, p[9], 3.4f, QD_NONE, 1.f, SNDK[2]);
-    ui_RR(216.f, top, 12.f, base - top, 3.f, UI_G2, 1.2f, QD_NONE);   /* LEV */
-    ui_RR(216.f, base - (base - top) * (float)v->v[3] / 127.f, 12.f, (base - top) * (float)v->v[3] / 127.f, 3.f,
-          QD_NONE, 1.f, SNDK[3]);
-    sd_run_dot(p, 5, v->t * 0.5f);
-}
-
-static void sd_switch(float x, float y, int on, qd_rgb col, int icon)
-{
-    ui_RR(x, y - 11.f, 44.f, 22.f, 11.f, on ? col : UI_G2, 1.5f, QD_NONE);
-    ui_O(on ? x + 33.f : x + 11.f, y, 7.f, QD_NONE, 1.f, on ? col : UI_G2);
-    ui_icon(icon, x - 16.f, y, 1.2f, on ? col : UI_G2);
-}
-
-static void sd_trig(const ui_snd_t *v)
-{
-    static const uint8_t MASK[5] = {0, 0xF, 0x1, 0xE, 0xA};   /* eng_quad.c QUAD_PHRT_MASK: C A B1 B2 */
-    static const char *const OP[4] = {"C", "A", "B1", "B2"};
-    const unsigned m = v->v[4] >= 0 && v->v[4] < 5 ? MASK[v->v[4]] : 0;
-    int k;
-    ui_T("A", 22.f, 74.f, 16.f, 600, 0.f, UI_G1, QD_CENTER);
-    ui_T("B", 22.f, 124.f, 16.f, 600, 0.f, UI_G1, QD_CENTER);
-    sd_switch(68.f, 68.f, v->v[0], SNDK[0], UI_IC_PLAY);
-    sd_switch(160.f, 68.f, v->v[1], SNDK[1], UI_IC_RESET);
-    sd_switch(68.f, 118.f, v->v[2], SNDK[2], UI_IC_PLAY);
-    sd_switch(160.f, 118.f, v->v[3], SNDK[3], UI_IC_RESET);
-    for (k = 0; k < 4; k++) {                           /* PHRT: the operators it restarts */
-        const float x = 66.f + (float)k * 36.f;
-        const int on = (int)((m >> k) & 1u);
-        ui_O(x, 162.f, 12.f, on ? SNDK[4] : UI_G2, 1.5f, on ? SNDK[4] : QD_NONE);
-        ui_T(OP[k], x, 166.5f, 12.f, 600, 0.f, on ? UI_BG : UI_G2, QD_CENTER);
-    }
-}
-
-static void sd_keys(const ui_snd_t *v)
-{
-    int k;
-    ui_keyboard(16.f, 150.f, 176.f, 30.f, 36, 0);
-    for (k = 0; k < 3; k++) {                           /* the key scaling: the level falling up the keys */
-        const float y0 = 52.f + (float)k * 22.f, y1 = y0 + (float)v->v[k] * 0.5f;
-        line2(16.f, y0, 192.f, y1 > 144.f ? 144.f : y1, SNDK[k], 2.f);
-    }
-    {   /* VEL: a wedge as tall as its depth */
-        const float h = (float)v->v[3] / 127.f * 120.f;
-        const float w[6] = {204.f, 176.f, 228.f, 176.f, 228.f, 176.f - h};
-        ui_P(w, 3, SNDK[3], 1.5f, 1, QD_NONE);
-    }
-}
-
-/* the filter's response (E2: by its machine, pv[0] its FTYPE, pv[1] FSHAPE, pv[2] FGAIN): LEGACY's LP / HP, LOWPASS 4's
- * steeper skirt, MULTI's LP -> BP -> HP, the combs' teeth at FREQ's harmonics (COMB-: the odd ones) as tall as FDBK and
- * bowed down by LPF, EQ's bell at FREQ as wide as Q and as tall as GAIN (a dip below 0 dB) */
 static void sd_filter(const ui_snd_t *v)
 {
-    const float fc = 16.f + (float)v->v[0] / 12700.f * 200.f;
-    const int ft = v->pv[0], mach = ft <= 2 ? 0 : ft - 2;
-    const float res = (float)(v->has[1] && mach != 5 ? v->v[1] : 0) / 12700.f, sh = (float)v->pv[1] / 127.f;
-    const int ty = mach == 0 ? ft : mach == 1 ? 3 : mach == 2 ? 4 : 0;
-    float p[2 * 81];
-    int i;
-    line2(16.f, 170.f, 224.f, 170.f, UI_G3, 1.f);
-    if (mach == 5) {                                    /* EQ: 0 dB across the middle, the bell up or down */
-        const float gn = (float)v->pv[2] / 64.f, wd = 6.f + (1.f - sh) * 44.f;
-        line2(16.f, 112.f, 224.f, 112.f, UI_G3, 1.f);
-        for (i = 0; i <= 80; i++) {
-            const float x = 16.f + (float)i / 80.f * 208.f, d = (x - fc) / wd;
-            p[2 * i] = x;
-            p[2 * i + 1] = 112.f - gn * 64.f * expf(-d * d);
+    const int mode = v->pv[0], route = v->pv[1];
+    const float fc = (float)v->v[0] / 2047.f, q = (float)v->v[1] / 15.f;
+    const int xc = 8 + (int)(fc * 102.f);
+    int x, prev = -1, n;
+    px_box(4, SD_TOP + 2, 112, 56, UI_G3);
+    for (x = 6; x < 114; x++) {                         /* the response, by the mode's bits */
+        const float f = (float)(x - 6) / (float)(xc - 6 > 1 ? xc - 6 : 1);
+        float lp = f < 1.f ? 1.f : 1.f / (f * f), hp = f > 1.f ? 1.f : f * f;
+        const float bpv = 1.f / (1.f + (f - 1.f) * (f - 1.f) * 6.f);
+        float g = 0.f;
+        int y;
+        if (mode == QD_QF_OFF)
+            g = 1.f;
+        else {
+            if (mode == QD_QF_LP || mode == QD_QF_LPBP || mode == QD_QF_NOTCH || mode == QD_QF_ALL)
+                g += lp;
+            if (mode == QD_QF_HP || mode == QD_QF_BPHP || mode == QD_QF_NOTCH || mode == QD_QF_ALL)
+                g += hp;
+            if (mode == QD_QF_BP || mode == QD_QF_LPBP || mode == QD_QF_BPHP || mode == QD_QF_ALL)
+                g += bpv;
+            if (mode == QD_QF_NOTCH)
+                g -= bpv * 1.4f;
+            g += q * 1.6f / (1.f + (f - 1.f) * (f - 1.f) * 60.f);   /* the resonance's peak */
         }
-        ui_P(p, 81, SNDK[2], 1.6f, 0, QD_NONE);
-        ui_O(fc, 112.f - gn * 64.f, 3.4f, QD_NONE, 1.f, SNDK[1]);
-        line2(fc, 170.f, fc, 176.f, SNDK[0], 2.f);
-        ui_O(fc, 176.f, 3.4f, QD_NONE, 1.f, SNDK[0]);
-        return;
+        g = g < 0.f ? 0.f : g;
+        y = SD_TOP + 50 - (int)(g * 26.f);
+        y = y < SD_TOP + 4 ? SD_TOP + 4 : y;
+        if (prev >= 0)
+            px_line(x - 1, prev, x, y, mode == QD_QF_OFF ? UI_G2 : SNDK[0]);
+        prev = y;
     }
-    if (mach == 3 || mach == 4) {                       /* COMB+ / COMB-: the teeth */
-        const float sp = 14.f + (fc - 16.f) * 0.22f, amp = 20.f + res * 100.f, damp = 0.55f + 0.45f * sh;
-        for (i = 0; i <= 80; i++) {
-            const float x = 16.f + (float)i / 80.f * 208.f;
-            float g = 0.f, h = 1.f;
-            int k;
-            for (k = 1; k < 40; k++) {
-                const float xk = 16.f + (mach == 4 ? ((float)k - 0.5f) : (float)k) * sp, d = (x - xk) / (2.f + 3.f * (1.f - res));
-                if (xk > 230.f)
-                    break;
-                g = fmaxf(g, h * expf(-d * d));
-                h *= damp;
-            }
-            p[2 * i] = x;
-            p[2 * i + 1] = 166.f - g * amp;
-        }
-        ui_P(p, 81, SNDK[2], 1.4f, 0, QD_NONE);
-        if (mach == 4) {                                /* (COMB-: the even places empty, a dim stub each) */
-            int k;
-            for (k = 1; 16.f + (float)k * sp < 222.f; k++)
-                line2(16.f + (float)k * sp, 166.f, 16.f + (float)k * sp, 156.f, UI_G2, 1.4f);
-        }
-        ui_O(16.f + (mach == 4 ? 0.5f : 1.f) * sp, 166.f - amp, 3.4f, QD_NONE, 1.f, SNDK[1]);
-        line2(fc, 170.f, fc, 176.f, SNDK[0], 2.f);
-        ui_O(fc, 176.f, 3.4f, QD_NONE, 1.f, SNDK[0]);
-        return;
+    if (mode != QD_QF_OFF)
+        px_vdots(xc, SD_TOP + 4, 52, UI_G1, 2);
+    if (v->v[3] != 64) {                                /* the envelope's depth: an arrow at the cutoff */
+        const int d = (v->v[3] - 64) / 4;
+        px_line(xc, SD_TOP + 30, xc + d, SD_TOP + 30, SNDK[3]);
+        px_pset(xc + d + (d > 0 ? -1 : 1), SD_TOP + 29, SNDK[3]);
+        px_pset(xc + d + (d > 0 ? -1 : 1), SD_TOP + 31, SNDK[3]);
     }
-    for (i = 0; i <= 80; i++) {                         /* LEGACY, LOWPASS 4, MULTI: as ever, MULTI morphing */
-        const float x = 16.f + (float)i / 80.f * 208.f, d = (x - fc) / 40.f;
-        const float lp = d <= 0.f ? 1.f : 1.f / (1.f + d * d * 2.f), hp = d >= 0.f ? 1.f : 1.f / (1.f + d * d * 2.f);
-        const float bp = 1.f / (1.f + d * d * 3.f);
-        float g = 1.f, pk = res * 50.f * expf(-d * d * 6.f);
-        if (ty == 1)
-            g = lp;
-        else if (ty == 2)
-            g = hp;
-        else if (ty == 3)
-            g = d <= 0.f ? 1.f : 1.f / (1.f + d * d * d * d * 6.f);
-        else if (ty == 4)
-            g = sh <= 0.5f ? lp + (bp - lp) * sh * 2.f : bp + (hp - bp) * (sh - 0.5f) * 2.f;
-        if (!ty)
-            pk = 0.f;
-        p[2 * i] = x;
-        p[2 * i + 1] = 170.f - sd_clampf(g * 90.f + pk, 0.f, 128.f);
+    for (n = 0; n < 3; n++) {                           /* the oscillators routed in */
+        char d[2] = {(char)('1' + n), 0};
+        const int on = route >> n & 1;
+        if (on)
+            px_rect(8 + n * 10, SD_TOP + 62, 8, 9, SNDK[2]);
+        else
+            px_box(8 + n * 10, SD_TOP + 62, 8, 9, UI_G3);
+        px_ctext(12 + n * 10, SD_TOP + 64, d, on ? UI_BG : UI_G2, PX_FS, 1);
     }
-    ui_P(p, 81, SNDK[2], 1.6f, 0, QD_NONE);
-    if (ty) {
-        ui_O(fc, 170.f - sd_clampf(90.f * (ty == 4 && sh > 0.f && sh < 1.f ? 1.f : 1.f) + res * 50.f, 0.f, 128.f), 3.4f,
-             QD_NONE, 1.f, SNDK[1]);
-        line2(fc, 170.f, fc, 176.f, SNDK[0], 2.f);
-        ui_O(fc, 176.f, 3.4f, QD_NONE, 1.f, SNDK[0]);
-        if (v->v[3]) {                                  /* DEPTH: the envelope moves the cutoff */
-            const float l = (float)v->v[3] / 6400.f * 60.f;
-            sd_arrow(fc + 10.f, 110.f, fc + 10.f + l, 110.f, SNDK[3]);
-        }
-    }
+    px_text(42, SD_TOP + 64, v->pv[2] ? "8580" : "6581", UI_G1, PX_FS, 1);
 }
 
-/* E1: AMP in AHD: attack, HOLD a flat top (NOTE: over a note bar, to its end), the decay to 0 (INF: held) */
-static void sd_ahd(const ui_snd_t *v)
+static void sd_chipmodel(const ui_snd_t *v)
 {
-    const float base = 170.f, top = 44.f;
-    const int note = v->v[1] >= 127, inf = v->v[2] >= 127;
-    const float xa = 19.f + (float)v->v[0] * 0.35f;
-    const float xh = note ? xa + 70.f : xa + 3.f + (float)v->v[1] * 0.35f;
-    const float xd = inf ? 222.f : sd_clampf(xh + 3.f + (float)v->v[2] * 0.4f, 0.f, 222.f);
-    const float p[8] = {16.f, base, xa, top, xh, top, xd, inf ? top : base};
-    line2(16.f, base, 222.f, base, UI_G3, 1.f);
-    if (note)                                           /* NOTE: the key's bar, the top ends where it ends */
-        ui_RR(16.f, base + 3.f, xh - 16.f, 7.f, 3.5f, QD_NONE, 1.f, UI_G2);
-    sd_poly(p, 4, UI_K3, 1.6f, 0);
-    if (inf) {
-        const float a[6] = {xd - 5.f, top - 4.f, xd, top, xd - 5.f, top + 4.f};
-        ui_P(a, 3, UI_K3, 1.4f, 0, QD_NONE);
-    }
-    ui_O(xa, top, 3.4f, QD_NONE, 1.f, SNDK[0]);
-    ui_O((xa + xh) * 0.5f, top, 3.4f, QD_NONE, 1.f, SNDK[1]);
-    ui_O(inf ? xd - 8.f : (xh + xd) * 0.5f, inf ? top : (top + base) * 0.5f, 3.4f, QD_NONE, 1.f, SNDK[2]);
-    sd_run_dot(p, 4, v->t * 0.4f);
-}
-
-/* E1: portamento: two note bars, the pitch's trace gliding between them */
-static void sd_port(const ui_snd_t *v)
-{
-    const int mode = v->v[0], rate = v->has[2] && v->v[2];
-    const float y1 = 146.f, y2 = 72.f, xs = 104.f;     /* the low note, the high one, the second's start */
-    const float gw = mode ? 6.f + (float)v->v[1] / 127.f * 96.f : 0.f;
-    const float e1 = mode == 2 ? xs + 22.f : xs - 4.f;  /* (LEGATO: the first bar overlaps the second) */
-    const qd_rgb on = mode ? SNDK[0] : UI_G2;
-    ui_RR(16.f, y1 - 6.f, e1 - 16.f, 12.f, 6.f, QD_NONE, 1.f, UI_G3);
-    ui_RR(xs, y2 - 6.f, 222.f - xs, 12.f, 6.f, QD_NONE, 1.f, UI_G3);
-    if (mode) {                                         /* SLOPE: a ghost of a smaller interval */
-        const float h = (y1 - y2) * 0.5f, w = rate ? gw * 0.5f : gw;
-        const float g[6] = {xs, y1, xs + w, y1 - h, 222.f, y1 - h};
-        sd_poly(g, 3, UI_G2, 1.2f, 1);
-    }
-    {
-        const float x2 = sd_clampf(xs + gw, xs, 222.f);
-        const float p[8] = {16.f, y1, xs, y1, x2, y2, 222.f, y2};
-        ui_P(p, 4, on, 2.2f, 0, QD_NONE);
-        ui_O(x2, y2, 3.4f, QD_NONE, 1.f, mode ? SNDK[1] : UI_G2);
-        if (mode)
-            sd_run_dot(p, 4, v->t * 0.4f);
-    }
-}
-
-/* 2026-10-26, VOICE (mockups/fizz-unison-voice.html): top left a stack of three notes (POLY) or one (MONO) in KNOB 1's
- * blue; the unison voices' waves fanned by DETUNE (the middle one white, the others KNOB 2's green); under them the
- * stereo, L .. R, a dot a voice placed by SPREAD (KNOB 4's orange). The voices over the track's LIMIT (not MONO's: it
- * takes the voices it needs) are hollow and their waves dim: they will not play */
-static void sd_voice(const ui_snd_t *v)
-{
-    const int mono = v->v[0] == 1, n = v->v[1] < 1 ? 1 : v->v[1] > 8 ? 8 : v->v[1];
-    const int lim = v->limit < 1 ? 8 : v->limit, play = mono || n < lim ? n : lim;
-    const float d = (float)v->v[2] / 127.f * 0.16f, spr = (float)v->v[3] / 127.f;
-    int ord[8], j, k, live[8];
-    for (j = 0; j < (mono ? 1 : 3); j++)
-        ui_RR(18.f, (mono ? 44.f : 36.f) + (float)j * 8.f, 22.f, 5.f, 2.5f, QD_NONE, 1.f, SNDK[0]);
-    for (j = 0; j < n; j++)                             /* the middle first (the pool's order) */
-        ord[j] = j, live[j] = 0;
-    for (j = 1; j < n; j++)
-        for (k = j; k > 0; k--) {
-            const int a = 2 * ord[k] - (n - 1), b = 2 * ord[k - 1] - (n - 1);
-            int t;
-            if ((a < 0 ? -a : a) >= (b < 0 ? -b : b))
-                break;
-            t = ord[k], ord[k] = ord[k - 1], ord[k - 1] = t;
-        }
-    for (j = 0; j < play; j++)
-        live[ord[j]] = 1;
-    for (j = n - 1; j >= 0; j--) {
-        const float s = n > 1 ? (float)(2 * j - (n - 1)) / (float)(n - 1) : 0.f, f = 1.f + d * s;
-        const int mid = n == 1 || (s < 0.2f && s > -0.2f);
-        float p[2 * 61];
-        int i;
-        for (i = 0; i <= 60; i++) {
-            const float u = (float)i / 60.f;
-            p[2 * i] = 52.f + u * 166.f;
-            p[2 * i + 1] = 86.f - sinf(u * 2.5f * UI_TAU * f) * 30.f;
-        }
-        if (live[j]) {
-            qd_save(), qd_alpha(0.14f), ui_P(p, 61, mid ? SNDK[2] : SNDK[1], 5.f, 0, QD_NONE), qd_restore();
-            ui_P(p, 61, mid ? SNDK[2] : SNDK[1], mid ? 1.8f : 1.3f, 0, QD_NONE);
-        } else {
-            qd_save(), qd_alpha(0.8f), ui_P(p, 61, UI_G2, 1.f, 0, QD_NONE), qd_restore();
-        }
-    }
-    line2(40.f, 152.f, 200.f, 152.f, UI_G3, 3.f);
-    ui_T("L", 28.f, 156.5f, 12.f, 600, 0.f, UI_G1, QD_CENTER);
-    ui_T("R", 212.f, 156.5f, 12.f, 600, 0.f, UI_G1, QD_CENTER);
-    for (j = 0; j < n; j++) {
-        const float s = n > 1 ? (float)(2 * j - (n - 1)) / (float)(n - 1) : 0.f, x = 120.f + s * spr * 80.f;
-        if (live[j]) {
-            qd_save(), qd_alpha(0.2f), ui_O(x, 152.f, 7.f, QD_NONE, 1.f, SNDK[3]), qd_restore();
-            ui_O(x, 152.f, 4.f, QD_NONE, 1.f, SNDK[3]);
-        } else {
-            ui_O(x, 152.f, 4.f, UI_G2, 1.2f, QD_NONE);
-        }
-    }
-}
-
-/* E3: CRUSH: one sine cycle as stairs (each step as wide as SRR's divider, as tall as BITS' step; both OFF: smooth),
- * the input faint under it; FILTER -> CRUSH or CRUSH -> FILTER below (ROUTE) */
-static void sd_crush(const ui_snd_t *v)
-{
-    const int n = v->pv[0], b = v->pv[1];
-    const float sw = n > 1 ? 2.f + (float)n * 1.6f : 0.f, sh = b ? 92.f / (float)(1 << (b > 8 ? 8 : b)) : 0.f;
-    float p[2 * 121], q[2 * 241];
-    int i, m = 0;
-    for (i = 0; i <= 120; i++) {                        /* the sine, faint */
-        const float u = (float)i / 120.f;
-        p[2 * i] = 16.f + u * 208.f;
-        p[2 * i + 1] = 86.f - sinf(u * UI_TAU) * 46.f;
-    }
-    ui_P(p, 121, UI_G3, 1.2f, 0, QD_NONE);
-    for (i = 0; i <= 120 && m < 240; i++) {             /* the stairs */
-        float x = 16.f + (float)i / 120.f * 208.f, xs = sw > 0.f ? 16.f + floorf((x - 16.f) / sw) * sw : x;
-        float y = sinf((xs - 16.f) / 208.f * UI_TAU) * 46.f;
-        if (sh > 0.f)
-            y = roundf(y / sh) * sh;
-        if (m && (sw > 0.f || sh > 0.f) && q[2 * m - 1] != 86.f - y) {
-            q[2 * m] = x, q[2 * m + 1] = q[2 * m - 1];   /* (a riser) */
-            m++;
-        }
-        q[2 * m] = x, q[2 * m + 1] = 86.f - y;
-        m++;
-    }
-    ui_P(q, m, SNDK[0], 1.8f, 0, QD_NONE);
-    {   /* the chain: FILTER and CRUSH in ROUTE's order */
-        const int after = v->v[2] != 0;
-        const float fx = after ? 72.f : 128.f, cx = after ? 128.f : 72.f, y = 146.f;
-        const float f[8] = {fx + 6.f, y + 5.f, fx + 18.f, y + 5.f, fx + 26.f, y + 13.f, fx + 34.f, y + 15.f};
-        const float st[10] = {cx + 6.f, y + 15.f, cx + 6.f, y + 10.f, cx + 18.f, y + 10.f, cx + 18.f, y + 5.f, cx + 34.f,
-                              y + 5.f};
-        ui_RR(fx, y, 40.f, 20.f, 4.f, UI_G1, 1.2f, QD_NONE);
-        ui_P(f, 4, UI_G1, 1.2f, 0, QD_NONE);
-        ui_RR(cx, y, 40.f, 20.f, 4.f, SNDK[2], 1.4f, QD_NONE);
-        ui_P(st, 5, SNDK[2], 1.4f, 0, QD_NONE);
-        sd_arrow(114.f, y + 10.f, 124.f, y + 10.f, UI_G1);
-    }
-}
-
-/* E4: a modulation source's glyph (QD_MS_*): VEL a wedge, KEY a key, MW a wheel, AT a finger pressing, PB a bent
- * arrow, BR a breath's puffs, RAND a die, F ENV a small ADSR */
-static void sd_mod_icon(int src, float cx, float cy, float s, qd_rgb c)
-{
-    switch (src) {
-    case 1: {
-        const float w[6] = {cx - 7.f * s, cy + 6.f * s, cx + 7.f * s, cy + 6.f * s, cx + 7.f * s, cy - 6.f * s};
-        ui_P(w, 3, c, 1.3f, 1, QD_NONE);
-        break;
-    }
-    case 2:
-        ui_RR(cx - 4.f * s, cy - 7.f * s, 8.f * s, 14.f * s, 1.5f, c, 1.3f, QD_NONE);
-        ui_RR(cx - 2.f * s, cy - 7.f * s, 4.f * s, 8.f * s, 1.f, QD_NONE, 1.f, c);
-        break;
-    case 3:
-        ui_O(cx, cy, 6.5f * s, c, 1.3f, QD_NONE);
-        line2(cx - 6.5f * s, cy, cx + 6.5f * s, cy, c, 1.3f);
-        break;
-    case 4:
-        ui_O(cx, cy - 3.f * s, 3.f * s, QD_NONE, 1.f, c);
-        line2(cx - 7.f * s, cy + 6.f * s, cx + 7.f * s, cy + 6.f * s, c, 1.5f);
-        line2(cx, cy, cx, cy + 4.f * s, c, 1.3f);
-        break;
-    case 5: {
-        const float b[6] = {cx - 7.f * s, cy + 4.f * s, cx, cy + 4.f * s, cx + 6.f * s, cy - 5.f * s};
-        ui_P(b, 3, c, 1.4f, 0, QD_NONE);
-        line2(cx + 6.f * s, cy - 5.f * s, cx + 1.f * s, cy - 5.f * s, c, 1.3f);
-        line2(cx + 6.f * s, cy - 5.f * s, cx + 6.f * s, cy, c, 1.3f);
-        break;
-    }
-    case 6:
-        ui_O(cx - 4.f * s, cy + 2.f * s, 2.5f * s, c, 1.2f, QD_NONE);
-        ui_O(cx + 1.f * s, cy - 2.f * s, 3.f * s, c, 1.2f, QD_NONE);
-        ui_O(cx + 6.f * s, cy - 5.f * s, 2.f * s, c, 1.2f, QD_NONE);
-        break;
-    case 7:
-        ui_icon(UI_IC_DICE, cx, cy, s, c);
-        break;
-    case 8: {
-        const float e[10] = {cx - 7.f * s, cy + 5.f * s, cx - 4.f * s, cy - 5.f * s, cx, cy, cx + 4.f * s, cy,
-                             cx + 7.f * s, cy + 5.f * s};
-        ui_P(e, 5, c, 1.3f, 0, QD_NONE);
-        break;
-    }
-    default:
-        line2(cx - 5.f * s, cy, cx + 5.f * s, cy, c, 1.2f);
-        break;
-    }
-}
-
-/* E4: MOD: the eight slots as rows: the source's glyph, an arrow, the destination; the depth a bar from the middle
- * (the chosen slot bright in a box; an empty one a dash) */
-static void sd_mod(const ui_snd_t *v)
-{
+    const int m = v->v[0];
     int k;
-    for (k = 0; k < 8; k++) {
-        const float y = 44.f + (float)k * 17.f;
-        const int sel = k == v->mod_sel, on = v->mod_src[k] > 0;
-        const qd_rgb c = sel ? UI_K3 : on ? UI_G1 : UI_G3;
-        char n[4] = {(char)('1' + k), 0};
-        if (sel)
-            ui_RR(10.f, y - 8.f, 220.f, 16.f, 4.f, SNDK[4], 1.3f, QD_NONE);
-        ui_T(n, 18.f, y + 4.5f, 12.f, 600, 0.f, sel ? SNDK[4] : UI_G2, QD_CENTER);
-        if (!on) {
-            line2(34.f, y, 46.f, y, UI_G3, 1.2f);
-            continue;
-        }
-        sd_mod_icon(v->mod_src[k], 40.f, y, 0.72f, sel ? SNDK[0] : c);
-        sd_arrow(52.f, y, 62.f, y, c);
-        ui_T(v->mod_dst[k] ? v->mod_dst[k] : "", 68.f, y + 4.5f, 12.f, 600, 0.f, sel ? SNDK[1] : c, QD_LEFT);
-        {
-            const float mid = 180.f, half = 42.f, dx = (float)v->mod_dep[k] / 127.f * half;
-            line2(mid - half, y, mid + half, y, UI_G3, 1.f);
-            line2(mid, y - 5.f, mid, y + 5.f, UI_G2, 1.f);
-            if (dx > 0.5f || dx < -0.5f)
-                ui_RR(dx > 0.f ? mid : mid + dx, y - 3.f, dx > 0.f ? dx : -dx, 6.f, 2.f, QD_NONE, 1.f,
-                      sel ? SNDK[2] : c);
-        }
+    for (k = 0; k < 2; k++) {                           /* the two chips, the chosen one lit */
+        const int x = 10 + k * 54, on = k == m;
+        px_rect(x, SD_TOP + 6, 46, 24, on ? PX_DGREY : UI_BG);
+        px_box(x, SD_TOP + 6, 46, 24, on ? SNDK[0] : UI_G3);
+        px_ctext(x + 23, SD_TOP + 15, k ? "8580" : "6581", on ? UI_K3 : UI_G2, PX_FB, 1);
+    }
+    for (k = 0; k < 11; k++) {
+        px_rect(12 + k * 4, SD_TOP + 4, 2, 2, m == 0 ? UI_G1 : UI_G3);
+        px_rect(66 + k * 4, SD_TOP + 4, 2, 2, m == 1 ? UI_G1 : UI_G3);
+    }
+    {   /* KEY TRACK: a slant; DETUNE: two waves apart */
+        const int kt = v->v[1] * 20 / 127;
+        px_line(10, SD_TOP + 60, 50, SD_TOP + 60 - kt, SNDK[1]);
+        px_text(10, SD_TOP + 64, "KEY", UI_G1, PX_FS, 1);
+        sd_scope(60, SD_TOP + 38, 52, 22, QD_SW_SAW, 0.5f, 3.f, SNDK[2], 0.f);
+        sd_scope(60 + v->v[2] / 16, SD_TOP + 38, 52 - v->v[2] / 16, 22, QD_SW_SAW, 0.5f, 3.f, UI_G1, 0.f);
     }
 }
 
-/* an ADSR's points: delay, attack, decay to sustain, held, release (INF: held to the edge) */
+static void sd_word(const ui_snd_t *v)
+{
+    const int s0 = 8 + v->v[2] * 104 / 127, s1 = 8 + v->v[3] * 104 / 127;
+    int x;
+    px_rect(4, SD_TOP + 2, 112, 66, UI_BG);
+    px_box(4, SD_TOP + 2, 112, 66, PX_GREEN);
+    if (!v->v[0]) {
+        px_ctext(60, SD_TOP + 30, "NO WORD", UI_G2, PX_FB, 1);
+        return;
+    }
+    if (px_text_w(v->txt[0], PX_FB, 1) <= 108)
+        px_ctext(60, SD_TOP + 6, v->txt[0], PX_LGREEN, PX_FB, 1);
+    else
+        px_ctext(60, SD_TOP + 7, v->txt[0], PX_LGREEN, PX_FS, 1);
+    for (x = 8; x < 112; x++) {                         /* a word's digi: bursts, its hiss between */
+        const int in = x >= s0 && x <= s1;
+        const uint32_t h = (uint32_t)(x * 2654435761u + (uint32_t)v->v[0] * 40503u);
+        const int env = (x - 8) % 26 < 18 ? 9 : 3, a = (int)((h >> 27) % (uint32_t)(env + 1));
+        px_vline(x, SD_TOP + 38 - a, 2 * a + 1, in ? PX_LGREEN : PX_GREEN);
+    }
+    px_vline(s0, SD_TOP + 22, 32, SNDK[2]);             /* START, END */
+    px_vline(s1, SD_TOP + 22, 32, SNDK[3]);
+    if (v->v[4]) {                                      /* the loop */
+        px_hline(s0, SD_TOP + 57, s1 - s0, SNDK[4]);
+        px_text(s0 + 1, SD_TOP + 59, v->v[4] == 2 ? "BOUNCE" : "LOOP", SNDK[4], PX_FS, 1);
+    }
+}
+
+static void sd_digi(const ui_snd_t *v)
+{
+    const int bits = v->v[0] < 1 ? 1 : v->v[0] > 4 ? 4 : v->v[0], rate = v->v[1], lvl = v->v[2];
+    const int step = 2 + (7 - rate) * 2, levels = 1 << bits;
+    int k, x;
+    px_text(6, SD_TOP + 4, "$D418", UI_G1, PX_FS, 1);
+    for (k = 0; k < 4; k++) {                           /* the volume register's four bits: those kept lit */
+        const int on = 3 - k < bits;
+        if (on)
+            px_rect(34 + k * 20, SD_TOP + 2, 16, 9, SNDK[0]);
+        else
+            px_box(34 + k * 20, SD_TOP + 2, 16, 9, UI_G3);
+        {
+            char d[2] = {(char)('3' - k), 0};
+            px_ctext(42 + k * 20, SD_TOP + 4, d, on ? UI_BG : UI_G3, PX_FS, 1);
+        }
+    }
+    px_box(4, SD_TOP + 16, 112, 54, UI_G3);
+    for (x = 6; x < 114; x += step) {                   /* the digi: a sine at the bits and the rate */
+        const float s = fz_sinf((float)(x - 6) * 0.11f) * (float)lvl / 127.f;
+        int q = (int)((s * 0.5f + 0.5f) * (float)(levels - 1) + 0.5f);
+        const int y = SD_TOP + 66 - q * 46 / (levels - 1 > 0 ? levels - 1 : 1);
+        px_rect(x, y, step, 2, SNDK[1]);
+    }
+    if (v->v[3])
+        px_text(84, SD_TOP + 60, "BOOST", SNDK[3], PX_FS, 1);
+}
+
 static void sd_adsr(const ui_snd_t *v)
 {
-    const float base = 170.f, top = 44.f;
-    const int dly = v->has[4] && v->arg != 1 ? v->v[4] : 0, inf = v->v[3] >= 127;   /* (E1: AMP's ALGORITHM its MODE) */
-    const float x0 = 16.f + (float)dly * 0.25f, xa = x0 + 3.f + (float)v->v[0] * 0.35f;
-    const float xd = xa + 3.f + (float)v->v[1] * 0.35f, ys = base - (base - top) * (float)v->v[2] / 127.f;
-    const float xs = xd + 30.f, xr = inf ? 222.f : xs + 3.f + (float)v->v[3] * 0.3f;
-    const float p[12] = {16.f, base, x0, base, xa, top, xd, ys, xs, ys, xr, inf ? ys : base};
-    line2(16.f, base, 222.f, base, UI_G3, 1.f);
-    sd_poly(p, 6, UI_K3, 1.6f, 0);
-    if (inf) {
-        const float a[6] = {xr - 5.f, ys - 4.f, xr, ys, xr - 5.f, ys + 4.f};
-        ui_P(a, 3, UI_K3, 1.4f, 0, QD_NONE);
-    }
-    if (dly)
-        ui_O(x0, base, 3.4f, QD_NONE, 1.f, SNDK[4]);
-    ui_O(xa, top, 3.4f, QD_NONE, 1.f, SNDK[0]);
-    ui_O(xd, ys, 3.4f, QD_NONE, 1.f, SNDK[1]);
-    ui_O((xd + xs) * 0.5f, ys, 3.4f, QD_NONE, 1.f, SNDK[2]);
-    ui_O(inf ? xr - 8.f : xr, inf ? ys : base, 3.4f, QD_NONE, 1.f, SNDK[3]);
-    sd_run_dot(p, 6, v->t * 0.4f);
+    px_box(4, SD_TOP + 2, 112, 70, UI_G3);
+    sd_adsr_shape(v->v[0], v->v[1], v->v[2], v->v[3], 127, 127, UI_K3, 6, 108, SD_TOP + 8, SD_TOP + 66);
 }
 
-static void sd_band(const ui_snd_t *v)
+static void sd_port(const ui_snd_t *v)
 {
-    const float lo = 16.f + (float)v->v[0] / 12700.f * 180.f, hi = sd_clampf(lo + 8.f + (float)v->v[1] * 0.8f, 0.f, 224.f);
-    const float p[12] = {16.f, 170.f, sd_clampf(lo - 18.f, 12.f, 224.f), 168.f, lo, 80.f, hi, 80.f,   /* (P1.5j: inside
-                                                         * the frame's margin) */
-                         sd_clampf(hi + 18.f, 16.f, 226.f), 168.f, 224.f, 170.f};
-    line2(16.f, 170.f, 224.f, 170.f, UI_G3, 1.f);
-    sd_poly(p, 6, UI_K3, 1.6f, 0);
-    ui_O(lo, 80.f, 3.4f, QD_NONE, 1.f, SNDK[0]);
-    ui_O(hi, 80.f, 3.4f, QD_NONE, 1.f, SNDK[1]);
-    {   /* E2: BWPOST: the band (a little window) before or after the filter (a little curve in a box) */
-        const int post = v->pv[0] != 0;
-        const float fx = post ? 150.f : 196.f, bx = post ? 196.f : 150.f, y = 38.f;
-        const float f[8] = {fx + 4.f, y + 5.f, fx + 14.f, y + 5.f, fx + 20.f, y + 13.f, fx + 26.f, y + 15.f};
-        ui_RR(fx, y, 30.f, 18.f, 4.f, UI_G1, 1.2f, QD_NONE);
-        ui_P(f, 4, UI_G1, 1.2f, 0, QD_NONE);
-        ui_RR(bx, y, 30.f, 18.f, 4.f, SNDK[3], 1.4f, QD_NONE);
-        ui_RR(bx + 8.f, y + 4.f, 14.f, 10.f, 2.f, QD_NONE, 1.f, SNDK[3]);
-        sd_arrow(184.f, y + 9.f, 192.f, y + 9.f, UI_G1);
-    }
-    if (v->v[2]) {                                      /* KTRK: the band slides up the keys */
-        const float k = (float)v->v[2] / 127.f * 40.f;
-        sd_arrow((lo + hi) * 0.5f - 20.f, 120.f + k * 0.4f, (lo + hi) * 0.5f + 20.f, 120.f - k * 0.4f, SNDK[2]);
-    }
-}
-
-static void sd_drive(const ui_snd_t *v)
-{
-    const float g = (4096.f + (float)(v->v[1] * v->v[1]) * 2.f) / 4096.f, lev = (float)v->v[0] / 127.f;
-    float p[2 * 61], q[2 * 61];
+    const int on = v->v[0], tw = 6 + v->v[1] * 40 / 127;
     int i;
-    const float cy = v->has[2] ? 92.f : 108.f, am = v->has[2] ? 46.f : 58.f;   /* (E1: room for ROUTE's chain) */
-    ui_RR(18.f, 40.f, 16.f, 134.f, 4.f, UI_G2, 1.2f, QD_NONE);   /* LEVEL */
-    ui_RR(18.f, 40.f + 134.f * (1.f - lev), 16.f, 134.f * lev, 4.f, QD_NONE, 1.f, SNDK[0]);
-    line2(52.f, cy, 228.f, cy, UI_G3, 1.f);
-    for (i = 0; i <= 60; i++) {                         /* a sine (grey) through the saturation (green) */
-        const float u = (float)i / 60.f, x = sinf((u * 2.f + v->t * 0.25f) * UI_TAU);
-        const float y = tanhf(x * g * 1.2f) / tanhf(g * 1.2f);
-        p[2 * i] = q[2 * i] = 52.f + u * 176.f;
-        p[2 * i + 1] = cy - x * am;
-        q[2 * i + 1] = cy - y * am;
+    for (i = 0; i < 4; i++)
+        px_sprite(8 + i * 8, SD_TOP + 56, PXS_LIFT, 0);
+    for (i = 0; i < 5; i++)
+        px_sprite(64 + i * 8, SD_TOP + 20, PXS_LIFT, 0);
+    if (on) {
+        px_line(40, SD_TOP + 56, 40 + tw, SD_TOP + 21, SNDK[1]);
+        px_line(40, SD_TOP + 57, 40 + tw, SD_TOP + 22, SNDK[1]);
+    } else {
+        px_vdots(52, SD_TOP + 22, 34, UI_G2, 2);
     }
-    ui_P(p, 61, UI_G2, 1.2f, 0, QD_NONE);
-    ui_P(q, 61, SNDK[1], 2.f, 0, QD_NONE);
-    if (v->has[2]) {                                    /* E1: ROUTE: FILTER then DRIVE (POST), or DRIVE first (PRE) */
-        const int pre = v->v[2] != 0;
-        const float bx[2] = {72.f, 160.f}, by = 156.f, bw = 52.f, bh = 22.f;
-        const float fx = bx[pre ? 1 : 0], dx = bx[pre ? 0 : 1];
-        float f[2 * 9], d[2 * 9];
-        for (i = 0; i <= 8; i++) {                      /* a low-pass's curve; the saturation's S */
-            const float u = (float)i / 8.f, s = u * 2.f - 1.f;
-            f[2 * i] = fx + 8.f + u * (bw - 16.f);
-            f[2 * i + 1] = by + 6.f + (u < 0.55f ? 0.f : (u - 0.55f) * 22.f);
-            d[2 * i] = dx + 8.f + u * (bw - 16.f);
-            d[2 * i + 1] = by + bh * 0.5f - tanhf(s * 3.f) * 6.f;
+    if (on == 2)
+        px_dots(40, SD_TOP + 60, tw + 6, SNDK[0], 2);
+    px_sprite(14, SD_TOP + 40, PXS_AGENT_RUN1, 0);
+    if (v->v[3])
+        px_text(8, SD_TOP + 64, "HR", SNDK[3], PX_FS, 1);
+}
+
+static void sd_voice(const ui_snd_t *v)
+{
+    const int mono = v->v[0], n = v->v[1] < 1 ? 1 : v->v[1] > 8 ? 8 : v->v[1];
+    int k;
+    for (k = 0; k < 8; k++) {
+        const int x = 6 + (k % 4) * 28, y = SD_TOP + 4 + (k / 4) * 32;
+        const int on = k < n, dim = v->limit > 0 && k >= v->limit;
+        px_sprite_sc(x + 3 + (on ? (k - n / 2) * v->v[2] / 127 : 0), y, on ? PXS_ROBOT2 : PXS_ROBOT1, 0, 2,
+                     on ? (dim ? UI_G2 : QD_NONE) : UI_G3);
+    }
+    if (mono)
+        px_text(4, SD_TOP + 68, "MONO", SNDK[0], PX_FS, 1);
+}
+
+static void sd_mod(const ui_snd_t *v)
+{
+    static const char *const SRC[QD_MS_N] = {"-", "VEL", "KEY", "MW", "AT", "PB", "BR", "RAND", "FENV"};
+    int k;
+    for (k = 0; k < QD_NMOD; k++) {
+        const int y = SD_TOP + 1 + k * 9, sel = k == v->mod_sel, src = v->mod_src[k];
+        const qd_rgb c = sel ? UI_K3 : src ? UI_G1 : UI_G3;
+        char d[2] = {(char)('1' + k), 0};
+        if (sel)
+            px_box(2, y - 1, 116, 9, SNDK[4]);
+        px_text(4, y + 1, d, c, PX_FS, 1);
+        px_text(10, y + 1, src >= 0 && src < QD_MS_N ? SRC[src] : "?", sel ? SNDK[0] : c, PX_FS, 1);
+        px_text(30, y + 1, v->mod_dst[k] ? v->mod_dst[k] : "-", sel ? SNDK[1] : c, PX_FS, 1);
+        if (src) {                                      /* the depth: a bar from the middle */
+            const int dep = v->mod_dep[k] * 22 / 127;
+            px_hline(94, y + 3, 1, UI_G2);
+            if (dep > 0)
+                px_rect(94, y + 2, dep, 3, SNDK[2]);
+            else if (dep < 0)
+                px_rect(94 + dep, y + 2, -dep, 3, SNDK[2]);
         }
-        ui_RR(fx, by, bw, bh, 5.f, UI_G2, 1.4f, QD_NONE);
-        ui_P(f, 9, UI_G1, 1.4f, 0, QD_NONE);
-        ui_RR(dx, by, bw, bh, 5.f, SNDK[2], 1.6f, QD_NONE);
-        ui_P(d, 9, SNDK[1], 1.6f, 0, QD_NONE);
-        sd_arrow(bx[0] + bw + 4.f, by + bh * 0.5f, bx[1] - 4.f, by + bh * 0.5f, UI_G1);
+    }
+}
+
+static void sd_amp(const ui_snd_t *v)
+{
+    const int lvl = v->v[0] * 60 / 127, vel = v->v[1], drv = v->v[2];
+    int x;
+    px_box(10, SD_TOP + 6, 10, 62, UI_G3);              /* LEVEL a fader */
+    px_rect(11, SD_TOP + 67 - lvl, 8, lvl, SNDK[0]);
+    for (x = 0; x < 30; x++)                            /* VEL a wedge */
+        px_vline(28 + x, SD_TOP + 67 - x * (vel + 20) / 147, x * (vel + 20) / 147 + 1, x & 1 ? UI_G3 : SNDK[1]);
+    {   /* DRIVE: a sine through the clip */
+        int prev = -1;
+        for (x = 0; x < 50; x++) {
+            float s = fz_sinf((float)x * 0.25f) * (1.f + (float)drv / 32.f);
+            int y;
+            s = s > 1.f ? 1.f : s < -1.f ? -1.f : s;
+            y = SD_TOP + 36 - (int)(s * 22.f);
+            if (prev >= 0)
+                px_line(64 + x - 1, prev, 64 + x, y, SNDK[2]);
+            prev = y;
+        }
+    }
+}
+
+static void sd_crush(const ui_snd_t *v)
+{
+    const int bits = v->v[0], srr = v->v[1];
+    const int levels = bits ? 2 + (127 - bits) / 10 : 64, step = srr ? 1 + srr / 8 : 1;
+    int x;
+    px_box(4, SD_TOP + 2, 112, 70, UI_G3);
+    for (x = 6; x < 114; x += step) {
+        const float s = fz_sinf((float)(x - 6) * 0.07f);
+        const int q = (int)(s * (float)levels / 2.f);
+        px_rect(x, SD_TOP + 37 - q * 30 / (levels / 2 > 0 ? levels / 2 : 1), step, 2, SNDK[0]);
+    }
+}
+
+static int32_t lfo_wave(int w, float u)                 /* -1000..1000 */
+{
+    const float t = u - (float)(int)u;
+    switch (w) {
+    case QD_LW_TRI: return (int32_t)((t < 0.5f ? 4.f * t - 1.f : 3.f - 4.f * t) * 1000.f);
+    case QD_LW_SINE: return (int32_t)(fz_sinf(t * UI_TAU) * 1000.f);
+    case QD_LW_SAW: return (int32_t)((1.f - 2.f * t) * 1000.f);
+    case QD_LW_SQR: return t < 0.5f ? 1000 : -1000;
+    case QD_LW_SH: return (int32_t)(((((uint32_t)(u * 4.f + 7.f) * 2654435761u) >> 21) & 2047u) - 1024u);
+    case QD_LW_EXP: return (int32_t)((1.f - t) * (1.f - t) * (1.f - t) * 2000.f - 1000.f);
+    default: return (int32_t)((2.f * t - 1.f) * 1000.f);
     }
 }
 
 static void sd_lfo(const ui_snd_t *v)
 {
-    const float spd = (float)(v->v[0] < 0 ? -v->v[0] : v->v[0]) / 100.f, dep = (float)v->v[2] / 6400.f;
-    const float cyc = sd_clampf(1.f + spd / 16.f + (float)(v->v[1] % 12) * 0.25f, 1.f, 6.f);
-    const int fade = v->pv[2];                          /* (P1.5k: FADE on the WAVE page now) */
-    float p[2 * 81], e[2 * 21];
-    int i;
-    line2(16.f, 108.f, 224.f, 108.f, UI_G3, 1.f);
-    for (i = 0; i <= 80; i++) {                         /* the wave's shape at full depth, faint */
-        const float u = (float)i / 80.f;
-        p[2 * i] = 16.f + u * 208.f;
-        p[2 * i + 1] = 108.f - sd_wave(v->pv[0], u * cyc + v->t * spd / 32.f) * 60.f;
-    }
-    sd_poly(p, 81, UI_G3, 1.2f, 1);
-    for (i = 0; i <= 80; i++) {
-        const float u = (float)i / 80.f;
-        const float env = fade < 0 ? sd_clampf(u * 64.f / (float)(-fade), 0.f, 1.f)
-                        : fade > 0 ? sd_clampf(1.f - u * (float)fade / 64.f, 0.f, 1.f) : 1.f;
-        p[2 * i] = 16.f + u * 208.f;
-        p[2 * i + 1] = 108.f - sd_wave(v->pv[0], u * cyc + v->t * spd / 32.f) * 60.f * dep * env;
-    }
-    ui_P(p, 81, SNDK[0], 1.6f, 0, QD_NONE);
-    if (fade) {                                         /* FADE: the envelope over it */
-        for (i = 0; i <= 20; i++) {
-            const float u = (float)i / 20.f;
-            const float env = fade < 0 ? sd_clampf(u * 64.f / (float)(-fade), 0.f, 1.f)
-                                       : sd_clampf(1.f - u * (float)fade / 64.f, 0.f, 1.f);
-            e[2 * i] = 16.f + u * 208.f;
-            e[2 * i + 1] = 108.f - 60.f * (dep < 0.f ? -dep : dep) * env;
-        }
-        sd_poly(e, 21, UI_G1, 1.2f, 1);
-    }
-    if (v->has[3] && v->txt[3][0]) {                    /* P1.5k: DEST: its name big, an arrow from the wave to it */
-        const int none = !strcmp(v->txt[3], "NONE");
-        ui_T(v->txt[3], 224.f, 64.f, 22.f, 300, 0.f, none ? UI_G2 : SNDK[3], QD_RIGHT);
-        if (!none)
-            sd_arrow(150.f, 108.f - 30.f, 224.f - ui_TW(v->txt[3], 22.f, 300, 0.f) - 6.f, 58.f, SNDK[3]);
+    const int w = v->pv[0], dep = v->v[2] - 64;
+    const float cyc = 1.f + (float)v->v[0] / 32.f;
+    int x, prev = -1;
+    px_box(4, SD_TOP + 2, 112, 70, UI_G3);
+    px_hline(5, SD_TOP + 37, 110, UI_G3);
+    for (x = 0; x < 108; x++) {
+        const int y = SD_TOP + 37 - (int)(lfo_wave(w, (float)x / 108.f * cyc + v->t * cyc * 0.2f) * dep * 30 / 64000);
+        if (prev >= 0)
+            px_line(6 + x - 1, prev, 6 + x, y, UI_LFO_COL[v->arg % 3]);
+        prev = y;
     }
 }
 
 static void sd_lfoshape(const ui_snd_t *v)
 {
-    static const float NOTE[3] = {16.f, 86.f, 156.f};
     const int w = v->v[0], tr = v->v[2];
-    const float ph = (float)v->v[1] / 128.f;
-    float p[2 * 141];
-    int i, n = 0;
-    line2(16.f, 108.f, 224.f, 108.f, UI_G3, 1.f);
-    for (i = 0; i < 3; i++)                             /* three notes: where the wave may restart */
-        line2(NOTE[i], 170.f, NOTE[i], 160.f, UI_G1, 2.f);
-    for (i = 0; i <= 140; i++) {
-        const float x = 16.f + (float)i / 140.f * 208.f;
-        const int k = x >= NOTE[2] ? 2 : x >= NOTE[1] ? 1 : 0;
-        const float since = (x - NOTE[k]) / 52.f, all = (x - 16.f) / 52.f;
-        float u = tr == 0 ? all + ph : since + ph, y;     /* FREE: on and on; TRIG / HOLD / ONE / HALF: from each note */
-        if (tr == 3 && since > 1.f)
-            u = 1.f + ph;                               /* ONE: a cycle, then it stays */
-        else if (tr == 4 && since > 0.5f)
-            u = 0.5f + ph;                              /* HALF: half a cycle */
-        else if (tr == 2)
-            u = ph;                                     /* HOLD: held at the note's value */
-        y = sd_wave(w, u);
-        p[2 * n] = x;
-        p[2 * n++ + 1] = 108.f - y * 50.f;
+    int n, x;
+    px_box(4, SD_TOP + 2, 112, 70, UI_G3);
+    for (n = 0; n < 3; n++) {                           /* three notes, the wave restarting by its TRIG */
+        const int x0 = 6 + n * 36;
+        int prev = -1;
+        px_rect(x0, SD_TOP + 66, 30, 3, UI_G2);
+        for (x = 0; x < 34; x++) {
+            float u = (float)x / 34.f + (float)v->v[1] / 127.f;
+            int y;
+            if (tr == QD_LT_FREE)
+                u += (float)n;
+            if ((tr == QD_LT_ONE && x > 30) || (tr == QD_LT_HALF && x > 16))
+                u = tr == QD_LT_HALF ? 0.5f : 0.99f;
+            y = SD_TOP + 34 - (int)(lfo_wave(w, u) * 24 / 1000);
+            if (prev >= 0)
+                px_line(x0 + x - 1, prev, x0 + x, y, UI_LFO_COL[v->arg % 3]);
+            prev = y;
+        }
+        px_rect(x0, SD_TOP + 34 - (int)(lfo_wave(w, (float)v->v[1] / 127.f) * 24 / 1000) - 1, 3, 3, SNDK[1]);
     }
-    ui_P(p, n, SNDK[0], 1.6f, 0, QD_NONE);
-    for (i = 0; i < 3; i++)                             /* PHASE: where each restart begins */
-        if (tr || !i)
-            ui_O(NOTE[i], 108.f - sd_wave(w, ph) * 50.f, 3.4f, QD_NONE, 1.f, SNDK[1]);
 }
 
-/* P1.5b: the keyboard on: a strip under the head, the keys as they play (SCALE: the 16 W keys, the roots brighter;
- * FULL: the 27 keys as the keybed, the scale's notes lit), a sounding key in the track's colour */
-static void sd_keys_strip(const ui_snd_t *v, qd_rgb tc)
+/* ---------------------------------------------------------------- the keys strip, the dice, the popup */
+static void sd_keys_strip(const ui_snd_t *v)
 {
     static const uint8_t BLK[27] = {0, 1, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0};
     int i, w = 0;
-    (void)tc;                                           /* (2026-11-10: the keys are REC's orange, not the track's) */
     if (v->keys == 1) {
-        for (i = 0; i < 16; i++)                        /* (2026-11-10: orange, boxy keys, a little taller) */
-            ui_rec_key(8.f + (float)i * 14.f, 25.f, 12.f, 10.f, v->kst[i]);
+        for (i = 0; i < 16; i++)
+            ui_rec_key(8.f + (float)i * 14.f, 160.f, 12.f, 12.f, v->kst[i]);
         return;
     }
-    for (i = 0; i < 27; i++) {                          /* FULL: the whites a row, the blacks over their gaps */
-        const int st = v->kst[i];
-        if (!BLK[i]) {                                  /* (2026-11-10: orange, boxy) */
-            ui_rec_key(8.f + (float)w * 14.f, 27.f, 12.f, 8.f, st);
-            w++;
-        } else {
-            const float x = 8.f + (float)w * 14.f - 4.5f;
-            ui_RR(x, 24.f, 7.f, 3.f, 0.8f, QD_NONE, 1.f, st & 4 ? UI_REC_KEY : (st & 3) ? UI_REC_KEY : UI_G3);
-        }
+    for (i = 0; i < 27; i++) {
+        if (!BLK[i])
+            ui_rec_key(8.f + (float)(w++) * 14.f, 162.f, 12.f, 10.f, v->kst[i]);
+        else
+            px_rect(4 + w * 7 - 2, 79, 3, 2, (v->kst[i] & 4) || (v->kst[i] & 3) ? UI_REC_KEY : UI_G3);
     }
 }
 
-
-/* ---------------------------------------------------------------- P1.5c: randomise's pictures, in FIZZ's neon lines */
-static void sd_glow(const float *p, int n, int close, qd_rgb col, float lw)   /* a line three times: wide faint, the line */
+static void sd_dice(float u, float t, int shake)
 {
-    static const float W[3] = {3.4f, 2.f, 1.f}, AL[3] = {0.14f, 0.3f, 1.f};
-    const float a0 = qd_get_alpha();
-    int i;
-    for (i = 0; i < 3; i++) {
-        qd_save();
-        qd_alpha(a0 * AL[i]);
-        ui_P(p, n, col, lw * W[i], close, QD_NONE);
-        qd_restore();
-    }
-}
-static float sd_hash(int k) { const float h = sinf((float)k * 127.1f) * 43758.5f; return h - floorf(h); }
-
-/* the dice: two tumbling, their faces flicking, settling as u reaches 1 */
-static void sd_dice(float u, float t)
-{
-    static const float PIP[7][6][2] = {{{0}}, {{0, 0}}, {{-1, -1}, {1, 1}}, {{-1, -1}, {0, 0}, {1, 1}},
-        {{-1, -1}, {1, -1}, {-1, 1}, {1, 1}}, {{-1, -1}, {1, -1}, {0, 0}, {-1, 1}, {1, 1}},
-        {{-1, -1}, {1, -1}, {-1, 0}, {1, 0}, {-1, 1}, {1, 1}}};
-    static const int NP[7] = {0, 1, 2, 3, 4, 5, 6};
-    int d;
-    for (d = 0; d < 2; d++) {
-        const qd_rgb col = d ? 0xff3ca0u : 0x28e1ffu;
-        const float spin = (1.f - u) * (1.f - u) * (d ? -9.f : 11.f), x = 120.f + (d ? 34.f : -34.f) - (1.f - u) * (d ? -30.f : 30.f);
-        const float y = 106.f - fabsf(sinf(u * 9.f + (float)d)) * 26.f * (1.f - u), h = 20.f;
-        const int face = 1 + (int)(sd_hash((int)(t * 16.f) + d * 31) * 6.f) % 6;
-        float p[8];
-        int k;
-        for (k = 0; k < 4; k++) {
-            const float an = spin + (float)k * UI_PI * 0.5f + UI_PI * 0.25f;
-            p[2 * k] = x + cosf(an) * h * 1.414f;
-            p[2 * k + 1] = y + sinf(an) * h * 1.414f;
-        }
-        sd_glow(p, 4, 1, col, 1.6f);
-        for (k = 0; k < NP[face]; k++) {
-            const float px = PIP[face][k][0] * 9.f, py = PIP[face][k][1] * 9.f;
-            ui_O(x + px * cosf(spin) - py * sinf(spin), y + px * sinf(spin) + py * cosf(spin), 2.6f, QD_NONE, 1.f, col);
-        }
-    }
-}
-
-/* P1.6d: B9 held: the two dice where they will start their roll, shaking harder as u (0..1, a second) grows, a ring
- * closing round them as the roll nears */
-static void sd_dice_shake(float u, float t)
-{
-    int d;
-    for (d = 0; d < 2; d++) {
-        const qd_rgb col = d ? 0xff3ca0u : 0x28e1ffu;
-        const float amp = 1.f + u * u * 7.f, h = 20.f;
-        const float x = 120.f + (d ? 34.f : -34.f) - (d ? -30.f : 30.f) + sinf(t * (40.f + 30.f * u) + (float)d * 2.f) * amp;
-        const float y = 106.f + cosf(t * (47.f + 30.f * u) + (float)d) * amp * 0.7f;
-        const float spin = sinf(t * 23.f + (float)d) * 0.18f * u;
-        float p[8];
-        int k;
-        for (k = 0; k < 4; k++) {
-            const float an = spin + (float)k * UI_PI * 0.5f + UI_PI * 0.25f;
-            p[2 * k] = x + cosf(an) * h * 1.414f;
-            p[2 * k + 1] = y + sinf(an) * h * 1.414f;
-        }
-        sd_glow(p, 4, 1, col, 1.6f);
-        ui_O(x, y, 2.6f, QD_NONE, 1.f, col);
-    }
-    {   /* the second, as a ring closing */
-        float p[2 * 33];
-        int i, n = 1 + (int)(u * 32.f);
-        for (i = 0; i < n && i <= 32; i++) {
-            const float an = -UI_PI / 2.f + (float)i / 32.f * UI_TAU;
-            p[2 * i] = 120.f + cosf(an) * 70.f, p[2 * i + 1] = 106.f + sinf(an) * 56.f;
-        }
-        if (n > 1)
-            ui_P(p, n > 33 ? 33 : n, UI_G2, 1.4f, 0, QD_NONE);
-    }
-}
-
-/* P1.6d: a machine's response as a small glyph (menu order: MULTI LOWPASS 4 LEGACY COMB- COMB+ EQ) in w x h at x, y */
-static void sd_machine_glyph(int k, float x, float y, float w, float h, qd_rgb c)
-{
-    float p[2 * 25];
-    int i;
-    for (i = 0; i <= 24; i++) {
-        const float u = (float)i / 24.f;
-        float g;
-        switch (k) {
-        case 0: g = 0.5f + 0.4f * expf(-(u - 0.5f) * (u - 0.5f) * 40.f) - 0.25f * fabsf(u - 0.5f); break;   /* band */
-        case 1: g = u < 0.55f ? 0.85f : 0.85f - (u - 0.55f) * 3.2f; break;            /* 24 dB */
-        case 2: g = u < 0.6f ? 0.8f + 0.1f * u : 0.86f - (u - 0.6f) * 1.6f; break;    /* 12 dB */
-        case 3: g = 0.3f + 0.6f * powf(fabsf(sinf(u * UI_PI * 3.5f)), 6.f); break;   /* COMB-: teeth between */
-        case 4: g = 0.35f + 0.55f * powf(fabsf(cosf(u * UI_PI * 3.5f)), 6.f); break;  /* teeth */
-        default: g = 0.45f + 0.45f * expf(-(u - 0.5f) * (u - 0.5f) * 60.f); break;   /* a bell */
-        }
-        g = g < 0.f ? 0.f : g > 1.f ? 1.f : g;
-        p[2 * i] = x + u * w, p[2 * i + 1] = y + h - g * h;
-    }
-    ui_P(p, 25, c, 1.5f, 0, QD_NONE);
-    line2(x, y + h + 1.f, x + w, y + h + 1.f, UI_G3, 1.f);
-}
-
-/* the bottle: filling with rising bubbles while held (u 0..1), then (burst) the cork flies and it bursts */
-static void sd_bottle(float u, int burst, float t)
-{
-    static const qd_rgb GLASS = 0x1fd47eu, CHAMP = 0xf3d9a4u, FOIL = 0xffd23fu;
-    const float cx = 120.f, top = burst ? 62.f : 62.f, bot = 176.f;
-    const float body[] = {cx - 24.f, bot, cx - 24.f, 112.f, cx - 20.f, 100.f, cx - 9.f, 86.f, cx - 9.f, top,
-                          cx + 9.f, top, cx + 9.f, 86.f, cx + 20.f, 100.f, cx + 24.f, 112.f, cx + 24.f, bot};
+    const int dx = shake ? (int)(fz_sinf(t * 40.f) * 3.f * u) : 0, face = 1 + (int)(t * 7.f) % 6;
+    static const uint8_t PIP[7][7] = {{0}, {4}, {0, 8}, {0, 4, 8}, {0, 2, 6, 8}, {0, 2, 4, 6, 8}, {0, 2, 3, 5, 6, 8}};
     int k;
-    sd_glow(body, 10, 1, GLASS, 1.5f);
-    {   /* the foil on the neck */
-        const float f[8] = {cx - 9.f, top + 16.f, cx - 9.f, top, cx + 9.f, top, cx + 9.f, top + 16.f};
-        sd_glow(f, 4, 0, FOIL, 1.2f);
+    px_rect(16, 20, 88, 64, UI_BG);
+    px_rbox(44 + dx, 30, 32, 32, UI_K3, UI_K3);
+    for (k = 0; k < face; k++) {
+        const int p = PIP[face][k];
+        px_rect(48 + dx + (p % 3) * 9, 34 + (p / 3) * 9, 5, 5, UI_BG);
     }
-    {   /* the wine, its level rising with u (full at the burst) */
-        const float lv = burst ? 104.f : bot - 4.f - (bot - 112.f) * u;
-        const float w[4] = {cx - 21.f, lv, cx + 21.f, lv};
-        sd_glow(w, 2, 0, CHAMP, 1.3f);
-        for (k = 0; k < (burst ? 0 : 4 + (int)(u * 14.f)); k++) {   /* bubbles rising inside */
-            const float ph = fmodf(t * (0.8f + sd_hash(k) * 0.9f) + sd_hash(k + 7), 1.f);
-            const float bx = cx - 16.f + sd_hash(k + 3) * 32.f, by = bot - 6.f - ph * (bot - 6.f - lv);
-            ui_O(bx, by, 1.2f + sd_hash(k + 11) * 1.8f, CHAMP, 1.2f, QD_NONE);
-        }
-    }
-    if (!burst) {                                       /* the cork, pushed up as it fills */
-        const float cy = top - 8.f - u * u * 6.f;
-        const float c[8] = {cx - 7.f, top, cx - 8.f, cy - 6.f, cx + 8.f, cy - 6.f, cx + 7.f, top};
-        sd_glow(c, 4, 0, CHAMP, 1.4f);
-        return;
-    }
-    {   /* the burst: the cork away, a fountain of bubbles, rays */
-        const float cy = top - 14.f - u * 120.f;
-        const float c[8] = {cx - 7.f, cy + 10.f, cx - 8.f, cy - 2.f, cx + 8.f, cy - 2.f, cx + 7.f, cy + 10.f};
-        if (cy > 30.f)
-            sd_glow(c, 4, 1, CHAMP, 1.4f);
-        qd_save();
-        qd_alpha(qd_get_alpha() * (1.f - u));
-        for (k = 0; k < 14; k++) {
-            const float an = -UI_PI * 0.5f + (sd_hash(k) - 0.5f) * 1.9f, r = 10.f + u * (50.f + sd_hash(k + 5) * 40.f);
-            ui_O(cx + cosf(an) * r, top - 4.f + sinf(an) * r + u * u * 30.f, 1.5f + sd_hash(k + 2) * 2.5f,
-                 k % 3 ? CHAMP : FOIL, 1.3f, QD_NONE);
-        }
-        for (k = 0; k < 8; k++) {
-            const float an = (float)k / 8.f * UI_TAU, r0 = 12.f + u * 30.f, r1 = r0 + 10.f;
-            const float l[4] = {cx + cosf(an) * r0, top - 4.f + sinf(an) * r0, cx + cosf(an) * r1, top - 4.f + sinf(an) * r1};
-            sd_glow(l, 2, 0, FOIL, 1.2f);
-        }
-        qd_restore();
-    }
+    px_ctext(60, 70, shake ? "SHAKE" : "ROLL", UI_K3, PX_FS, 1);
 }
 
-/* ---------------------------------------------------------------- the screen */
-/* ---------------------------------------------------------------- FIZZ MIDI (e): the MIDI track's editor */
-/* mockups/fizz-midi-track.html screens 4..8 (approved, the rings gone): the editor's frame; the head: the seven pages'
- * dots, MIDI (magenta; a step held: STEP n, white), the MIDI OUT channel top right by a DIN socket (ALGORITHM's pink);
- * four bars in the knobs' colours (the last turned glows), an untouched slot a dashed empty bar; under each its CC
- * number and its value (an untouched one a dash). SHIFT held: the bars dim, the CC numbers big in chips (the one turned
- * filled). A step held: its lock a filled chip, the track's own value a white tick across the bar */
-#define MS_BT 40.f
-#define MS_BB 166.f
-static float ms_x(int k) { return 7.f + (float)k * 56.5f + 28.25f; }
-static void ms_bar(const ui_snd_t *v, int k)
-{
-    const float x0 = ms_x(k) - 12.f, bw = 24.f, bh = MS_BB - MS_BT;
-    const qd_rgb col = SNDK[k];
-    const float a = v->shift ? 0.25f : 1.f;
-    float h;
-    if (!v->has[k]) {                                   /* untouched: silent */
-        static const float D[2] = {4.f, 4.f};
-        qd_save();
-        qd_dash(D, 2);
-        ui_RR(x0, MS_BT, bw, bh, 6.f, UI_G2, 1.4f, QD_NONE);
-        qd_restore();
-        return;
-    }
-    h = (float)v->v[k] / 127.f * bh;
-    h = h < 4.f ? 4.f : h;
-    qd_save();
-    qd_alpha(a);
-    ui_RR(x0, MS_BT, bw, bh, 6.f, QD_NONE, 1.f, UI_G3);
-    if (v->last == k && !v->shift) {                    /* the knob turned last: its bar glows */
-        qd_alpha(a * 0.16f);
-        ui_RR(x0 - 4.f, MS_BB - h - 4.f, bw + 8.f, h + 8.f, 9.f, QD_NONE, 1.f, col);
-        qd_alpha(a * 0.3f);
-        ui_RR(x0 - 2.f, MS_BB - h - 2.f, bw + 4.f, h + 4.f, 7.5f, QD_NONE, 1.f, col);
-    }
-    qd_alpha(a * (v->last == k ? 0.95f : 0.8f));
-    ui_RR(x0, MS_BB - h, bw, h, 6.f, QD_NONE, 1.f, col);
-    qd_alpha(a * 0.75f);
-    ui_RR(x0 + 2.f, MS_BB - h + 2.f, bw - 4.f, 3.f, 1.5f, QD_NONE, 1.f, UI_K3);   /* the value's cap */
-    qd_restore();
-    if (v->step && v->locked[k] && v->tv[k] >= 0) {     /* a lock: the track's own value, a tick across */
-        const float y = MS_BB - (float)v->tv[k] / 127.f * bh;
-        qd_save();
-        qd_alpha(0.9f);
-        line2(x0 - 5.f, y, x0 + bw + 5.f, y, UI_K3, 2.f);
-        qd_restore();
-    }
-}
+/* ---------------------------------------------------------------- a MIDI track's page */
 static void sd_midi(const ui_snd_t *v)
 {
     const qd_rgb hc = v->step ? UI_K3 : UI_MIDI_HEAD;
     char n[12], head[16];
-    float w;
     int k;
-    ui_RR(0.f, 0.f, (float)QD_W, (float)QD_H, 8.f, v->step ? UI_SND_FRAME_STEP : UI_SND_FRAME_TRACK, 3.f, QD_NONE);
-    for (k = 0; k < 7; k++)                             /* the seven pages */
-        ui_O(12.6f + (float)k * 9.f, 14.f, 2.6f, k == v->ipg ? hc : UI_G2, 1.f, k == v->ipg ? hc : QD_NONE);
+    px_box(0, 0, 120, 120, v->step ? UI_SND_FRAME_STEP : UI_SND_FRAME_TRACK);
+    px_box(1, 1, 118, 118, v->step ? UI_SND_FRAME_STEP : UI_SND_FRAME_TRACK);
+    for (k = 0; k < 7; k++)
+        px_rect(5 + k * 4, 5, 2, 2, k == v->ipg ? hc : UI_G2);
     head[0] = 0;
     if (v->step)
         cat(cat(head, "STEP "), ui_itoa(n, v->step));
     else
         cat(head, "MIDI");
-    ui_T(head, 79.f, 18.5f, 12.f, 600, 0.8f, hc, QD_LEFT);
-    {   /* the MIDI OUT channel (OFF grey) */
-        const char *ch = v->mch ? ui_itoa(n, v->mch) : "OFF";
-        const qd_rgb cc = v->mch ? UI_KALG : UI_G2;
-        w = ui_T(ch, 230.f, 20.f, 14.f, 300, 0.f, cc, QD_RIGHT);
-        din5(230.f - w - 11.f, 14.5f, 7.f, cc);
-    }
-    for (k = 0; k < 4; k++)
-        ms_bar(v, k);
+    px_text(36, 4, head, hc, PX_FS, 1);
+    px_rtext(115, 4, v->mch ? ui_itoa(n, v->mch) : "OFF", v->mch ? UI_KALG : UI_G2, PX_FS, 1);
     for (k = 0; k < 4; k++) {
-        const float x = ms_x(k);
-        const int on = v->shift && v->shift_k == k;
+        const int x = 8 + k * 28, cx = x + 10;
         char lab[8] = "CC ";
-        if (v->shift) {                                 /* SHIFT: the CC numbers, big, over the dimmed bars */
+        px_box(x, 16, 20, 66, UI_G3);
+        if (v->has[k])
+            px_rect(x + 1, 81 - v->v[k] * 64 / 127, 18, v->v[k] * 64 / 127 + 1, SNDK[k]);
+        else
+            px_vdots(cx, 18, 62, UI_G2, 3);
+        if (v->shift) {
             ui_itoa(n, v->cc[k]);
-            w = ui_TW(n, 22.f, 400, 0.f) + 14.f;
-            ui_RR(x - w * 0.5f, 88.f, w, 30.f, 8.f, SNDK[k], 2.f, on ? SNDK[k] : UI_BG);
-            ui_T(n, x, 110.f, 22.f, 400, 0.f, on ? UI_BG : SNDK[k], QD_CENTER);
+            px_ctext(cx, 40, n, v->shift_k == k ? UI_K3 : SNDK[k], PX_FB, 1);
         }
         cat(lab, ui_itoa(n, v->cc[k]));
-        ui_T(lab, x, 189.f, 12.f, 600, 0.3f, on ? SNDK[k] : UI_G1, QD_CENTER);
-        if ((!v->shift && v->last == k) || on)
-            line2(x - 16.f, 192.5f, x + 16.f, 192.5f, SNDK[k], 2.f);
-        if (!v->has[k]) {                               /* untouched: a dash */
-            line2(x - 9.f, 216.f, x + 9.f, 216.f, UI_G2, 2.f);
-            continue;
-        }
-        ui_itoa(n, v->v[k]);
-        if (v->step && v->locked[k]) {                  /* this step's lock: a filled chip */
-            w = ui_TW(n, 18.f, 300, 0.f) + 14.f;
-            ui_RR(x - w * 0.5f, 203.f, w, 26.f, 6.f, QD_NONE, 1.f, SNDK[k]);
-            ui_T(n, x, 222.3f, 18.f, 300, 0.f, UI_BG, QD_CENTER);
-        } else {
-            qd_save();
-            qd_alpha(v->shift ? 0.4f : 1.f);
-            ui_T(n, x, 222.3f, 18.f, 300, 0.f, SNDK[k], QD_CENTER);
-            qd_restore();
+        px_ctext(cx, 95, lab, UI_G1, PX_FS, 1);
+        if (v->last == k)
+            px_hline(cx - 9, 101, 18, SNDK[k]);
+        if (v->has[k]) {
+            ui_itoa(n, v->v[k]);
+            if (v->step && v->locked[k]) {
+                px_rect(cx - 12, 104, 24, 11, SNDK[k]);
+                px_ctext(cx, 106, n, UI_BG, PX_FB, 1);
+            } else {
+                px_ctext(cx, 106, n, SNDK[k], PX_FB, 1);
+            }
         }
     }
 }
 
+/* ---------------------------------------------------------------- the page */
 void ui_snd_draw(const ui_snd_t *v)
 {
     char head[40], n[12];
-    float x;
-    int k, ncell = 0;
+    int x, k;
     const qd_rgb hc = v->step ? UI_K3 : UI_TRACK_COL;
-    if (v->midi) {                                      /* FIZZ MIDI (e): a MIDI track's page */
+    const qd_rgb fc = v->step ? UI_SND_FRAME_STEP : UI_SND_FRAME_TRACK;
+    if (v->midi) {
         sd_midi(v);
         return;
     }
-    /* P1.5d: the frame: dark orange for the track's sound, bright orange for a step's locks */
-    ui_RR(0.f, 0.f, (float)QD_W, (float)QD_H, 8.f, v->step ? UI_SND_FRAME_STEP : UI_SND_FRAME_TRACK, 3.f, QD_NONE);
+    px_box(0, 0, 120, 120, fc);
+    px_box(1, 1, 118, 118, fc);
     head[0] = 0;
     if (v->step)
         cat(cat(cat(head, "STEP "), ui_itoa(n, v->step)), " \xc2\xb7 ");
     cat(head, v->name ? v->name : "");
-    x = 10.f;                                           /* P1.5b: the group's pages first (fixed, left), then the name */
+    x = 4;
     for (k = 0; k < v->npg && v->npg > 1; k++)
-        ui_O(x + 2.6f + (float)k * 9.f, 14.f, 2.6f, k == v->ipg ? hc : UI_G2, 1.f, k == v->ipg ? hc : QD_NONE);
+        px_rect(x + k * 4, 5, 2, 2, k == v->ipg ? hc : UI_G2);
     if (v->npg > 1)
-        x += (float)v->npg * 9.f + 6.f;
-    ui_T(head, x, 18.f, 12.f, 600, 0.8f, hc, QD_LEFT);
-    if (v->has[4]) {                                    /* ALGORITHM's value: its badge, top right (a lock: its chip;
-                                                         * P1.5j: 13 px, clear of the frame's 4 px margin) */
-        float left;
-        if (v->locked[4] || v->lockany[4]) {
-            float bw = ui_TW(v->txt[4], 13.f, 600, 0.f) + 10.f;
-            const float b12 = ui_TW(v->txt[4], 12.f, 600, 0.f) + 10.f;   /* (E2: a long name, LOWPASS 4: at 12 px) */
-            bw = bw > 60.f ? (b12 > 60.f ? b12 : 60.f) : bw;
-            ui_chip(v->txt[4], 232.f - bw * 0.5f, 21.f, 13.f, bw, SNDK[4], v->locked[4]);
-            left = 232.f - bw;
-        } else {
-            left = 230.f - ui_TW(v->txt[4], 14.f, 500, 0.f);
-            ui_T(v->txt[4], 230.f, 20.f, 14.f, 500, 0.f, SNDK[4], QD_RIGHT);
-        }
-        ui_O(left - 11.f, 15.f, 7.f, QD_NONE, 1.f, SNDK[4]);
-        ui_T("A", left - 11.f, 19.f, 12.f, 700, 0.f, UI_BG, QD_CENTER);
+        x += v->npg * 4 + 2;
+    px_text(x, 4, head, hc, PX_FS, 1);
+    if (v->has[4]) {                                    /* ALGORITHM's value: the badge, the value (a lock: a chip) */
+        const int w = px_text_w(v->txt[4], PX_FS, 1);
+        const int bx = 115 - w;
+        if (v->locked[4])
+            px_rect(bx - 2, 3, w + 4, 7, SNDK[4]);
+        else if (v->lockany[4])
+            px_box(bx - 2, 2, w + 4, 9, SNDK[4]);
+        px_text(bx, 4, v->txt[4], v->locked[4] ? UI_BG : SNDK[4], PX_FS, 1);
+        px_rect(bx - 10, 3, 7, 7, SNDK[4]);
+        px_ctext(bx - 6, 4, "A", UI_BG, PX_FS, 1);
     }
-    if (v->keys)
-        sd_keys_strip(v, UI_TRACK_COL);
+    px_dots(3, 12, 114, UI_G3, 2);
     switch (v->draw) {
-    case UI_SD_ALGO: sd_algo(v); break;
-    case UI_SD_TONE: sd_tone(v); break;
-    case UI_SD_OFS: sd_ofs(v); break;
-    case UI_SD_OPENV: sd_openv(v); break;
-    case UI_SD_TRIG: sd_trig(v); break;
-    case UI_SD_KEYS: sd_keys(v); break;
+    case UI_SD_OSC: sd_osc(v); break;
+    case UI_SD_ENV: sd_env(v); break;
     case UI_SD_FILTER: sd_filter(v); break;
-    case UI_SD_ADSR:                                    /* (E1: AMP in AHD, its MODE on ALGORITHM) */
-        if (v->arg == 1 && v->has[4] && v->v[4])
-            sd_ahd(v);
-        else
-            sd_adsr(v);
-        break;
-    case UI_SD_BAND: sd_band(v); break;
-    case UI_SD_DRIVE: sd_drive(v); break;
-    case UI_SD_LFO: sd_lfo(v); break;
+    case UI_SD_ADSR: sd_adsr(v); break;
+    case UI_SD_CHIP: sd_chipmodel(v); break;
+    case UI_SD_WORD: sd_word(v); break;
+    case UI_SD_DIGI: sd_digi(v); break;
     case UI_SD_PORT: sd_port(v); break;
-    case UI_SD_CRUSH: sd_crush(v); break;
     case UI_SD_VOICE: sd_voice(v); break;
     case UI_SD_MOD: sd_mod(v); break;
-    default: sd_lfoshape(v); break;
+    case UI_SD_DRIVE: sd_amp(v); break;
+    case UI_SD_CRUSH: sd_crush(v); break;
+    case UI_SD_LFO: sd_lfo(v); break;
+    case UI_SD_LFOSHAPE: sd_lfoshape(v); break;
+    default: break;
     }
-    /* P1.5j (the owner: the lock boxes "change dimensions", "overlap with the orange border"): the foot is four fixed
-     * columns inside the frame's 4 px margin (x 7 .. 233), each a label, the knob-turned underline, and one chip
-     * rectangle the same on every page (SD_CHIP_W x SD_CHIP_H, the fraction's height), the value centred in it; the
-     * chip drawn only when locked (filled: this step, outlined: some step), the geometry the same either way */
-    for (k = 0; k < 4; k++)
-        ncell += v->has[k];
+    if (v->keys)
+        sd_keys_strip(v);
+    /* the foot: four columns, 29 wide: the label, the turned one underlined, the value (a lock a chip) */
+    px_dots(3, 89, 114, UI_G3, 2);
     for (k = 0; k < 4; k++) {
-        const float x0 = SD_FOOT_X + (float)k * SD_COL_W, cx = x0 + SD_COL_W * 0.5f, chx = x0 + 2.f;
-        const float mid = SD_CHIP_Y + SD_CHIP_H * 0.5f;
+        const int x0 = 3 + k * 29, cx = x0 + 14;
         const int lk = v->locked[k] || v->lockany[k];
         const qd_rgb tc = v->locked[k] ? UI_BG : SNDK[k];
-        float w;
+        int f = PX_FB;
         if (!v->has[k])
             continue;
-        if (v->modmark[k] && !v->lfomark[k]) {           /* E4: a modulation slot's destination: its source's glyph */
-            const float room = SD_COL_W - 18.f;
-            sd_mod_icon(v->modmark[k], x0 + 7.f, SD_LAB_Y - 4.5f, 0.75f, UI_K2);
-            w = ui_TW(v->lab[k] ? v->lab[k] : "", 12.f, 600, 0.3f);
-            ui_T(v->lab[k] ? v->lab[k] : "", x0 + 15.f + room * 0.5f, SD_LAB_Y, w > room ? (12.f * room / w < 12.f ? 12.f
-                 : 12.f * room / w) : 12.f, 600, 0.f, v->locked[k] ? UI_K3 : UI_G1, QD_CENTER);
-        } else if (v->lfomark[k]) {                     /* P1.5k: an LFO's destination: its number in its colour, left */
+        if (v->lfomark[k]) {                            /* an LFO's destination: its number in its colour */
             const int lf = v->lfomark[k] & 1u ? 0 : v->lfomark[k] & 2u ? 1 : 2;
-            char d[2] = {(char)('1' + lf), 0};
-            const float room = SD_COL_W - 18.f;
-            ui_O(x0 + 7.f, SD_LAB_Y - 4.5f, 6.5f, QD_NONE, 1.f, UI_LFO_COL[lf]);
-            ui_T(d, x0 + 7.f, SD_LAB_Y, 12.f, 700, 0.f, UI_BG, QD_CENTER);
-            w = ui_TW(v->lab[k] ? v->lab[k] : "", 12.f, 600, 0.3f);
-            ui_T(v->lab[k] ? v->lab[k] : "", x0 + 15.f + room * 0.5f, SD_LAB_Y, w > room ? (12.f * room / w < 12.f ? 12.f
-                 : 12.f * room / w) : 12.f, 600, 0.f, v->locked[k] ? UI_K3 : UI_G1, QD_CENTER);
-        } else {
-            w = ui_TW(v->lab[k] ? v->lab[k] : "", 12.f, 600, 0.3f);
-            ui_T(v->lab[k] ? v->lab[k] : "", cx, SD_LAB_Y, w > SD_COL_W - 4.f ? 12.f * (SD_COL_W - 4.f) / w : 12.f,
-                 600, 0.3f, v->locked[k] ? UI_K3 : UI_G1, QD_CENTER);
+            px_rect(x0, 92, 3, 5, UI_LFO_COL[lf]);
+        } else if (v->modmark[k]) {                     /* a modulation slot's */
+            px_rect(x0, 92, 3, 5, UI_K2);
         }
-        if (v->lk && v->lk_k == k && v->lk_ok) {        /* P1.5k: the value being mapped: a little wave, the LFO's */
-            float p[2 * 17];
+        px_ctext(cx + 1, 92, v->lab[k] ? v->lab[k] : "", v->locked[k] ? UI_K3 : UI_G1, PX_FS, 1);
+        if (v->lk && v->lk_k == k && v->lk_ok) {        /* being mapped to an LFO: a little wave */
             int i;
-            for (i = 0; i <= 16; i++) {
-                p[2 * i] = cx - 16.f + (float)i * 2.f;
-                p[2 * i + 1] = SD_LAB_Y + 3.5f - sinf((float)i / 16.f * UI_TAU * 2.f + v->t * 6.f) * 2.f;
-            }
-            ui_P(p, 17, v->lk == 4 ? UI_K2 : UI_LFO_COL[v->lk - 1], 1.4f, 0, QD_NONE);
-        } else if (v->last == k) {                      /* the knob turned last: underlined, under its label */
-            line2(cx - 16.f, SD_LAB_Y + 3.5f, cx + 16.f, SD_LAB_Y + 3.5f, SNDK[k], 2.f);
+            for (i = 0; i < 16; i++)
+                px_pset(cx - 8 + i, 99 + (int)(fz_sinf((float)i * 0.8f + v->t * 6.f) * 1.5f),
+                        v->lk == 4 ? UI_K2 : UI_LFO_COL[(v->lk - 1) % 3]);
+        } else if (v->last == k) {
+            px_hline(cx - 9, 99, 19, SNDK[k]);
         }
-        if (lk)
-            ui_RR(chx, SD_CHIP_Y, SD_CHIP_W, SD_CHIP_H, 7.f, v->locked[k] ? QD_NONE : SNDK[k], 1.4f,
-                  v->locked[k] ? SNDK[k] : QD_NONE);
-        if (v->pair[k]) {                               /* P1.5i: a ratio pair: B2 over B1, a fraction (ChoralRoot's) */
-            const float wn = ui_TW(v->txt[k], 13.f, 600, 0.f), wd = ui_TW(v->den[k], 13.f, 600, 0.f);
-            const float wm = (wn > wd ? wn : wd) + 6.f;
-            ui_T(v->txt[k], cx, mid - 3.f, 13.f, 600, 0.f, tc, QD_CENTER);
-            line2(cx - wm * 0.5f, mid + 0.5f, cx + wm * 0.5f, mid + 0.5f, tc, 1.4f);
-            ui_T(v->den[k], cx, mid + 13.5f, 13.f, 600, 0.f, tc, QD_CENTER);
-        } else {
-            float sz = 18.f;
-            w = ui_TW(v->txt[k], sz, 500, 0.f);
-            if (w > SD_CHIP_W - 8.f)
-                sz = sz * (SD_CHIP_W - 8.f) / w < 12.f ? 12.f : sz * (SD_CHIP_W - 8.f) / w;
-            ui_T(v->txt[k], cx, mid + sz * 0.35f, sz, lk ? 600 : 500, 0.f, tc, QD_CENTER);
+        if (px_text_w(v->txt[k], PX_FB, 1) > 26)
+            f = PX_FS;
+        if (lk) {
+            if (v->locked[k])
+                px_rect(x0, 102, 28, 13, SNDK[k]);
+            else
+                px_box(x0, 102, 28, 13, SNDK[k]);
         }
+        px_ctext(cx + 1, f == PX_FB ? 105 : 107, v->txt[k], tc, f, 1);
     }
-    (void)ncell;
-    if (v->rnd_kind) {                                  /* P1.5c: randomise: the dice, the bottle (over the drawing) */
-        ui_RR(12.f, 34.f, 216.f, 146.f, 10.f, QD_NONE, 1.f, UI_BG);
-        if (v->rnd_kind == 1)
-            sd_dice_shake(v->rnd_u, v->t);
-        else if (v->rnd_kind == 4)
-            sd_dice(v->rnd_u, v->t);
+    if (v->lk && v->lk_name) {                          /* an LFO key held: the mapping, over the drawing */
+        char s[24] = "LFO ";
+        px_rect(10, 30, 100, 34, UI_BG);
+        px_box(10, 30, 100, 34, v->lk == 4 ? UI_K2 : UI_LFO_COL[(v->lk - 1) % 3]);
+        if (v->lk < 4)
+            s[4] = (char)('0' + v->lk), s[5] = 0;
         else
-            sd_bottle(v->rnd_u, v->rnd_kind == 3, v->t);
+            strcpy(s, "MOD");
+        px_ctext(60, 34, s, v->lk == 4 ? UI_K2 : UI_LFO_COL[(v->lk - 1) % 3], PX_FS, 1);
+        px_ctext(60 + (v->lk_shake > 0.f ? (int)(fz_sinf(v->t * 50.f) * 3.f * v->lk_shake) : 0), 42, v->lk_name,
+                 v->lk_ok ? UI_K3 : UI_G2, PX_FB, 1);
+        px_rect(60, 54, (int)(v->lk_depth * 40.f), 4, UI_K3);
+        px_vline(60, 52, 8, UI_G1);
     }
-    if (v->fpop) {                                      /* P1.6d: the FILTER key held: the six machines */
-        static const char *const NM[6] = {"MULTI", "LOWPASS 4", "LEGACY", "COMB-", "COMB+", "EQ"};
-        int k;
-        ui_RR(8.f, 30.f, 224.f, 152.f, 10.f, SNDK[4], 2.f, UI_BG);
-        for (k = 0; k < 6; k++) {
-            const float x = 14.f + (float)(k % 2) * 108.f, y = 36.f + (float)(k / 2) * 48.f;
-            const int on = k == v->fpop_sel;
-            const qd_rgb c = on ? SNDK[4] : UI_G1;
-            char n[2] = {(char)('1' + k), 0};
-            if (on)
-                ui_RR(x, y, 104.f, 44.f, 7.f, QD_NONE, 1.f, 0x2a1622u);
-            ui_RR(x, y, 104.f, 44.f, 7.f, on ? SNDK[4] : UI_G3, on ? 1.8f : 1.f, QD_NONE);
-            sd_machine_glyph(k, x + 10.f, y + 4.f, 64.f, 17.f, c);   /* (P1.6d.1: the curve on top, the name the
-                                                         * tile's width under it, the number top right) */
-            ui_T(NM[k], x + 52.f, y + 38.f, 12.f, 600, 0.f, on ? UI_K3 : UI_G1, QD_CENTER);
-            ui_T(n, x + 92.f, y + 16.f, 12.f, 600, 0.f, on ? SNDK[4] : UI_G2, QD_CENTER);
-        }
-    }
-    if (v->lk) {                                        /* P1.5k: an LFO key held: "LFO n -> VALUE", the depth (E4: B1
-                                                         * held: the source's glyph and name -> VALUE) */
-        static const char *const SRCN[9] = {"", "VEL", "KEY", "MW", "AT", "PB", "BR", "RAND", "F ENV"};
-        const qd_rgb lc = v->lk == 4 ? UI_K2 : UI_LFO_COL[v->lk - 1];
-        const float sh = v->lk_ok ? 0.f : sinf(v->lk_shake * 30.f) * 6.f * v->lk_shake;
-        char t[8] = "LFO 1";
-        t[4] = (char)('0' + v->lk);
-        ui_RR(12.f, 36.f, 216.f, 140.f, 10.f, lc, 2.f, UI_BG);
-        if (v->lk == 4) {
-            sd_mod_icon(v->lk_src, 34.f, 57.f, 1.4f, lc);
-            ui_T(SRCN[v->lk_src > 0 && v->lk_src < 9 ? v->lk_src : 1], 52.f, 62.f, 16.f, 600, 0.8f, lc, QD_LEFT);
-        } else {
-            ui_T(t, 26.f, 62.f, 16.f, 600, 0.8f, lc, QD_LEFT);
-        }
-        sd_arrow(26.f, 80.f, 58.f, 98.f, lc);
-        if (v->lk_name)
-            ui_T(v->lk_name, 120.f + sh, 116.f, 26.f, 300, 0.f, v->lk_ok ? UI_K3 : UI_G2, QD_CENTER);
-        if (v->lk_ok) {                                 /* the depth: a bipolar meter from the centre */
-            const float x0 = 30.f, x1 = 210.f, mid = 120.f, y = 148.f;
-            const float dx = sd_clampf(v->lk_depth, -1.f, 1.f) * (x1 - mid);
-            line2(x0, y, x1, y, UI_G2, 2.f);
-            line2(mid, y - 8.f, mid, y + 8.f, UI_G1, 1.2f);
-            if (dx > 0.5f || dx < -0.5f)
-                ui_RR(dx > 0.f ? mid : mid + dx, y - 5.f, dx > 0.f ? dx : -dx, 10.f, 3.f, QD_NONE, 1.f, lc);
+    if (v->rnd_kind)
+        sd_dice(v->rnd_u, v->t, v->rnd_kind == 1);
+    if (v->fpop) {                                      /* B4 held: the filter's modes */
+        int k2;
+        px_rect(6, 16, 108, 70, UI_BG);
+        px_box(6, 16, 108, 70, SNDK[4]);
+        for (k2 = 0; k2 < 6; k2++) {
+            const int bx = 10 + (k2 % 2) * 52, by = 20 + (k2 / 2) * 21, on = k2 == v->fpop_sel;
+            char d[2] = {(char)('1' + k2), 0};
+            px_box(bx, by, 48, 18, on ? SNDK[4] : UI_G3);
+            px_text(bx + 2, by + 2, d, on ? SNDK[4] : UI_G2, PX_FS, 1);
+            px_ctext(bx + 26, by + 10, SD_MODE_NAME[k2], on ? UI_K3 : UI_G1, PX_FS, 1);
         }
     }
 }

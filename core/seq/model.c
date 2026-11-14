@@ -6,18 +6,19 @@
 
 #include "model.h"
 
-/* the default kit: a usable band, one factory sound a track (ChoralRoot's 16, quad_voice.h's numbering), the voice
+/* the default kit: a usable band, one factory sound a track (SID TONE's 16, quad_voice.h's numbering), the voice
  * limits of the brief (drums 4, the bass mono, the rest 6) */
 static const struct {
     const char *name;
     uint8_t preset, limit, kind;        /* (P1.6d: the kind, sounds.h QD_PK_*) */
 } QD_TRACK_DEF[QD_NTRACK] = {
-    {"DRUMS", 13, 4, 5},                /* MARIMBA: short, struck, no sustain (low notes thump, high ones click) */
-    {"BASS", 3, 1, 0},                  /* BASS: ChoralRoot's mono bass */
-    {"KEYS", 1, 6, 1},                  /* EP */
-    {"LEAD", 8, 6, 4},                  /* SQUARE LEAD */
-    {"PLUCK", 4, 6, 2},                 /* PLUCK */
-    {"PAD", 6, 6, 3},                   /* GLASS PAD */
+    {"DRUMS", 8, 4, 5},                 /* (EvilGenius, SID TONE's presets) ZAP: short (the kit's drums are its steps'
+                                         * sound locks) */
+    {"BASS", 2, 1, 0},                  /* PWM BASS, mono */
+    {"KEYS", 6, 6, 1},                  /* P+S ORGAN */
+    {"LEAD", 1, 6, 4},                  /* SAW LEAD */
+    {"PLUCK", 4, 6, 2},                 /* RING BELL */
+    {"PAD", 5, 6, 3},                   /* RESO PAD */
 };
 
 const char *qd_track_kind_name(int kind)

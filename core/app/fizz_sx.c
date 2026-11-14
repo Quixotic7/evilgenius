@@ -33,7 +33,7 @@ uint32_t qd_sx_unpack7(const uint8_t *in, uint32_t n, uint8_t *out)
     return o;
 }
 
-/* a reply into the queue: F0 7D 46 5A 01, the bytes, the checksum, F7 */
+/* a reply into the queue: F0 7D 45 47 01, the bytes, the checksum, F7 */
 static void sx_job(qd_app_t *a);                        /* (P1.6m) */
 
 /* P1.6l: the replies wait in a ring of bytes, each its length (2 bytes) then F0 .. F7 */
@@ -1083,7 +1083,7 @@ void qd_app_sysex(qd_app_t *a, const uint8_t *f, uint32_t n)
     switch (f[4]) {
     case QD_SX_IDENTITY: {
         uint8_t b[QD_SX_OUT_MAX];
-        const char *v = a->sx.version ? a->sx.version : "FIZZ";
+        const char *v = a->sx.version ? a->sx.version : "EVILGENIUS";
         uint32_t o = 0;
         b[o++] = QD_SX_R_IDENTITY;
         b[o++] = QD_SX_PROTO;

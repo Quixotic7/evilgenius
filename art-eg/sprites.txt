@@ -1,0 +1,270 @@
+# EvilGenius sprites, original pixel art in the spirit of 1980s C64 action-puzzle games.
+# Colours are the C64's 16 (Pepto palette), one character each:
+#   . transparent  k black  W white  R red  C cyan  P purple  G green  B blue  Y yellow
+#   O orange  N brown  r light red  d dark grey  g grey  l light green  b light blue  L light grey
+# "= NAME" starts a sprite; every row of a sprite has the same width.
+
+# the agent: a running secret agent, 4 frames, 9x16, and standing / jumping (somersault)
+= AGENT_STAND
+...kkk...
+..kNNNk..
+..kNrrk..
+..krrrk..
+...krk...
+..kBBBk..
+.kBBBBBk.
+.kBkBkBk.
+.krkBkrk.
+..kBBBk..
+..kgggk..
+..kgkgk..
+..kgkgk..
+..kgkgk..
+.kkgkgkk.
+.kkk.kkk.
+= AGENT_RUN1
+...kkk...
+..kNNNk..
+..kNrrk..
+..krrrk..
+...krk...
+..kBBBk..
+.kBBBBBk.
+krBkBkBk.
+kk.kBBBrk
+...kBBBkk
+..kgggk..
+.kgkkgk..
+kgk..kgk.
+kk....kgk
+kk.....kk
+.........
+= AGENT_RUN2
+...kkk...
+..kNNNk..
+..kNrrk..
+..krrrk..
+...krk...
+..kBBBk..
+..kBBBk..
+..kBBrk..
+..kBkrk..
+..kBBBk..
+..kgggk..
+...kggk..
+...kgkk..
+...kgk...
+..kkgk...
+..kkkk...
+= AGENT_RUN3
+...kkk...
+..kNNNk..
+..kNrrk..
+..krrrk..
+...krk...
+..kBBBk..
+.kBBBBBk.
+.kBkBkBrk
+krBBBk.kk
+kk.kBBBk.
+..kgggk..
+..kgkkgk.
+.kgk..kgk
+kgk....kk
+kk.....kk
+.........
+= AGENT_FLIP
+....kkkk....
+...kNNNNk...
+..kNrrrrrk..
+..krrkrrrk..
+..krrrrrk...
+.kkBBkkkBk..
+kBBBBBBBBBk.
+kBBkgggggkBk
+kBkggkkkggkk
+kBkgk...kgk.
+.kBkgg.ggk..
+..kkkkkkk...
+
+# the patrol robot: a dome on a drum, 11x12, two frames (its zapper's spark)
+= ROBOT1
+...kkkkk...
+..kLLLLLk..
+.kLWLLLLLk.
+.kLLLLLLLk.
+kkkkkkkkkkk
+kgRgRgRgRgk
+kkkkkkkkkkk
+.kdgggggdk.
+.kdgggggdk.
+.kdgggggdk.
+kkkkkkkkkkk
+k.k.k.k.k.k
+= ROBOT2
+...kkkkk...
+..kLLLLLk..
+.kLLLLWLLk.
+.kLLLLLLLk.
+kkkkkkkkkkk
+kgYgYgYgYgk
+kkkkkkkkkkk
+.kdgggggdk.
+.kdgggggdk.
+.kdgggggdk.
+kkkkkkkkkkk
+.k.k.k.k.k.
+
+# the evil genius at his console: a bald head, dark goggles, high collar, 16x16
+= GENIUS
+.....kkkkkk.....
+...kkrrrrrrkk...
+..krrrrWrrrrrk..
+..krrrrrrrrrrk..
+.krrrrrrrrrrrrk.
+.kkkkkkkkkkkkkk.
+.kCCCkkrrkkCCCk.
+.kCWCkrrrrkCWCk.
+.kkkkkrrrrkkkkk.
+..krrrrrrrrrrk..
+..krrkkkkkkrrk..
+...krrrkkrrrk...
+.kkkkrrrrrrkkkk.
+kPPPPkkkkkkPPPPk
+kPPPPPPkkPPPPPPk
+kPPPPPPPPPPPPPPk
+# his grin while a note plays
+= GENIUS_TALK
+.....kkkkkk.....
+...kkrrrrrrkk...
+..krrrrWrrrrrk..
+..krrrrrrrrrrk..
+.krrrrrrrrrrrrk.
+.kkkkkkkkkkkkkk.
+.kCCCkkrrkkCCCk.
+.kCWCkrrrrkCWCk.
+.kkkkkrrrrkkkkk.
+..krrrrrrrrrrk..
+..krkWWWWWWkrk..
+...krkkkkkkrk...
+.kkkkrkkkkrkkkk.
+kPPPPkrrrrkPPPPk
+kPPPPPPkkPPPPPPk
+kPPPPPPPPPPPPPPk
+
+# a lift platform segment (8 wide), and the shaft's rail
+= LIFT
+YYYYYYYY
+OkOkOkOk
+kkkkkkkk
+= RAIL
+.dd.
+.gg.
+.dd.
+.gg.
+
+# a computer terminal to search (the patch browser's "furniture"), 14x12
+= TERMINAL
+.kkkkkkkkkkkk.
+kLLLLLLLLLLLLk
+kLkkkkkkkkkkLk
+kLkGGkGkGGkkLk
+kLkkkkkkkkkkLk
+kLkGkGGGkGkkLk
+kLkkkkkkkkkkLk
+kLLLLLLLLLLLLk
+.kkkkkkkkkkkk.
+..kgggggggggk.
+.kgkgkgkgkgkgk
+kkkkkkkkkkkkkk
+
+# icons, 9x9: the SID chip, a speaking mouth, an effect (a waveform in a box), a disk, a lock
+= ICON_SID
+.k.k.k.k.
+kkkkkkkkk
+kddddddk.
+kdWdddddk
+kddddddk.
+kddCCCddk
+kddddddk.
+kkkkkkkkk
+.k.k.k.k.
+= ICON_VOX
+..kkkkk..
+.krrrrrk.
+krrrrrrrk
+kkkkkkkkk
+kWkWkWkWk
+kkkkkkkkk
+kRRRRRRRk
+.kRRRRRk.
+..kkkkk..
+= ICON_FX
+kkkkkkkkk
+k.......k
+k.Y...Y.k
+kY.Y.Y.Yk
+k...Y...k
+k.......k
+kOOOOOOOk
+k.......k
+kkkkkkkkk
+= ICON_DISK
+kkkkkkkk.
+kBLLLLBkk
+kBLLLLBBk
+kBBBBBBBk
+kBkkkkkBk
+kBkWWWkBk
+kBkkkkkBk
+kBBBBBBBk
+kkkkkkkkk
+= ICON_LOCK
+..kkkkk..
+.kk...kk.
+.kk...kk.
+kkkkkkkkk
+kYYYYYYYk
+kYYYkYYYk
+kYYYkYYYk
+kYYYYYYYk
+kkkkkkkkk
+= ICON_KEY
+.kkk.....
+kYYYk....
+kYkYkkkkk
+kYYYYYYYk
+.kkk.kYkk
+.....kYk.
+......k..
+= ICON_SKULL
+.kkkkkkk.
+kLLLLLLLk
+kLkkLkkLk
+kLkkLkkLk
+kLLLkLLLk
+.kLLLLLk.
+..kLkLk..
+..kkkkk..
+= ICON_NOTE
+....kk...
+....kWk..
+....k.kk.
+....k..k.
+....k....
+.kkkk....
+kWWWk....
+kWWWk....
+.kkk.....
+
+# the floor tile, 8x4 (the rooms' girders)
+= FLOOR
+BBBBBBBB
+bBbBbBbB
+kBkBkBkB
+kkkkkkkk
+= FLOOR_LIT
+CCCCCCCC
+bCbCbCbC
+kCkCkCkC
+kkkkkkkk

@@ -11,3 +11,10 @@ ios/Local.xcconfig
 *.p12
 *.cer
 ios/FIZZ.xcodeproj/project.xcworkspace/xcuserdata/
+
+# EvilGenius: build outputs and renders that never go to the repository
+tools/tour
+tools/fxtest
+dist/
+firmware/firmware.json
+art-eg/*.wav

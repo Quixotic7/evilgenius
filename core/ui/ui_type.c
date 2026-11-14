@@ -1,220 +1,188 @@
 /* SPDX-License-Identifier: MPL-2.0
  * This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0. If a copy of the MPL was not
  * distributed with this file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-/* P1.5u: the typewriter's screen (ui.h ui_type_t): SAVE PRESET's name and a project's, typed on the keybed, drawn as
- * mockups/fizz-names.html draws them: its positions, sizes, colours and motions (saveHead, nameRow, keybed, the
- * letter's flight, the ideas' rolodex, the SHIFT chip, the full row's flash, the deleted letter dropping away). Built
- * through ui_layer.c after ui_presets.c. PLAN §9a's clarity rules: the name, the keys' characters
- * (13 px), the ideas, the few words the mock-up has (SHIFT, NEW, REPLACE); the rest is drawing, colour and motion. */
+/* EvilGenius: the typewriter (FIZZ's P1.5u, redrawn at 120 x 120; ui.h ui_type_t): SAVE PRESET's name and a
+ * project's, typed on the keybed. Built through ui_layer.c after ui_presets.c.
+ *   the name: twelve cells in the BIG font, the cursor a blinking block (the C64's), a selection (the suggested name,
+ *   typed over by the first key) on brown; full: the row flashes orange; F1: the character deleted drops away
+ *   the keybed: a character on every key (SHIFT: the signs), the key pressed lit; the letter typed flies up from it
+ *   the ideas (PRESETS / KNOB 4): the names seen as a listing, the newest at the foot; a new one rolled: a die tumbles
+ *   in and lands; NEW / REPLACE (F2 chooses): the one SAVE does filled */
 
-#define TY_X0 9.f                                       /* the name's twelve cells */
-#define TY_CW 18.5f
-#define TY_Y 72.f
-#define TY_KY 152.f                                     /* the keybed's top */
-#define TY_KW 14.4f
-#define TY_WH 76.f
-#define TY_BW 12.5f
-#define TY_BH 42.f
-#define TY_GLOW 0x2a2414u                               /* a key pressed: its fill */
+#define TY_X0 12                                        /* the name's twelve cells, 8 a cell */
+#define TY_Y 28
+#define TY_KY 72                                        /* the keybed's top */
+#define TY_WH 40
+#define TY_BH 24
 
 static const char TYD_BLACK[] = "ABCDEFGHIJK", TYD_WHITE[] = "LMNOPQRSTUVWXYZ ";
 static const char TYD_SBLACK[] = "0123456789-", TYD_SWHITE[] = ".,'&!?#+/()*:_~ ";
 static const int TY_BX[11] = {1, 2, 3, 5, 6, 8, 9, 10, 12, 13, 15};   /* a black key sits after this many white keys */
 
-static float ty_black_x(int j) { return 5.f + (float)TY_BX[j] * TY_KW - TY_BW / 2.f - 0.75f; }
-static float ty_white_x(int i) { return 5.f + (float)i * TY_KW; }
+static int ty_white_x(int i) { return 4 + i * 7; }
+static int ty_black_x(int j) { return 4 + TY_BX[j] * 7 - 3; }
 
-/* a key's character: SPACE as a little open bracket */
-static void ty_char(char c, float cx, float y, float size, int weight, qd_rgb col)
+/* a key's character (FS, centred at cx): SPACE as a little open bracket */
+static void ty_char(char c, int cx, int y, qd_rgb col)
 {
     if (c == ' ') {
-        const float p[8] = {cx - 4.f, y - 4.f, cx - 4.f, y, cx + 4.f, y, cx + 4.f, y - 4.f};
-        ui_P(p, 4, col, weight >= 700 ? 1.6f : 1.2f, 0, QD_NONE);
+        px_vline(cx - 2, y + 2, 3, col);
+        px_hline(cx - 2, y + 4, 5, col);
+        px_vline(cx + 2, y + 2, 3, col);
         return;
     }
     {
         const char s[2] = {c, 0};
-        ui_T(s, cx, y, size, weight, 0.f, col, QD_CENTER);
+        px_ctext(cx, y, s, col, PX_FS, 1);
     }
 }
 
-/* the keybed with a character on every key; hit: the key glowing (0..10 black, 11..26 white; -1 none) */
+/* the keybed with a character on every key; hit: the key lit (0..10 black, 11..26 white; -1 none) */
 static void ty_keybed(int hit, int shift)
 {
     const char *B = shift ? TYD_SBLACK : TYD_BLACK, *W = shift ? TYD_SWHITE : TYD_WHITE;
     int i, j;
     for (i = 0; i < 16; i++) {
-        const float x = ty_white_x(i);
-        const int on = hit == 11 + i;
-        ui_RR(x, TY_KY, TY_KW - 1.5f, TY_WH, 2.5f, on ? UI_LIB_COL : UI_G2, on ? 1.8f : 1.1f, on ? TY_GLOW : UI_BG);
-        ty_char(W[i], x + (TY_KW - 1.5f) / 2.f, TY_KY + TY_WH - 8.f, 13.f, on ? 700 : 500, on ? UI_LIB_COL : UI_K3);
+        const int x = ty_white_x(i), on = hit == 11 + i;
+        px_rect(x, TY_KY, 6, TY_WH, on ? UI_LIB_COL : PX_LGREY);
+        px_hline(x, TY_KY + TY_WH - 1, 6, on ? PX_ORANGE : PX_GREY);
+        ty_char(W[i], x + 3, TY_KY + TY_WH - 9, PX_BLACK);
     }
     for (j = 0; j < 11; j++) {
-        const float x = ty_black_x(j);
-        const int on = hit == j;
-        ui_RR(x, TY_KY - 2.f, TY_BW, TY_BH, 2.5f, on ? UI_LIB_COL : UI_G1, on ? 1.8f : 1.1f, on ? TY_GLOW : 0x111111u);
-        ty_char(B[j], x + TY_BW / 2.f, TY_KY + TY_BH - 11.f, 13.f, on ? 700 : 500, on ? UI_LIB_COL : UI_K3);
+        const int x = ty_black_x(j), on = hit == j;
+        px_rect(x - 1, TY_KY, 7, TY_BH + 1, PX_LGREY);   /* (a gap around it) */
+        px_rect(x, TY_KY, 5, TY_BH, on ? UI_LIB_COL : PX_BLACK);
+        ty_char(B[j], x + 2, TY_KY + TY_BH - 8, on ? PX_BLACK : PX_WHITE);
     }
 }
 
 /* a key's character's place on the keybed (the flight's start) */
-static void ty_key_at(int hit, float *x, float *y)
+static void ty_key_at(int hit, int *x, int *y)
 {
     if (hit >= 11) {
-        *x = ty_white_x(hit - 11) + (TY_KW - 1.5f) / 2.f;
-        *y = TY_KY + TY_WH - 8.f;
+        *x = ty_white_x(hit - 11) + 3;
+        *y = TY_KY + TY_WH - 9;
     } else {
-        *x = ty_black_x(hit < 0 ? 0 : hit) + TY_BW / 2.f;
-        *y = TY_KY + TY_BH - 11.f;
+        *x = ty_black_x(hit < 0 ? 0 : hit) + 2;
+        *y = TY_KY + TY_BH - 8;
     }
 }
 
-/* the sparkle: a four-pointed star */
-static void ty_spark(float x, float y, float r, qd_rgb col)
-{
-    float p[16];
-    int k;
-    for (k = 0; k < 8; k++) {
-        const float an = -UI_PI * 0.5f + (float)k * UI_PI / 4.f, rr = k & 1 ? r * 0.28f : r;
-        p[2 * k] = x + cosf(an) * rr;
-        p[2 * k + 1] = y + sinf(an) * rr;
-    }
-    ui_P(p, 8, col, 1.f, 1, col);
-}
-
-/* the name: twelve cells, the cursor, a selection (the suggested name, typed over by the first key) */
+/* the name: twelve cells, the cursor, a selection */
 static void ty_row(const ui_type_t *v)
 {
-    const int len = (int)strlen(v->name);
+    const int len = (int)strlen(v->name), blink = (int)floorf(v->t * 2.5f) % 2 == 0;
     int k;
     if (v->sel && len)
-        ui_RR(TY_X0 - 2.f, TY_Y - 26.f, (float)len * TY_CW + 4.f, 34.f, 4.f, QD_NONE, 1.f, 0x3a3220u);
+        px_rect(TY_X0 - 1, TY_Y - 2, len * 8 + 1, 12, PX_BROWN);
     for (k = 0; k < 12; k++) {
-        const float x = TY_X0 + (float)k * TY_CW;
-        const int c = k == v->cur && !v->sel, f = k == v->fresh;
-        line2(x + 2.f, TY_Y + 6.f, x + TY_CW - 3.f, TY_Y + 6.f, c ? UI_KSEL : UI_G3, c ? 2.4f : 1.f);
-        if (k < len && v->name[k] != ' ') {
-            const char ch[2] = {v->name[k], 0};
-            ui_T(ch, x + TY_CW / 2.f, TY_Y, 24.f, f ? 500 : 300, 0.f, f ? UI_LIB_COL : UI_K3, QD_CENTER);
+        const int x = TY_X0 + k * 8, c = k == v->cur && !v->sel, f = k == v->fresh;
+        const char ch[2] = {k < len ? v->name[k] : ' ', 0};
+        if (c && blink) {                               /* the cursor: a block, the character in it reversed */
+            px_rect(x - 1, TY_Y - 1, 8, 10, UI_KSEL);
+            if (ch[0] != ' ')
+                px_text(x, TY_Y, ch, UI_BG, PX_FB, 1);
+            continue;
         }
+        px_dots(x, TY_Y + 10, 7, c ? UI_KSEL : UI_G3, 2);
+        if (ch[0] != ' ')
+            px_text(x, TY_Y, ch, f ? UI_LIB_COL : UI_K3, PX_FB, 1);
     }
     if (v->full < 1.f && (int)(v->full * 4.f) % 2 == 0)   /* full: the row flashes orange */
-        ui_RR(TY_X0 - 3.f, TY_Y - 27.f, 12.f * TY_CW + 6.f, 36.f, 4.f, UI_K4, 1.5f, QD_NONE);
-    if (v->del < 1.f && v->del_at >= 0) {               /* F1: the character drops away, orange */
+        px_box(TY_X0 - 3, TY_Y - 4, 12 * 8 + 5, 17, UI_K4);
+    if (v->del < 1.f && v->del_at >= 0 && v->del_ch != ' ' && v->del < 0.85f) {   /* F1: it drops away, orange */
         const char ch[2] = {v->del_ch, 0};
-        qd_save();
-        qd_alpha(qd_get_alpha() * (1.f - v->del));
-        if (ch[0] != ' ')
-            ui_T(ch, TY_X0 + (float)v->del_at * TY_CW + TY_CW / 2.f, TY_Y - v->del * 24.f, 24.f, 300, 0.f, UI_K4,
-                 QD_CENTER);
-        qd_restore();
+        px_text(TY_X0 + v->del_at * 8, TY_Y + lb_r(v->del * 16.f), ch, UI_K4, PX_FB, 1);
     }
     if (v->fly < 1.f && v->fresh >= 0 && v->hit >= 0) { /* the typed letter flies up from its key */
         const float e = lb_ease(v->fly);
-        float kx, ky;
+        const char ch[2] = {v->name[v->fresh], 0};
+        int kx, ky, x, y;
         ty_key_at(v->hit, &kx, &ky);
-        ty_char(v->name[v->fresh], kx + (TY_X0 + (float)v->fresh * TY_CW + TY_CW / 2.f - kx) * e, ky + (TY_Y - ky) * e,
-                13.f + 11.f * e, 600, UI_LIB_COL);
+        x = kx + lb_r((float)(TY_X0 + v->fresh * 8 + 3 - kx) * e);
+        y = ky + lb_r((float)(TY_Y - ky) * e);
+        if (ch[0] != ' ')
+            px_ctext(x, y, ch, UI_LIB_COL, e > 0.5f ? PX_FB : PX_FS, 1);
     }
 }
 
-/* P1.5v: NEW / REPLACE: the one chosen bright and filled, the other dim */
-static void ty_pill(float x, float y, float w, const char *s, qd_rgb col, int on)
+/* NEW / REPLACE: the one chosen filled, the other outlined dim */
+static void ty_pill(int x, int y, int w, const char *s, qd_rgb col, int on)
 {
-    qd_save();
-    qd_alpha(qd_get_alpha() * (on ? 1.f : 0.4f));
-    ui_RR(x, y, w, 26.f, 6.f, col, 1.8f, on ? col : QD_NONE);
-    ui_T(s, x + w / 2.f, y + 18.f, 14.f, 600, 1.f, on ? UI_BG : col, QD_CENTER);
-    qd_restore();
+    if (on)
+        px_rect(x, y, w, 10, col);
+    px_box(x, y, w, 10, on ? col : UI_G2);
+    px_ctext(x + w / 2, y + 2, s, on ? UI_BG : UI_G1, PX_FS, 1);
 }
 
-/* P1.5z: a neon die, its face (1..6), turned by an (radians), at (cx, cy), half-size h */
-static void ty_die(float cx, float cy, float h, float an, int face, qd_rgb col, float a)
+/* a die, its face (1..6), at (x, y), 9 x 9 */
+static void ty_die(int x, int y, int face, qd_rgb col)
 {
     static const signed char PIP[7][6][2] = {
         {{0, 0}}, {{0, 0}}, {{-1, -1}, {1, 1}}, {{-1, -1}, {0, 0}, {1, 1}}, {{-1, -1}, {1, -1}, {-1, 1}, {1, 1}},
         {{-1, -1}, {1, -1}, {0, 0}, {-1, 1}, {1, 1}}, {{-1, -1}, {1, -1}, {-1, 0}, {1, 0}, {-1, 1}, {1, 1}}};
-    const float c = cosf(an), s = sinf(an);
-    float p[8];
     int k;
     face = face < 1 ? 1 : face > 6 ? 6 : face;
-    for (k = 0; k < 4; k++) {
-        const float x = (k == 0 || k == 3) ? -h : h, y = k < 2 ? -h : h;
-        p[2 * k] = cx + x * c - y * s;
-        p[2 * k + 1] = cy + x * s + y * c;
-    }
-    qd_save();
-    qd_alpha(qd_get_alpha() * a * 0.3f);
-    ui_P(p, 4, col, 6.f, 1, QD_NONE);                   /* (neon: a wide glow under the line) */
-    qd_restore();
-    qd_save();
-    qd_alpha(qd_get_alpha() * a);
-    ui_P(p, 4, col, 1.8f, 1, QD_NONE);
-    for (k = 0; k < face; k++) {
-        const float x = (float)PIP[face][k][0] * h * 0.5f, y = (float)PIP[face][k][1] * h * 0.5f;
-        ui_O(cx + x * c - y * s, cy + x * s + y * c, h * 0.16f, QD_NONE, 1.f, col);
-    }
-    qd_restore();
+    px_rbox(x, y, 9, 9, col, QD_NONE);
+    for (k = 0; k < face; k++)
+        px_pset(x + 4 + PIP[face][k][0] * 2, y + 4 + PIP[face][k][1] * 2, col);
 }
 
-/* PRESETS / KNOB 4 turned: the names, a rolodex (P1.5z: the newest at the foot; older ones above, faded); a new one
- * rolled: a die tumbles in beside it and lands; walking back: the ten places as dots, the one shown lit */
+/* PRESETS / KNOB 4 turned: the names seen, the newest at the foot, older ones above; a new one rolled: a die tumbles
+ * in beside it and lands; walking back: the ten places as dots, the one shown lit */
 static void ty_ideas(const ui_type_t *v)
 {
     int d;
     for (d = -2; d <= 1; d++) {
+        static const int Y[4] = {14, 21, 30, 42};       /* (d -2 .. 1) */
         const int i = v->hpos - d;                      /* (above: older; below: newer) */
-        const float y = d < 0 ? 58.f + (float)(d + 1) * 22.f : 92.f + (float)d * 24.f;
         if (i < 0 || i >= v->nhist || !v->hist[i])
             continue;
-        qd_save();
-        qd_alpha(qd_get_alpha() * (d == 0 ? 1.f : d == 1 || d == -1 ? 0.6f : 0.3f));
-        ui_T(v->hist[i], 120.f, y, d ? 15.f : 24.f, d ? 400 : 300, 0.f, d ? UI_G1 : UI_K3, QD_CENTER);
-        qd_restore();
+        if (d == 0)
+            lb_name(4, Y[2], 100, v->hist[i], UI_K3, 1);
+        else
+            px_ctext(54, Y[d + 2], v->hist[i], d == -2 ? UI_G2 : UI_G1, PX_FS, 1);
     }
     if (v->dice >= 0.f && v->hpos == 0) {               /* the die: tumbling in from above, then landed */
         const float u = v->dice, e = u < 1.f ? u : 1.f;
-        const float bounce = e < 1.f ? fabsf(sinf(e * UI_PI * 2.5f)) * (1.f - e) * 22.f : 0.f;
+        const int bounce = e < 1.f ? lb_r(fabsf(sinf(e * UI_PI * 2.5f)) * (1.f - e) * 14.f) : 0;
         const int face = e < 1.f ? 1 + ((int)(u * 14.f) + v->dice_face) % 6 : v->dice_face;
-        ty_die(214.f, 86.f - bounce, 9.f, (1.f - e) * UI_PI * 3.f, face, UI_K2, 1.f);
+        ty_die(106, 26 - bounce, face, UI_K2);
     } else {
-        ty_spark(219.f, 81.f, 6.f, UI_LIB_COL);
+        lb_spark(110, 31, 2, UI_LIB_COL);
     }
     if (v->hpos > 0) {                                  /* back in the history: where among the ten */
         int k;
         for (k = 0; k < QD_UI_NHIST; k++) {
-            const float x = 120.f + (float)(QD_UI_NHIST - 1 - k) * 9.f - (float)(QD_UI_NHIST - 1) * 4.5f;
-            if (k < v->nhist)
-                ui_O(x, 132.f, k == v->hpos ? 3.6f : 2.2f, QD_NONE, 1.f, k == v->hpos ? UI_LIB_COL : UI_G1);
-            else
-                ui_O(x, 132.f, 2.2f, UI_G3, 1.f, QD_NONE);
+            const int x = 60 + (QD_UI_NHIST - 1 - k) * 5 - (QD_UI_NHIST - 1) * 5 / 2;
+            px_rect(x, 60, 2, 2, k < v->nhist ? (k == v->hpos ? UI_LIB_COL : UI_G1) : UI_G3);
         }
     }
 }
 
 void ui_type_draw(const ui_type_t *v)
 {
-    ui_T(v->title, 8.f, 17.f, 12.f, 600, 1.f, UI_LIB_COL, QD_LEFT);
+    px_text(4, 3, v->title, UI_LIB_COL, PX_FS, 1);
     if (v->track)
-        ui_box(214.f, 4.f, v->track, UI_TRACK_PAL[(v->track - 1) & 7]);
-    line2(8.f, 25.f, 232.f, 25.f, UI_G3, 1.f);
+        ui_box(216.f, 4.f, v->track, UI_TRACK_PAL[(v->track - 1) & 7]);
+    px_dots(0, 11, 120, UI_G3, 2);
     if (v->ideas_on) {
         ty_ideas(v);
     } else {
         ty_row(v);
         if (v->spark)
-            ty_spark(227.f, 47.f, 6.f, UI_LIB_COL);
+            lb_spark(114, 18, 2, UI_LIB_COL);
     }
     if (v->shift) {                                     /* SHIFT held: the signs' layer */
-        ui_RR(8.f, 112.f, 50.f, 18.f, 4.f, UI_K3, 1.3f, QD_NONE);
-        ui_T("SHIFT", 33.f, 125.f, 12.f, 600, 0.f, UI_K3, QD_CENTER);
-    } else if (v->replace && !v->ideas_on) {            /* NEW (as the new name) or REPLACE: F2 chooses (P1.5v) */
+        px_box(4, 56, 25, 10, UI_K3);
+        px_text(7, 58, "SHIFT", UI_K3, PX_FS, 1);
+    } else if (v->replace && !v->ideas_on) {            /* NEW (as the new name) or REPLACE: F2 chooses */
         if (v->newname && v->newname[0] && !v->choice)
-            ui_T(v->newname, 120.f, 104.f, 13.f, 400, 0.f, UI_G1, QD_CENTER);
-        ty_pill(12.f, 112.f, 104.f, "NEW", UI_LIB_COL, !v->choice);
-        ty_pill(124.f, 112.f, 104.f, "REPLACE", PR_ORANGE, v->choice);
+            px_ctext(60, 46, v->newname, UI_G1, PX_FS, 1);
+        ty_pill(6, 56, 50, "NEW", UI_LIB_COL, !v->choice);
+        ty_pill(64, 56, 50, "REPLACE", PR_ORANGE, v->choice);
     }
     if (v->sub && v->sub[0] && !v->ideas_on && !v->shift)
-        ui_T(v->sub, 120.f, 116.f, 14.f, 300, 0.f, UI_LIB_COL, QD_CENTER);
+        px_ctext(60, 50, v->sub, UI_LIB_COL, PX_FB, 1);
     ty_keybed(v->glow, v->shift);
 }

@@ -20,39 +20,29 @@
 /* the pages: name, group, drawing (ui.h UI_SD_*), the ids on KNOB 1..4 and ALGORITHM (-1 none), the drawing's arg */
 #define L(k, f) (QD_QP_LFO((k), (f)))
 const qd_sndpage_t QD_SND_PAGES[QD_SND_NPAGE] = {
-    /* P1.5l (the owner): the groups on B1..B8, in SELECT's order: B1 TRIG / KEYS (out of OP ENVELOPES), B2 OPERATORS,
-     * B3 OP ENVELOPES, B4 FILTERS, B5 ENVELOPES, B6 / B7 / B8 the LFOs (the MODULATION key gone) */
-    {"TRIG", QD_SG_TRIG, UI_SD_TRIG, {QD_QP_ATRIG, QD_QP_ARST, QD_QP_BTRIG, QD_QP_BRST, QD_QP_PHRT}, 0, 0, {0}},
-    {"KEYS", QD_SG_TRIG, UI_SD_KEYS, {QD_QP_AKEY, QD_QP_B1KEY, QD_QP_B2KEY, QD_QP_VEL, -1}, 0, 0, {0}},
-    /* E1 (research/FMTONE-DN2-PLAN.md §7): portamento, in the sound; B1 is PLAY / MOD */
-    {"PORT", QD_SG_TRIG, UI_SD_PORT, {QD_QP_PORT, QD_QP_PTIM, QD_QP_PSLOPE, -1, -1}, 0, 0, {0}},
-    /* 2026-10-26 (mockups/fizz-unison-voice.html): how the sound takes voices, ALGORITHM its PRIORITY */
+    /* EvilGenius (SID TONE): the groups on B1..B8, in SELECT's order: B1 PLAY / AMP, B2 the oscillators, B3 their
+     * envelopes, B4 the filter, B5 VOX, B6 / B7 / B8 the LFOs. ALGORITHM a fifth value where a page has one */
+    {"PORT", QD_SG_TRIG, UI_SD_PORT, {QD_QP_PORT, QD_QP_PTIM, QD_QP_PSLOPE, QD_QP_HR, -1}, 0, 0, {0}},
     {"VOICE", QD_SG_TRIG, UI_SD_VOICE, {QD_QP_VMODE, QD_QP_UNI, QD_QP_UDET, QD_QP_USPR, QD_QP_VPRIO}, 0, 0, {0}},
-    /* E4: the eight modulation slots: ALGORITHM the slot, KNOB 1 SOURCE, 2 DEST, 3 DEPTH (snd_mod_ids) */
     {"MOD", QD_SG_TRIG, UI_SD_MOD, {QD_QP_MOD(0, QD_QM_SRC), QD_QP_MOD(0, QD_QM_DST), QD_QP_MOD(0, QD_QM_DEPTH), -1, -1}, 0, 0,
      {0}},
-    /* P1.5i (the owner, as ChoralRoot and the Digitone): RATIO B is one value, the pair (QD_QP_RB1 here stands for it:
-     * B1 x 19 + B2, B2 the fast hand; snd_pair), and MIX moved here from TONE */
-    {"RATIO", QD_SG_OPS, UI_SD_ALGO, {QD_QP_RC, QD_QP_RA, QD_QP_RB1, QD_QP_MIX, QD_QP_ALGO}, 0, 0, {0}},
-    {"TONE", QD_SG_OPS, UI_SD_TONE, {QD_QP_HARM, QD_QP_DTUN, QD_QP_FDBK, QD_QP_MIX, -1}, 0, 0, {0}},   /* (P1.5n: MIX here
-                                                         * too, the one value on two pages) */
-    {"OFFSET", QD_SG_OPS, UI_SD_OFS, {QD_QP_OFSC, QD_QP_OFSA, QD_QP_OFSB1, QD_QP_OFSB2, -1}, 0, 0, {0}},
-    {"ENV A", QD_SG_OPENV, UI_SD_OPENV, {QD_QP_AATK, QD_QP_ADEC, QD_QP_AEND, QD_QP_ALEV, QD_QP_ADLY}, 0, 0, {0}},
-    {"ENV B", QD_SG_OPENV, UI_SD_OPENV, {QD_QP_BATK, QD_QP_BDEC, QD_QP_BEND, QD_QP_BLEV, QD_QP_BDLY}, 1, 0, {0}},
-    /* E2: FILTER's ALGORITHM is the MACHINE (E4.1: turned in the Digitone II's order: MULTI, LOWPASS 4, LEGACY
-     * LP/HP/OFF, COMB-, COMB+, EQ), KNOB 2 / 3 by it (snd_filter_ids); BASE's KNOB 4 BWPOST */
-    {"FILTER", QD_SG_FILTER, UI_SD_FILTER, {QD_QP_FREQ, QD_QP_RESO, QD_QP_FTYPE, QD_QP_FDEPTH, QD_QP_FTYPE}, 0, 0, {0}},
-    {"F ENV", QD_SG_FILTER, UI_SD_ADSR, {QD_QP_FATK, QD_QP_FDEC, QD_QP_FSUS, QD_QP_FREL, QD_QP_FDLY}, 0, 0, {0}},
-    {"BASE", QD_SG_FILTER, UI_SD_BAND, {QD_QP_BASE, QD_QP_WIDTH, QD_QP_FKTRK, QD_QP_BWPOST, -1}, 0, 0, {0}},
-    /* E1: AMP's MODE on ALGORITHM (ADSR / AHD; in AHD: ATK HOLD DEC); LEVEL's ROUTE (DRIVE before or after the
-     * filter); B5 is AMP / FX */
-    {"AMP", QD_SG_AMP, UI_SD_ADSR, {QD_QP_EATK, QD_QP_EDEC, QD_QP_ESUS, QD_QP_EREL, QD_QP_AMOD}, 1, QD_QP_AMOD,
-     {QD_QP_EATK, QD_QP_HOLD, QD_QP_EDEC, -1, QD_QP_AMOD}},
-    {"LEVEL", QD_SG_AMP, UI_SD_DRIVE, {QD_QP_LEVEL, QD_QP_DRIVE, QD_QP_DRPRE, -1, -1}, 0, 0, {0}},
-    /* E3: B5's CRUSH: BITS, SRR, ROUTE (before / after the filter) */
-    {"CRUSH", QD_SG_AMP, UI_SD_CRUSH, {QD_QP_BITS, QD_QP_SRR, QD_QP_CRPOST, -1, -1}, 0, 0, {0}},
-    /* P1.5k (the owner): an LFO's page SPEED MULT DEPTH DEST (DEST in the menu now, not ALGORITHM's), its WAVE page
-     * WAVE PHASE TRIG FADE; ALGORITHM nothing on them (ChoralRoot's LFO has these eight values, no fifth) */
+    {"AMP", QD_SG_TRIG, UI_SD_DRIVE, {QD_QP_LEVEL, QD_QP_VEL, QD_QP_DRIVE, -1, -1}, 0, 0, {0}},
+    {"CRUSH", QD_SG_TRIG, UI_SD_CRUSH, {QD_QP_BITS, QD_QP_SRR, -1, -1, -1}, 0, 0, {0}},
+    /* the oscillators: WAVE COARSE FINE PW, ALGORITHM sync / ring by the one before */
+    {"OSC 1", QD_SG_OPS, UI_SD_OSC, {QD_QP_W1, QD_QP_C1, QD_QP_F1, QD_QP_PW1, QD_QP_M1}, 0, 0, {0}},
+    {"OSC 2", QD_SG_OPS, UI_SD_OSC, {QD_QP_W2, QD_QP_C2, QD_QP_F2, QD_QP_PW2, QD_QP_M2}, 1, 0, {0}},
+    {"OSC 3", QD_SG_OPS, UI_SD_OSC, {QD_QP_W3, QD_QP_C3, QD_QP_F3, QD_QP_PW3, QD_QP_M3}, 2, 0, {0}},
+    /* the SID's envelopes, 0..15; 2 and 3 LINK to 1 on ALGORITHM */
+    {"ENV 1", QD_SG_OPENV, UI_SD_ENV, {QD_QP_EATK, QD_QP_EDEC, QD_QP_ESUS, QD_QP_EREL, -1}, 0, 0, {0}},
+    {"ENV 2", QD_SG_OPENV, UI_SD_ENV, {QD_QP_E2A, QD_QP_E2D, QD_QP_E2S, QD_QP_E2R, QD_QP_E2LINK}, 1, 0, {0}},
+    {"ENV 3", QD_SG_OPENV, UI_SD_ENV, {QD_QP_E3A, QD_QP_E3D, QD_QP_E3S, QD_QP_E3R, QD_QP_E3LINK}, 2, 0, {0}},
+    /* the chip's filter: ALGORITHM its mode (B4 held: the modes' popup) */
+    {"FILTER", QD_SG_FILTER, UI_SD_FILTER, {QD_QP_FREQ, QD_QP_RESO, QD_QP_FROUTE, QD_QP_FDEPTH, QD_QP_FTYPE}, 0, 0, {0}},
+    {"F ENV", QD_SG_FILTER, UI_SD_ADSR, {QD_QP_FATK, QD_QP_FDEC, QD_QP_FSUS, QD_QP_FREL, -1}, 0, 0, {0}},
+    {"CHIP", QD_SG_FILTER, UI_SD_CHIP, {QD_QP_CHIP, QD_QP_FKTRK, QD_QP_DETUNE, -1, -1}, 0, 0, {0}},
+    /* VOX: the word (ALGORITHM its loop) and its digi */
+    {"WORD", QD_SG_AMP, UI_SD_WORD, {QD_QP_WORD, QD_QP_ROOT, QD_QP_VSTART, QD_QP_VEND, QD_QP_VLOOP}, 0, 0, {0}},
+    {"DIGI", QD_SG_AMP, UI_SD_DIGI, {QD_QP_DBITS, QD_QP_DHOLD, QD_QP_DLVL, QD_QP_DBOOST, -1}, 0, 0, {0}},
     {"LFO 1", QD_SG_LFO1, UI_SD_LFO, {L(0, QD_QL_SPEED), L(0, QD_QL_MULT), L(0, QD_QL_DEPTH), L(0, QD_QL_DEST), -1}, 0, 0, {0}},
     {"LFO 1 WAVE", QD_SG_LFO1, UI_SD_LFOSHAPE, {L(0, QD_QL_WAVE), L(0, QD_QL_PHASE), L(0, QD_QL_TRIG), L(0, QD_QL_FADE),
                                                 -1}, 0, 0, {0}},
@@ -64,7 +54,7 @@ const qd_sndpage_t QD_SND_PAGES[QD_SND_NPAGE] = {
                                                 -1}, 2, 0, {0}},
 };
 #undef L
-const char *const QD_SND_GROUP_NAME[QD_NSG] = {"PLAY / MOD", "OPERATORS", "OP ENVELOPES", "FILTERS", "AMP / FX",
+const char *const QD_SND_GROUP_NAME[QD_NSG] = {"PLAY / AMP", "OSCILLATORS", "ENVELOPES", "FILTER", "VOX",
                                                "LFO 1", "LFO 2", "LFO 3"};
 int qd_snd_page_of(const char *name)
 {
@@ -289,19 +279,23 @@ int qd_msnd_take(qd_app_t *a, int t)
     return 1;
 }
 
-/* E2: the filter machines: FTYPE 0..2 LEGACY (its TYPE on KNOB 3), 3 LOWPASS 4, 4 MULTI, 5 COMB+, 6 COMB-, 7 EQ; the
- * FILTER page's ids by machine, KNOB 2 / 3's names */
-int qd_snd_machine(int ftype) { return ftype <= QD_QF_HP12 ? 0 : ftype - 2; }   /* 0 LEGACY .. 5 EQ */
-const char *const QD_SND_MACHINE[6] = {"LEGACY", "LOWPASS 4", "MULTI", "COMB+", "COMB-", "EQ"};
+/* EvilGenius: the filter "machines" are the SID's modes (the popup on B4 held picks one; ALGORITHM steps them) */
+static const int16_t SND_MACH_FT[6] = {QD_QF_LP, QD_QF_BP, QD_QF_HP, QD_QF_NOTCH, QD_QF_LPBP, QD_QF_ALL};
+int qd_snd_machine(int ftype)
+{
+    int m;
+    for (m = 0; m < 6; m++)
+        if (SND_MACH_FT[m] == ftype)
+            return m;
+    return 0;
+}
+const char *const QD_SND_MACHINE[6] = {"LOWPASS", "BANDPASS", "HIGHPASS", "NOTCH", "LP+BP", "ALL"};
 static const int8_t SND_FILTER_IDS[6][5] = {
-    {QD_QP_FREQ, QD_QP_RESO, QD_QP_FTYPE, QD_QP_FDEPTH, QD_QP_FTYPE},    /* LEGACY: TYPE (OFF, LP12, HP12) */
-    {QD_QP_FREQ, QD_QP_RESO, -1, QD_QP_FDEPTH, QD_QP_FTYPE},             /* LOWPASS 4 */
-    {QD_QP_FREQ, QD_QP_RESO, QD_QP_FSHAPE, QD_QP_FDEPTH, QD_QP_FTYPE},   /* MULTI: TYPE, the morph */
-    {QD_QP_FREQ, QD_QP_RESO, QD_QP_FSHAPE, QD_QP_FDEPTH, QD_QP_FTYPE},   /* COMB+: FDBK, LPF */
-    {QD_QP_FREQ, QD_QP_RESO, QD_QP_FSHAPE, QD_QP_FDEPTH, QD_QP_FTYPE},   /* COMB- */
-    {QD_QP_FREQ, QD_QP_FGAIN, QD_QP_FSHAPE, QD_QP_FDEPTH, QD_QP_FTYPE}}; /* EQ: GAIN, Q */
-static const char *const SND_FILTER_LAB[6][2] = {{"RESO", "TYPE"}, {"RESO", ""}, {"RESO", "TYPE"}, {"FDBK", "LPF"},
-                                                 {"FDBK", "LPF"}, {"GAIN", "Q"}};
+    {QD_QP_FREQ, QD_QP_RESO, QD_QP_FROUTE, QD_QP_FDEPTH, QD_QP_FTYPE}, {QD_QP_FREQ, QD_QP_RESO, QD_QP_FROUTE, QD_QP_FDEPTH, QD_QP_FTYPE},
+    {QD_QP_FREQ, QD_QP_RESO, QD_QP_FROUTE, QD_QP_FDEPTH, QD_QP_FTYPE}, {QD_QP_FREQ, QD_QP_RESO, QD_QP_FROUTE, QD_QP_FDEPTH, QD_QP_FTYPE},
+    {QD_QP_FREQ, QD_QP_RESO, QD_QP_FROUTE, QD_QP_FDEPTH, QD_QP_FTYPE}, {QD_QP_FREQ, QD_QP_RESO, QD_QP_FROUTE, QD_QP_FDEPTH, QD_QP_FTYPE}};
+static const char *const SND_FILTER_LAB[6][2] = {{"RESO", "ROUTE"}, {"RESO", "ROUTE"}, {"RESO", "ROUTE"},
+                                                 {"RESO", "ROUTE"}, {"RESO", "ROUTE"}, {"RESO", "ROUTE"}};
 const char *qd_snd_label(const qd_app_t *a, int page, int k)
 {
     const int8_t *ids = qd_snd_ids(a, page);
@@ -329,7 +323,7 @@ const char *qd_snd_label(const qd_app_t *a, int page, int k)
     if (QD_SND_PAGES[page].draw == UI_SD_FILTER && (k == 1 || k == 2))
         return SND_FILTER_LAB[qd_snd_machine(snd_now(a, QD_QP_FTYPE))][k - 1];
     if (QD_SND_PAGES[page].draw == UI_SD_FILTER && k == 4)
-        return "MACHINE";
+        return "MODE";
     if (QD_SND_PAGES[page].draw == UI_SD_MOD && k == 4)
         return "SLOT";
     return ids[k] == QD_QP_RB1 ? "RATIO B" : qd_quad_value_name(ids[k]);
@@ -742,10 +736,7 @@ void qd_snd_mod_src(qd_app_t *a, int w)
     a->ui.snd_lk_used = 1;
 }
 
-/* E4.1: the machines in the Digitone II's menu order (MULTI, LOWPASS 4, LEGACY, COMB-, COMB+, EQ; the stored FTYPE as
- * before); P1.6d: the FILTER key held, the popup of the six */
-static const int16_t SND_MACH_FT[6] = {QD_QF_LP12, QD_QF_LP24, QD_QF_MULTI, QD_QF_COMBP, QD_QF_COMBN, QD_QF_EQ};
-const int8_t QD_SND_MENU[6] = {2, 1, 0, 4, 3, 5};
+const int8_t QD_SND_MENU[6] = {0, 1, 2, 3, 4, 5};
 int qd_snd_machine_pos(const qd_app_t *a)               /* the machine's place in the menu (0..5) */
 {
     const int m = qd_snd_machine(snd_now(a, QD_QP_FTYPE));
@@ -878,7 +869,7 @@ int qd_snd_knob(qd_app_t *a, int knob, int d)
             snd_machine_at(a, pos + (d > 0 ? 1 : -1));
             u->snd_fpop_ms = a->ms ? a->ms : 1u;        /* (P1.6g: the popup, a second after the last detent) */
         } else {
-            snd_put(a, QD_QP_FTYPE, cur + d < 0 ? 0 : cur + d > QD_QF_HP12 ? QD_QF_HP12 : cur + d);
+            snd_put(a, QD_QP_FTYPE, cur + d < 0 ? 0 : cur + d > QD_QF_N - 1 ? QD_QF_N - 1 : cur + d);
         }
         return 1;
     }
@@ -944,17 +935,14 @@ void qd_snd_leds(const qd_app_t *a, uint8_t *black)
  * PHRT) kept. A fraction pair (lo, hi) of the range a value, or kept */
 typedef struct { int8_t id; uint8_t lo, hi; } snd_rule_t;   /* lo, hi: % of the range; 255: kept */
 static const snd_rule_t SND_RULES[] = {
-    {QD_QP_HARM, 25, 75}, {QD_QP_DTUN, 40, 60}, {QD_QP_FDBK, 0, 60}, {QD_QP_MIX, 0, 100},
-    {QD_QP_OFSC, 45, 55}, {QD_QP_OFSA, 45, 55}, {QD_QP_OFSB1, 45, 55}, {QD_QP_OFSB2, 45, 55},
-    {QD_QP_AATK, 0, 30}, {QD_QP_ADEC, 15, 80}, {QD_QP_AEND, 20, 100}, {QD_QP_ALEV, 40, 100},
-    {QD_QP_BATK, 0, 30}, {QD_QP_BDEC, 15, 80}, {QD_QP_BEND, 20, 100}, {QD_QP_BLEV, 40, 100},
-    {QD_QP_ADLY, 0, 10}, {QD_QP_BDLY, 0, 10}, {QD_QP_VEL, 20, 80},
-    {QD_QP_AKEY, 0, 30}, {QD_QP_B1KEY, 0, 30}, {QD_QP_B2KEY, 0, 30},
+    {QD_QP_PW1, 20, 80}, {QD_QP_PW2, 20, 80}, {QD_QP_PW3, 20, 80}, {QD_QP_F1, 45, 55}, {QD_QP_F2, 40, 60},
+    {QD_QP_F3, 40, 60}, {QD_QP_DETUNE, 0, 40},
+    {QD_QP_EATK, 0, 40}, {QD_QP_EDEC, 20, 80}, {QD_QP_ESUS, 30, 100}, {QD_QP_EREL, 10, 60},
+    {QD_QP_E2A, 0, 40}, {QD_QP_E2D, 20, 80}, {QD_QP_E2S, 30, 100}, {QD_QP_E2R, 10, 60},
+    {QD_QP_E3A, 0, 40}, {QD_QP_E3D, 20, 80}, {QD_QP_E3S, 30, 100}, {QD_QP_E3R, 10, 60},
     {QD_QP_FATK, 0, 30}, {QD_QP_FDEC, 15, 70}, {QD_QP_FSUS, 20, 100}, {QD_QP_FREL, 10, 60},
-    {QD_QP_FREQ, 45, 100}, {QD_QP_RESO, 0, 60}, {QD_QP_FDEPTH, 40, 75}, {QD_QP_FDLY, 0, 5},
-    {QD_QP_FKTRK, 0, 60}, {QD_QP_BASE, 0, 20}, {QD_QP_WIDTH, 70, 100},
-    {QD_QP_EATK, 0, 20}, {QD_QP_EDEC, 20, 80}, {QD_QP_ESUS, 40, 100}, {QD_QP_EREL, 10, 55},
-    {QD_QP_DRIVE, 0, 25},
+    {QD_QP_FREQ, 20, 100}, {QD_QP_RESO, 0, 80}, {QD_QP_FDEPTH, 40, 90}, {QD_QP_FKTRK, 0, 60},
+    {QD_QP_DRIVE, 0, 25}, {QD_QP_VSTART, 0, 30}, {QD_QP_VEND, 70, 100},
 };
 static uint32_t snd_rnd(qd_app_t *a)                    /* xorshift32 (seeded by the clock once) */
 {
@@ -966,20 +954,11 @@ static uint32_t snd_rnd(qd_app_t *a)                    /* xorshift32 (seeded by
 static int snd_pick(qd_app_t *a, const uint8_t *from, int n) { return from[snd_rnd(a) % (uint32_t)n]; }
 static void snd_rnd_value(qd_app_t *a, int id)
 {
-    static const uint8_t RC[5] = {1, 3, 4, 5, 6}, RA[5] = {1, 3, 7, 11, 15}, RB[4] = {1, 3, 4, 5};
+    static const uint8_t WAVES[3] = {QD_SW_TRI, QD_SW_SAW, QD_SW_PUL};
     int16_t lo, hi;
     size_t k;
-    if (id == QD_QP_ALGO) {
-        snd_put(a, id, 1 + (int)(snd_rnd(a) % 8u));
-        return;
-    }
-    if (id == QD_QP_RC || id == QD_QP_RA) {
-        snd_put(a, id, id == QD_QP_RC ? snd_pick(a, RC, 5) : snd_pick(a, RA, 5));
-        return;
-    }
-    if (id == QD_QP_RB1 || id == QD_QP_RB2) {          /* (the pair: both) */
-        snd_put(a, QD_QP_RB1, snd_pick(a, RB, 4));
-        snd_put(a, QD_QP_RB2, snd_pick(a, RB, 4));
+    if (id == QD_QP_W1 || ((id == QD_QP_W2 || id == QD_QP_W3) && snd_now(a, id))) {   /* (an oscillator on stays on) */
+        snd_put(a, id, snd_pick(a, WAVES, 3));
         return;
     }
     if (id >= QD_QP_LFO0 && id < QD_QP_LFO0 + 3 * 8) {  /* the LFOs: gentle, their destinations kept */
@@ -990,9 +969,9 @@ static void snd_rnd_value(qd_app_t *a, int id)
             return;
         if (f == QD_QL_DEPTH) {
             const int r = (hi - lo) / 6;
-            snd_put(a, id, (int)(snd_rnd(a) % (uint32_t)(2 * r + 1)) - r);
+            snd_put(a, id, 64 + (int)(snd_rnd(a) % (uint32_t)(2 * r + 1)) - r);
         } else if (f == QD_QL_FADE) {
-            snd_put(a, id, 0);
+            snd_put(a, id, 64);
         } else {
             snd_put(a, id, lo + (int)(snd_rnd(a) % (uint32_t)(hi - lo + 1)));
         }
@@ -1024,8 +1003,7 @@ void qd_snd_randomise(qd_app_t *a, int page)
         return;
     }
     for (k = 0; k < QD_QUAD_NP; k++)
-        if (k != QD_QP_RB2)
-            snd_rnd_value(a, k);
+        snd_rnd_value(a, k);
 }
 
 /* B9 held (P1.6d: a second): the dice shake harder and harder, then roll: the page new as they roll (released early:

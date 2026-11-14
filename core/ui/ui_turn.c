@@ -1,645 +1,269 @@
 /* SPDX-License-Identifier: MPL-2.0
  * This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0. If a copy of the MPL was not
  * distributed with this file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-/* A knob turned (mockups/line.html s21..s25, s16; PLAN.md §9a rule 5): the knob takes the whole screen while it turns.
- * line.html's takeover(): a knob mark and the name in the knob's colour at the top, the context grey at the right, a
- * drawing of what the knob does, the value big at the foot. A p-lock on a held step: a padlock by the name, the
- * track's own value ghosted (dashed grey in the drawings that have a position, small grey under the big value).
- *   FREQ   the filter's curve (s21)              DECAY  the envelope's decay, a red dot down it each beat (s22)
- *   HARM   the wave growing harmonics (s23)      FDBK   a spiral winding back into itself (s24)
- *   ALGO   FM TONE's routing: C, A, B1, B2 wired, modulators above their targets, carriers into the speaker
- *   TEMPO / SWING  s16's metronome, the BPM and the swing; swing over 50 % swings the pendulum unequal
- *   RATE   a picker over the pattern's clock and the track's (s25)
- *   LEN    the track's loop (its steps) over the eight pages
- *   LIMIT  the 16-voice pool, the limit outlined, the voices lit
- *   TSWING the track's swing on / off: a small metronome swinging unequal or even
- *   PAGE   (SELECT) the eight pages as rows of sixteen steps: the one edited outlined in the knob's colour with its
- *          trigs in it, the pages in the loop grey and the others dark, each one's start..end as a line under its
- *          row, the playing page's number red; "PAGE 3" big
- *   SCALE  (SHIFT + ALGORITHM) the scale's name big, the scales before and after it small above and below, its notes
- *          on a little one-octave keybed from the root (scale_mask: bit k, k semitones over the root), the root white
- *   ROOT   (SHIFT + PRESETS) the root big, the same: its neighbours, the scale's notes from it on the keybed
- *   TRACK  (P1.3d: ALGORITHM in P-LOCK, nothing held) the eight tracks as rows, the one chosen boxed in P-LOCK's
- *          colour, each with its name and its loop's trigs (up to 32), a muted one grey with an M
- * And (P1.3d) the knob band, ui_band_draw: a turn in a hold mode, over the screen's top (ui.h)
- * Every motion comes from the record (t, beat, beats, the clocks' positions). */
-#include <math.h>
-#include "fz_math.h"                   /* (the drawing's own sinf .. atan2f: the flash diet) */
+/* EvilGenius: a knob turned takes the screen (FIZZ's ui_turn.c, redrawn on the 120 x 120 grid; the models are FIZZ's):
+ * its knob and name at the top in its colour, a picture of the value in the middle, the value big at the foot (the
+ * 8 x 8 font tripled). The pictures:
+ *   CUTOFF the SID filter's response, its corner moving      DECAY the envelope falling as long as the decay
+ *   PW     the pulse wave, its duty                          RESO  the filter's peak rising
+ *   TEMPO / SWING  the villain drumming his fingers in time  RATE / SCALE / ROOT  a picker (the value, its neighbours)
+ *   LEN    the track's loop over the eight pages             LIMIT the voice pool as robots, the limit's lit
+ *   PAGE   the eight pages, the one edited boxed             TRACK / TRACKBIG  the six tracks / the one chosen big
+ *   FOLLOW the pages and the playhead's arrow                TSWING a pendulum, even or swung
+ *   TAP    the villain at his desk, a finger a tap, the BPM big
+ * And the knob band (a turn in a hold mode: a strip over the top), the word band, the confirmation word, UNDO / REDO. */
 #include <string.h>
+#include "fz_math.h"
 
 #include "ui.h"
+#include "px.h"
 #include "../app/undo.h"
 
-static const float DASH[2] = {2.f, 3.f};
 
-static void line2(float x0, float y0, float x1, float y1, qd_rgb col, float lw)
+
+/* the value at the foot: as big as it fits (x3, x2, x1, the small font) */
+static void foot_value(const char *s, qd_rgb c)
 {
-    const float p[4] = {x0, y0, x1, y1};
-    ui_P(p, 2, col, lw, 0, QD_NONE);
+    int sc;
+    for (sc = 3; sc >= 1; sc--)
+        if (px_text_w(s, PX_FB, sc) <= 116) {
+            px_ctext(60, sc == 3 ? 92 : sc == 2 ? 97 : 101, s, c, PX_FB, sc);
+            return;
+        }
+    px_ctext(60, 103, s, c, PX_FS, 1);
 }
 
-/* ---------------------------------------------------------------- FREQ (s21's freqDraw) */
-static void grid(void)
-{
-    float x;
-    for (x = 30.f; x < 230.f; x += 26.f)
-        line2(x, 36.f, x, 158.f, 0x141418u, 1.f);
-    line2(14.f, 158.f, 226.f, 158.f, UI_G3, 1.f);
-}
+static void frame_box(void) { px_box(4, 16, 112, 72, UI_G3); }
 
-static float freq_y(float x, float xc)
+/* ---------------------------------------------------------------- the quick knobs: SID TONE's */
+static void d_cutoff(const ui_turn_t *v, qd_rgb c)
 {
-    const float u = (x - xc) / 9.f, bump = 34.f * expf(-u * u), d = (x > xc ? x - xc : 0.f) * 1.9f;
-    const float y = 78.f - bump + d;
-    return y < 158.f ? y : 158.f;
-}
-
-static void freq_path(float xc, int closed)
-{
-    float x;
-    qd_path_begin();
-    if (closed)
-        qd_move_to(14.f, 158.f);
-    for (x = 14.f; x <= 226.f; x += 2.f) {
-        if (x == 14.f && !closed)
-            qd_move_to(x, freq_y(x, xc));
-        else
-            qd_line_to(x, freq_y(x, xc));
+    const int xc = 8 + (int)(v->v * 104.f);
+    int x, prev = -1;
+    frame_box();
+    for (x = 6; x < 114; x++) {                         /* a 12 dB low-pass, its corner at xc */
+        const float f = (float)(x - 6) / (float)(xc - 6 > 1 ? xc - 6 : 1);
+        float g = f < 1.f ? 1.f : 1.f / (f * f);
+        int y = 80 - (int)(g * 52.f);
+        if (y < 18)
+            y = 18;
+        if (prev >= 0)
+            px_line(x - 1, prev, x, y, c);
+        prev = y;
     }
-    if (closed) {
-        qd_line_to(226.f, 158.f);
-        qd_path_close();
+    px_vdots(xc, 18, 68, UI_G1, 2);
+}
+
+static void d_decay(const ui_turn_t *v, qd_rgb c)
+{
+    const int end = 14 + (int)(v->v * 96.f);
+    int x, prev = -1;
+    frame_box();
+    px_line(8, 82, 14, 22, c);
+    for (x = 14; x < 114; x++) {
+        const float t = (float)(x - 14) / (float)(end - 14 > 1 ? end - 14 : 1);
+        const int y = 82 - (int)(60.f * fz_expf(-t * 3.f));
+        if (prev >= 0)
+            px_line(x - 1, prev, x, y, c);
+        prev = y;
     }
+    if (v->playing)                                     /* the beat's dot running down it */
+        px_rect(14 + (int)(v->beat * 96.f) - 1, 80, 3, 3, PX_LRED);
 }
 
-static void d_freq(const ui_turn_t *v, qd_rgb col)
+static void d_pw(const ui_turn_t *v, qd_rgb c)
 {
-    const float xc = 20.f + v->v * 200.f;
-    grid();
-    qd_save();
-    qd_alpha(0.16f);
-    freq_path(xc, 1);
-    qd_path_fill(col);
-    qd_restore();
-    if (v->lock) {
-        qd_save();
-        qd_dash(DASH, 2);
-        freq_path(20.f + v->ghost_v * 200.f, 0);
-        qd_path_stroke(UI_G2, 1.3f);
-        qd_restore();
-    }
-    freq_path(xc, 0);
-    qd_path_stroke(col, 1.6f);
-    ui_O(xc, 78.f - 34.f, 3.f, QD_NONE, 1.f, col);
-}
-
-/* ---------------------------------------------------------------- DECAY (s22) */
-static float decay_y(float x, float end) { return 158.f - 114.f * expf(-(x - 24.f) / (end - 24.f) * 3.f); }
-
-static void decay_path(float end)
-{
-    float x;
-    qd_path_begin();
-    qd_move_to(16.f, 158.f);
-    qd_line_to(24.f, 44.f);
-    for (x = 24.f; x <= 226.f; x += 2.f)
-        qd_line_to(x, decay_y(x, end));
-}
-
-static void d_decay(const ui_turn_t *v, qd_rgb col)
-{
-    const float end = 26.f + v->v * 330.f, dx = 24.f + v->beat * 200.f;
-    grid();
-    if (v->lock) {
-        qd_save();
-        qd_dash(DASH, 2);
-        decay_path(26.f + v->ghost_v * 330.f);
-        qd_path_stroke(UI_G2, 1.3f);
-        qd_restore();
-    }
-    decay_path(end);
-    qd_path_stroke(col, 1.6f);
-    ui_O(24.f, 44.f, 3.f, QD_NONE, 1.f, col);
-    ui_O(dx, decay_y(dx, end), 2.f, QD_NONE, 1.f, UI_RED);      /* a red dot down the curve each beat */
-}
-
-/* ---------------------------------------------------------------- HARM (s23) */
-/* harmonic k's amplitude at h (0..26): k 1 always, the next ones fade in as h grows */
-static float harm_a(int k, float h)
-{
-    float a;
-    if (k == 1)
-        return 1.f;
-    a = h / 2.f - (float)(k - 2) * 0.6f;
-    return (a < 0.f ? 0.f : a > 1.f ? 1.f : a) / (float)k;
-}
-
-/* the wave; a negative HARM (it shapes C) alternates the harmonics' signs */
-static void harm_path(float hv, float t)
-{
-    const float h = fabsf(hv);
-    float x, n = 0.f;
+    const float duty = 0.05f + v->v * 0.9f;
     int k;
-    for (k = 1; k <= 7; k++)
-        n += harm_a(k, h);
-    qd_path_begin();
-    for (x = 14.f; x <= 226.f; x += 1.5f) {
-        const float u = (x - 14.f) / 212.f * UI_TAU * 2.f - t * 3.f;
-        float y = 0.f;
-        for (k = 1; k <= 7; k++)
-            y += harm_a(k, h) * sinf((float)k * u) * (hv < 0.f && !(k & 1) ? -1.f : 1.f);
-        y = 98.f - y / (n * 0.7f > 1.f ? n * 0.7f : 1.f) * 50.f;
-        if (x == 14.f)
-            qd_move_to(x, y);
-        else
-            qd_line_to(x, y);
+    frame_box();
+    for (k = 0; k < 3; k++) {                           /* three cycles of the pulse */
+        const int x0 = 8 + k * 35, xh = x0 + (int)(duty * 35.f);
+        px_line(x0, 74, x0, 28, c);
+        px_line(x0, 28, xh, 28, c);
+        px_line(xh, 28, xh, 74, c);
+        px_line(xh, 74, x0 + 35, 74, c);
     }
 }
 
-static void d_harm(const ui_turn_t *v, qd_rgb col)
+static void d_reso(const ui_turn_t *v, qd_rgb c)
 {
-    const float h = (float)v->value / 100.f;
+    const int peak = (int)(v->v * 44.f);
+    int x, prev = -1;
+    frame_box();
+    for (x = 6; x < 114; x++) {
+        const float d = (float)(x - 70) / 9.f;
+        const float bump = (float)peak / (1.f + d * d);
+        int y = 64 - (int)bump - (x > 70 ? (x - 70) * 2 / 3 : 0);
+        y = y < 18 ? 18 : y > 86 ? 86 : y;
+        if (prev >= 0)
+            px_line(x - 1, prev, x, y, c);
+        prev = y;
+    }
+}
+
+/* ---------------------------------------------------------------- the villain drumming his fingers */
+static void villain_desk(int bpm, float beat, int beats, qd_rgb c)
+{
+    const int up = beat < 0.25f;                        /* a finger comes down on the beat */
     int k;
-    line2(14.f, 98.f, 226.f, 98.f, UI_G3, 1.f);
-    if (v->lock) {
-        qd_save();
-        qd_dash(DASH, 2);
-        harm_path(v->ghost_v * 52.f - 26.f, v->t);
-        qd_path_stroke(UI_G2, 1.3f);
-        qd_restore();
+    px_sprite_sc(44, 18, beat < 0.5f ? PXS_GENIUS_TALK : PXS_GENIUS, 0, 2, QD_NONE);
+    px_rect(20, 52, 80, 3, PX_BROWN);                   /* the desk */
+    px_rect(20, 55, 80, 1, PX_ORANGE);
+    for (k = 0; k < 4; k++) {                           /* four fingers: the one of this beat down */
+        const int down = (beats & 3) == k && up;
+        px_rect(48 + k * 6, down ? 50 : 46, 4, down ? 2 : 5, PX_LRED);
     }
-    harm_path(h, v->t);
-    qd_path_stroke(col, 1.6f);
-    for (k = 1; k <= 7; k++) {                          /* the comb: which harmonics sound */
-        const float a = harm_a(k, fabsf(h)), x = 60.f + (float)k * 16.f;
-        line2(x, 168.f, x, 168.f - a * 18.f, a > 0.f ? col : UI_G3, 2.f);
-    }
+    px_rect(78, 44, 10, 8, PX_DGREY);                   /* the button he taps */
+    px_rect(80, 46 + (up ? 1 : 0), 6, 4, up ? c : PX_RED);
+    (void)bpm;
 }
 
-/* ---------------------------------------------------------------- FDBK (s24) */
-static void spiral(float value, float t, float *ex, float *ey)
+static void metronome(int cx, int cy, int beats, float beat, int swing, qd_rgb c)
 {
-    const float turns = 1.f + value / 9.f, cx = 120.f, cy = 100.f, end = turns * UI_TAU;
-    float a, x = cx, y = cy;
-    qd_path_begin();
-    for (a = 0.f; a <= end; a += 0.08f) {
-        const float r = 4.f + a / end * 58.f;
-        x = cx + cosf(a - t * 2.f) * r, y = cy + sinf(a - t * 2.f) * r;
-        if (a == 0.f)
-            qd_move_to(x, y);
-        else
-            qd_line_to(x, y);
-    }
-    *ex = x, *ey = y;
+    const float ph = (beats & 1) ? 1.f - beat : beat;   /* to and fro */
+    const float sw = (float)(swing - 50) / 50.f;
+    const float a = (ph - 0.5f) * 1.3f + (beats & 1 ? sw * 0.3f : -sw * 0.3f);
+    const int tx = cx + (int)(fz_sinf(a) * 34.f), ty = cy - (int)(fz_cosf(a) * 34.f);
+    int p[6] = {cx - 16, cy + 6, cx + 16, cy + 6, cx, cy - 40};
+    px_poly(p, 3, 1, UI_G2, QD_NONE);
+    px_line(cx, cy, tx, ty, c);
+    px_rect(tx - 2, ty - 2, 5, 5, c);
 }
 
-static void d_fdbk(const ui_turn_t *v, qd_rgb col)
+/* ---------------------------------------------------------------- the pickers and the maps */
+static void picker(const ui_turn_t *v, qd_rgb c)
 {
-    float x, y;
-    if (v->lock) {
-        qd_save();
-        qd_dash(DASH, 2);
-        spiral(v->ghost_v * 127.f, v->t, &x, &y);
-        qd_path_stroke(UI_G2, 1.2f);
-        qd_restore();
-    }
-    spiral((float)v->value, v->t, &x, &y);
-    qd_path_stroke(col, 1.5f);
-    ui_O(x, y, 3.f, QD_NONE, 1.f, col);
-}
-
-/* ---------------------------------------------------------------- ALGO */
-/* FM TONE's eight routings, from core/voice/quad/eng_quad.c QUAD_ALGO: per algorithm the modulators of C, A, B1, B2
- * as bitmasks (bit 0 C, 1 A, 2 B1, 3 B2), the feedback operator, the X and Y outputs' carriers */
-enum { OP_C, OP_A, OP_B1, OP_B2 };
-static const struct {
-    uint8_t mod[4], fb, x, y;
-} ALGO[8] = {
-    {{0x6, 0, 0x8, 0}, OP_A, 0x1, 0x4},  {{0x2, 0, 0x8, 0}, OP_B2, 0x1, 0x4}, {{0x2, 0, 0x2, 0x2}, OP_A, 0x9, 0x4},
-    {{0x2, 0x4, 0x8, 0}, OP_B2, 0x1, 0x4}, {{0x2, 0xC, 0, 0}, OP_B1, 0x1, 0x2}, {{0xA, 0, 0xA, 0}, OP_A, 0x1, 0x4},
-    {{0x2, 0, 0x8, 0}, OP_A, 0x3, 0xC},  {{0x2, 0, 0, 0}, OP_B1, 0x9, 0x4},
-};
-
-static void arrow(float x0, float y0, float x1, float y1, qd_rgb col)
-{
-    const float a = atan2f(y1 - y0, x1 - x0);
-    const float h[6] = {x1 - cosf(a - 0.5f) * 5.f, y1 - sinf(a - 0.5f) * 5.f, x1, y1, x1 - cosf(a + 0.5f) * 5.f,
-                        y1 - sinf(a + 0.5f) * 5.f};
-    line2(x0, y0, x1, y1, col, 1.2f);
-    ui_P(h, 3, col, 1.2f, 0, QD_NONE);
-}
-
-static void d_algo(const ui_turn_t *v)
-{
-    static const char *const NAME[4] = {"C", "A", "B1", "B2"};
-    static const qd_rgb COL[4] = {UI_K1, UI_K2, UI_K3, UI_K3};   /* s12: KNOB 1..3 the ratios of C, A, B */
-    const int al = (v->value < 1 ? 1 : v->value > 8 ? 8 : v->value) - 1;
-    const float bus = 172.f, spx = 212.f;
-    const unsigned car = ALGO[al].x | ALGO[al].y;
-    int lev[4] = {0, 0, 0, 0}, it, o, t, row, maxlev = 0, nflow = 0;
-    float x[4], y[4], left = 240.f, r;
-
-    /* the rows: an operator one above the highest of its targets */
-    for (it = 0; it < 4; it++)
-        for (o = 0; o < 4; o++)
-            for (t = 0; t < 4; t++)
-                if ((ALGO[al].mod[t] >> o) & 1u && t != o && lev[o] < lev[t] + 1)
-                    lev[o] = lev[t] + 1;
-    for (o = 0; o < 4; o++)
-        if (lev[o] > maxlev)
-            maxlev = lev[o];
-    r = maxlev >= 3 ? 12.f : 15.f;                      /* a chain of four: smaller, closer */
-    /* the places: the bottom row spread, each row above over the mean of its targets, then kept apart */
-    for (row = 0; row <= maxlev; row++) {
-        int ids[4], n = 0, i, j;
-        float want = 0.f, got = 0.f;
-        for (o = 0; o < 4; o++)
-            if (lev[o] == row)
-                ids[n++] = o;
-        for (i = 0; i < n; i++) {
-            const int op = ids[i];
-            y[op] = (maxlev >= 3 ? 146.f : 140.f) - (float)row * (maxlev >= 3 ? 32.f : 36.f);
-            if (row == 0) {
-                x[op] = 100.f - (float)(n - 1) * 25.f + (float)i * 50.f;
-            } else {
-                float s = 0.f;
-                int m = 0;
-                for (t = 0; t < 4; t++)
-                    if ((ALGO[al].mod[t] >> op) & 1u && t != op)
-                        s += x[t], m++;
-                x[op] = m ? s / (float)m : 100.f;
-            }
-        }
-        for (i = 1; i < n; i++)                         /* sort by place */
-            for (j = i; j > 0 && x[ids[j]] < x[ids[j - 1]]; j--) {
-                const int tmp = ids[j];
-                ids[j] = ids[j - 1], ids[j - 1] = tmp;
-            }
-        for (i = 0; i < n; i++)
-            want += x[ids[i]];
-        for (i = 1; i < n; i++)
-            if (x[ids[i]] < x[ids[i - 1]] + 44.f)
-                x[ids[i]] = x[ids[i - 1]] + 44.f;
-        for (i = 0; i < n; i++)
-            got += x[ids[i]];
-        for (i = 0; i < n; i++)
-            x[ids[i]] += (want - got) / (float)(n ? n : 1);
-    }
-
-    /* the wires: modulator -> target, a dot flowing along each */
-    for (t = 0; t < 4; t++)
-        for (o = 0; o < 4; o++) {
-            float dx, dy, d, u;
-            if (!((ALGO[al].mod[t] >> o) & 1u) || t == o)
-                continue;
-            dx = x[t] - x[o], dy = y[t] - y[o], d = sqrtf(dx * dx + dy * dy);
-            dx /= d, dy /= d;
-            arrow(x[o] + dx * r, y[o] + dy * r, x[t] - dx * (r + 2.f), y[t] - dy * (r + 2.f), UI_G1);
-            u = fmodf(v->t * 1.3f + (float)nflow++ * 0.37f, 1.f);
-            ui_O(x[o] + dx * r + (dx * (d - 2.f * r - 2.f)) * u, y[o] + dy * r + (dy * (d - 2.f * r - 2.f)) * u, 1.6f,
-                 QD_NONE, 1.f, UI_K3);
-        }
-    /* the feedback loop over its operator */
-    {
-        const int f = ALGO[al].fb;
-        const float cx = x[f], cy = y[f] - r - 4.f;
-        qd_arc(cx, cy, 5.5f, UI_PI * 0.75f, UI_PI * 2.25f, UI_G1, 1.2f);
-    }
-    /* the carriers into the speaker: down to the bus (one above the bottom row: from its right side) */
-    for (o = 0; o < 4; o++) {
-        if (!((car >> o) & 1u))
-            continue;
-        if (lev[o] == 0) {
-            line2(x[o], y[o] + r, x[o], bus, UI_G1, 1.2f);
-            if (x[o] < left)
-                left = x[o];
-        } else {
-            const float p[6] = {x[o] + r, y[o], x[o] + r + 8.f, y[o], x[o] + r + 8.f, bus};
-            ui_P(p, 3, UI_G1, 1.2f, 0, QD_NONE);
-            if (x[o] + r + 8.f < left)
-                left = x[o] + r + 8.f;
-        }
-    }
-    line2(left, bus, spx - 10.f, bus, UI_G1, 1.2f);
-    {   /* the speaker */
-        const float b[8] = {spx - 10.f, bus - 5.f, spx - 4.f, bus - 5.f, spx - 4.f, bus + 5.f, spx - 10.f, bus + 5.f};
-        const float c[8] = {spx - 4.f, bus - 5.f, spx + 3.f, bus - 11.f, spx + 3.f, bus + 11.f, spx - 4.f, bus + 5.f};
-        ui_P(b, 4, UI_G1, 1.2f, 1, QD_NONE);
-        ui_P(c, 4, UI_G1, 1.2f, 0, QD_NONE);
-        qd_arc(spx + 3.f, bus, 7.f, -0.75f, 0.75f, UI_G1, 1.2f);
-    }
-    for (o = 0; o < 4; o++) {                           /* the operators */
-        ui_O(x[o], y[o], r, COL[o], 1.5f, UI_BG);
-        ui_T(NAME[o], x[o], y[o] + 4.5f, 12.f, 600, 0.f, COL[o], QD_CENTER);
-    }
-}
-
-/* ---------------------------------------------------------------- TSWING (s16's metronome; TEMPO / SWING: the ape) */
-/* the metronome as s16 draws it, moved so its pendulum's pivot (190, 180) sits at (px, py), at scale s; the pendulum
- * swings once a beat; with swing over 50 the two swings of a pair of beats take swing % and the rest */
-static void metronome(float px, float py, float s, int beats, float beat, int swing)
-{
-    const float sf = (float)(swing < 50 ? 50 : swing > 80 ? 80 : swing) / 100.f;
-    const float pr = ((float)(beats & 1) + beat) / 2.f;
-    float f, side, ang, L = 116.f, tx, ty, wx, wy;
-    if (pr < sf)
-        f = pr / sf, side = -1.f;
-    else
-        f = (pr - sf) / (1.f - sf), side = 1.f;
-    ang = side * cosf(UI_PI * f) * 0.42f;
-    qd_save();
-    qd_translate(px - 190.f * s, py - 180.f * s);
-    qd_scale(s, s);
-    {
-        const float body[8] = {158.f, 220.f, 222.f, 220.f, 204.f, 50.f, 176.f, 50.f};
-        ui_P(body, 4, UI_G1, 1.5f, 1, QD_NONE);
-    }
-    line2(166.f, 190.f, 214.f, 190.f, UI_G2, 1.f);
-    tx = 190.f + sinf(ang) * L, ty = 180.f - cosf(ang) * L;
-    line2(190.f, 180.f, tx, ty, UI_K3, 1.5f);
-    wx = 190.f + sinf(ang) * L * 0.62f, wy = 180.f - cosf(ang) * L * 0.62f;
-    ui_RR(wx - 6.f, wy - 4.f, 12.f, 8.f, 2.f, UI_K3, 1.2f, UI_BG);
-    ui_O(190.f, 180.f, 2.5f, QD_NONE, 1.f, UI_G1);
-    qd_restore();
-}
-
-
-/* ---------------------------------------------------------------- RATE (s25) */
-static void d_rate(const ui_turn_t *v, qd_rgb col)
-{
-    char name[16], n[12];
-    int c, k;
-    name[0] = 0;
-    {
-        const char *a = "TRACK ";
-        int i = 0, j = 0;
-        while (a[i])
-            name[j++] = a[i++];
-        ui_itoa(n, v->track);
-        for (i = 0; n[i]; i++)
-            name[j++] = n[i];
-        name[j] = 0;
-    }
-    for (c = 0; c < 2; c++) {                           /* the pattern's clock, the track's */
-        const float cx = c ? 162.f : 78.f, pos = c ? v->track_pos : v->pat_pos;
-        const qd_rgb cc = c ? col : UI_G2;
-        const float a = -UI_PI / 2.f + pos / 16.f * UI_TAU;
-        ui_O(cx, 92.f, 34.f, cc, 1.5f, QD_NONE);
-        for (k = 0; k < 16; k++) {
-            const float b = -UI_PI / 2.f + (float)k / 16.f * UI_TAU;
-            ui_O(cx + cosf(b) * 34.f, 92.f + sinf(b) * 34.f, 1.3f, QD_NONE, 1.f, cc);
-        }
-        line2(cx, 92.f, cx + cosf(a) * 26.f, 92.f + sinf(a) * 26.f, c ? UI_RED : UI_G1, 1.5f);
-        ui_T(c ? name : "PATTERN", cx, 148.f, 12.f, 600, 0.5f, UI_G1, QD_CENTER);
-    }
     if (v->prev)
-        ui_T(v->prev, 30.f, 214.f, 16.f, 500, 0.f, UI_G2, QD_CENTER);
+        px_ctext(60, 26, v->prev, UI_G2, PX_FB, 1);
     if (v->next)
-        ui_T(v->next, 210.f, 214.f, 16.f, 500, 0.f, UI_G2, QD_CENTER);
-    ui_T(v->val, 120.f, 222.f, 52.f, 200, 0.f, col, QD_CENTER);
-}
-
-/* ---------------------------------------------------------------- LEN: the track's length over its 8 pages */
-static void d_len(const ui_turn_t *v, qd_rgb col)
-{
-    char n[12];
-    int p;
-    for (p = 0; p < 8; p++) {
-        const float x = 14.f + (float)p * 27.f, y = 64.f, w = 23.f, h = 76.f;
-        const int st = v->value - p * 16, in = st > 0;
-        const float f = (float)(st < 0 ? 0 : st > 16 ? 16 : st) / 16.f;
-        ui_RR(x, y, w, h, 3.f, in ? col : UI_G3, in ? 1.2f : 1.f, QD_NONE);
-        if (in) {                                       /* the steps in it, filled as LEN's held bar is */
-            qd_save();
-            qd_alpha(0.3f);
-            ui_RR(x + 3.f, y + 3.f, (w - 6.f) * f, h - 6.f, 1.5f, QD_NONE, 1.f, col);
-            qd_restore();
-        }
-        ui_T(ui_itoa(n, p + 1), x + w / 2.f, 158.f, 12.f, 600, 0.f, in ? UI_G1 : UI_G2, QD_CENTER);   /* (P1.3v: the
-                                                         * page's number, 12 px; no PAGES word) */
+        px_ctext(60, 80, v->next, UI_G2, PX_FB, 1);
+    if (v->val[0]) {
+        const int sc = px_text_w(v->val, PX_FB, 2) <= 116 ? 2 : 1;
+        px_ctext(60, sc == 2 ? 46 : 50, v->val, c, PX_FB, sc);
     }
 }
 
-/* ---------------------------------------------------------------- LIMIT: the 16-voice pool */
-static void d_limit(const ui_turn_t *v, qd_rgb col)
+static void d_scale(const ui_turn_t *v, qd_rgb c)
 {
-    char s[24], n[12];
-    int i, k = 0;
-    for (i = 0; i < 16; i++) {
-        const float x = 29.f + (float)(i % 8) * 26.f, y = 76.f + (float)(i / 8) * 34.f;
-        const int lim = i < v->value, use = i < v->voices;
-        ui_O(x, y, 7.f, lim ? col : UI_G3, lim ? 1.5f : 1.2f, use ? (lim ? col : UI_G2) : QD_NONE);
-    }
-    ui_itoa(n, v->voices);
-    for (i = 0; n[i]; i++)
-        s[k++] = n[i];
-    {
-        const char *a = " SOUNDING";
-        for (i = 0; a[i]; i++)
-            s[k++] = a[i];
-    }
-    s[k] = 0;
-    (void)s;                                            /* (P1.3v: the dots say how many sound: no "n SOUNDING") */
-}
-
-/* ---------------------------------------------------------------- PAGE: the eight pages as rows */
-static void d_page(const ui_turn_t *v, qd_rgb col)
-{
-    static const char *const NUM[8] = {"1", "2", "3", "4", "5", "6", "7", "8"};
-    int p, k;
-    for (p = 0; p < 8; p++) {
-        const float y = 42.f + (float)p * 17.f, x0 = 44.f, sp = 11.f;
-        const int ed = p == v->page, in = (v->loop >> p) & 1;
-        const int st = v->pstart[p] > 15 ? 15 : v->pstart[p];
-        const int en = v->pend[p] < st ? st : v->pend[p] > 15 ? 15 : v->pend[p];
-        const qd_rgb tc = ed ? col : in ? UI_G1 : UI_G2;
-        if (ed)
-            ui_RR(10.f, y - 8.f, 220.f, 16.f, 5.f, col, 1.2f, QD_NONE);
-        ui_T(NUM[p], 22.f, y + 4.5f, 12.f, 600, 0.f, p == v->play_page ? UI_RED : tc, QD_CENTER);
-        for (k = 0; k < 16; k++) {
-            const float x = x0 + (float)k * sp + (float)(k / 4) * 2.f;
-            if (k < st || k > en)
-                ui_O(x, y, 0.9f, QD_NONE, 1.f, UI_G3);
-            else if (v->trig[p][k])
-                ui_O(x, y, 2.2f, QD_NONE, 1.f, tc);
-            else
-                ui_O(x, y, 1.4f, ed || in ? UI_G2 : UI_G3, 1.f, QD_NONE);
-        }
-        if (st > 0 || en < 15) {                        /* its own range, under the row */
-            const float xa = x0 + (float)st * sp + (float)(st / 4) * 2.f;
-            const float xb = x0 + (float)en * sp + (float)(en / 4) * 2.f;
-            line2(xa - 2.f, y + 5.f, xb + 2.f, y + 5.f, tc, 1.f);
-        }
-    }
-}
-
-/* ---------------------------------------------------------------- SCALE / ROOT: a picker over a little keybed */
-static void d_scale(const ui_turn_t *v, qd_rgb col)
-{
-    static const char *const NOTE[12] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
-    const int root = ((v->root % 12) + 12) % 12;
-    const float kx = 36.f, kw = 168.f, ky = 150.f, kh = 54.f;   /* one octave: half of a two-octave ui_keyboard */
-    int s;
-    if (v->prev)
-        ui_T(v->prev, 120.f, 48.f, 12.f, 500, 1.f, UI_G2, QD_CENTER);
-    if (v->val[0]) {                                    /* the name, as big as fits */
-        const float w = ui_TW(v->val, 40.f, 200, 0.f);
-        ui_T(v->val, 120.f, 98.f, w > 216.f ? 40.f * 216.f / w : 40.f, 200, 0.f, col, QD_CENTER);
-    }
-    if (v->next)
-        ui_T(v->next, 120.f, 128.f, 12.f, 500, 1.f, UI_G2, QD_CENTER);
-    if (v->ext)                                         /* the project's key (the track follows it) */
-        ui_T("GLOBAL", 120.f, 143.f, 12.f, 700, 1.f, UI_K3, QD_CENTER);
-    qd_save();
-    qd_clip_rect(kx - 2.f, ky - 3.f, kw + 3.f, kh + 6.f);
-    ui_keyboard(kx, ky, kw * 2.f, kh, 48, 0);
-    qd_restore();
-    for (s = 0; s < 12; s++) {                          /* the scale's notes from the root, folded into the octave */
-        const int pc = (root + s) % 12;
-        int b;
-        float x;
-        if (!((v->scale_mask >> s) & 1u))
+    static const uint8_t BLACK[12] = {0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0};
+    int k, wi = 0;
+    picker(v, c);
+    for (k = 0; k < 12; k++) {                          /* one octave from C: the scale's notes lit (the root white) */
+        const int pc = k, in = (v->scale_mask >> ((pc - v->root + 12) % 12)) & 1u;
+        if (BLACK[k])
             continue;
-        x = ui_keyboard_x(kx, kw * 2.f, 48, 48 + pc, &b);
-        ui_O(x, b ? ky + 22.f : ky + kh - 10.f, s ? 3.2f : 4.2f, QD_NONE, 1.f, s ? col : UI_K3);
+        px_rect(32 + wi * 8, 92, 7, 16, pc == v->root % 12 ? UI_K3 : in ? c : UI_G2);
+        wi++;
     }
-    {
-        int b;
-        const float x = ui_keyboard_x(kx, kw * 2.f, 48, 48 + root, &b);
-        ui_T(NOTE[root], x, ky + kh + 16.f, 12.f, 600, 0.f, UI_K3, QD_CENTER);
+    for (k = 0, wi = 0; k < 12; k++) {
+        const int in = (v->scale_mask >> ((k - v->root + 12) % 12)) & 1u;
+        if (!BLACK[k]) {
+            wi++;
+            continue;
+        }
+        px_rect(32 + wi * 8 - 3, 92, 5, 9, k == v->root % 12 ? UI_K3 : in ? c : UI_BG);
+        px_box(32 + wi * 8 - 3, 92, 5, 9, UI_G2);
     }
 }
 
-/* ---------------------------------------------------------------- TRACK (P1.3d): the six tracks as rows */
-static void d_track(const ui_turn_t *v, qd_rgb col)
+static void pages(const ui_turn_t *v, qd_rgb c, int y0)
 {
-    static const char *const NUM[UI_NTRACK] = {"1", "2", "3", "4", "5", "6"};
-    int i, k;
-    for (i = 0; i < UI_NTRACK; i++) {                   /* (six: 28 px a row) */
-        const float y = 48.f + (float)i * 28.f;
-        const int sel = i == v->track - 1, mute = (v->tmute >> i) & 1u;
-        const int n = v->tlen[i] > 32 ? 32 : v->tlen[i];
-        const qd_rgb tc = sel ? col : mute ? UI_G2 : UI_G1;
-        if (sel)
-            ui_RR(8.f, y - 13.f, 224.f, 22.f, 5.f, col, 1.2f, QD_NONE);
-        ui_T(NUM[i], 20.f, y + 3.5f, 12.f, 600, 0.f, tc, QD_CENTER);
-        if (ui_track_kind(i + 1) >= 0)                  /* P1.6d: its kind */
-            ui_kind_icon(ui_track_kind(i + 1), 37.f, y - 1.f, 0.85f, sel ? UI_PK_COL[ui_track_kind(i + 1)] : tc);
-        ui_T(v->tname[i] ? v->tname[i] : "", ui_track_kind(i + 1) >= 0 ? 46.f : 32.f, y + 3.5f, 12.f, 600, 0.5f,
-             sel ? UI_K3 : tc, QD_LEFT);
-        if (mute) {                                     /* (P1.3v: muted: an orange cross, was an 8 px M) */
-            const float m[4] = {100.f, y - 6.f, 108.f, y + 2.f}, n[4] = {108.f, y - 6.f, 100.f, y + 2.f};
-            ui_P(m, 2, UI_K4, 1.5f, 0, QD_NONE);
-            ui_P(n, 2, UI_K4, 1.5f, 0, QD_NONE);
-        }
-        for (k = 0; k < n; k++) {                       /* the loop's trigs, up to 32 */
-            const float x = 116.f + (float)k * 3.5f + (float)(k / 4) * 0.5f;
-            if (v->ttrig[i][k])
-                ui_O(x, y - 2.f, 1.3f, QD_NONE, 1.f, sel ? col : tc);
+    int p, s;
+    for (p = 0; p < 8; p++) {
+        const int y = y0 + p * 8, in = (v->loop >> p) & 1;
+        char n[2] = {(char)('1' + p), 0};
+        px_text(6, y + 1, n, p == v->play_page ? PX_LRED : p == v->page ? c : UI_G1, PX_FS, 1);
+        for (s = 0; s < 16; s++) {
+            const int x = 14 + s * 6 + (s / 4) * 2;
+            const int on = v->trig[p][s], rng = s >= v->pstart[p] && s <= v->pend[p];
+            if (!rng)
+                px_pset(x + 2, y + 3, UI_G3);
+            else if (on)
+                px_rect(x, y + 1, 5, 5, p == v->page ? c : in ? UI_G1 : UI_G2);
             else
-                ui_O(x, y - 2.f, 0.6f, QD_NONE, 1.f, UI_G3);
+                px_box(x, y + 1, 5, 5, in ? UI_G2 : UI_G3);
         }
+        if (p == v->page)
+            px_box(12, y, 106, 8, c);
     }
 }
 
-/* ---------------------------------------------------------------- TRACKBIG (P1.3y): the track chosen, big */
+static void d_tracks(const ui_turn_t *v, qd_rgb c)
+{
+    int t, s;
+    for (t = 0; t < UI_NTRACK; t++) {
+        const int y = 16 + t * 12, mute = (v->tmute >> t) & 1, sel = t + 1 == v->track;
+        char n[2] = {(char)('1' + t), 0};
+        px_rect(4, y, 8, 8, sel ? c : UI_G2);
+        px_ctext(8, y + 1, n, UI_BG, PX_FS, 1);
+        px_text(15, y + 2, v->tname[t] ? v->tname[t] : "", mute ? UI_G2 : sel ? UI_K3 : UI_G1, PX_FS, 1);
+        for (s = 0; s < 16 && s < v->tlen[t]; s++)
+            if (v->ttrig[t][s])
+                px_rect(56 + s * 4, y + 2, 3, 4, mute ? UI_G2 : UI_TRACK_PAL[t & 7]);
+            else
+                px_pset(57 + s * 4, y + 4, UI_G3);
+        if (mute)
+            px_text(112, y + 2, "M", UI_G1, PX_FS, 1);
+    }
+}
+
 static void d_trackbig(const ui_turn_t *v)
 {
+    const int t = v->track < 1 ? 1 : v->track > UI_NTRACK ? UI_NTRACK : v->track;
+    const qd_rgb c = UI_TRACK_PAL[(t - 1) & 7];
     char n[12];
-    const int t = v->value - 1 < 0 ? 0 : v->value - 1 > UI_NTRACK - 1 ? UI_NTRACK - 1 : v->value - 1;
-    const qd_rgb col = UI_TRACK_PAL[t];
-    int i;
-    ui_T(ui_itoa(n, t + 1), 120.f, 142.f, 110.f, 200, 0.f, col, QD_CENTER);
-    if (v->tname[t]) {
-        const float w = ui_TW(v->tname[t], 28.f, 300, 1.f);
-        ui_T(v->tname[t], 120.f, 182.f, w > 220.f ? 28.f * 220.f / w : 28.f, 300, 1.f, UI_K3, QD_CENTER);
-        if (ui_track_kind(t + 1) >= 0)                  /* P1.6d: its kind, above the name's start */
-            ui_kind_icon(ui_track_kind(t + 1), 200.f, 40.f, 2.f, UI_PK_COL[ui_track_kind(t + 1)]);
-    }
-    for (i = 0; i < UI_NTRACK; i++) {                   /* the six tracks, the one chosen lit in its colour */
-        const float x = 30.f + (float)i * 36.f;
-        ui_RR(x - 13.f, 201.f, 26.f, 26.f, 5.f, i == t ? QD_NONE : UI_TRACK_PAL[i], 1.4f, i == t ? UI_TRACK_PAL[i] : QD_NONE);
-        ui_T(ui_itoa(n, i + 1), x, 219.5f, 15.f, 600, 0.f, i == t ? UI_BG : UI_TRACK_PAL[i], QD_CENTER);
+    int k;
+    ui_itoa(n, t);
+    px_text(4, 4, "TRACK", c, PX_FS, 1);
+    px_ctext(60, 22, n, c, PX_FB, 4);
+    if (ui_track_kind(t) >= 0)
+        ui_kind_icon(ui_track_kind(t), 120.f, 132.f, 2.f, c);
+    px_ctext(60, 76, v->tname[t - 1] ? v->tname[t - 1] : "", UI_K3, PX_FB, 1);
+    for (k = 0; k < UI_NTRACK; k++) {                   /* the six as blocks, the chosen one filled */
+        char d[2] = {(char)('1' + k), 0};
+        const int x = 18 + k * 15;
+        if (k + 1 == t)
+            px_rect(x, 100, 11, 11, UI_TRACK_PAL[k & 7]);
+        else
+            px_box(x, 100, 11, 11, UI_TRACK_PAL[k & 7]);
+        px_ctext(x + 6, 103, d, k + 1 == t ? UI_BG : UI_TRACK_PAL[k & 7], PX_FS, 1);
     }
 }
 
-/* ---------------------------------------------------------------- TAP (P1.5z; 0.9.2: the TAP ape) */
-#include "ui_ape.c"
-
-/* ---------------------------------------------------------------- FOLLOW (P1.5z): SHIFT + B8's page follow */
-/* the settings' picture big: four pages, the playhead crossing them, the page lit under it when following; the arrow
- * under them (off: crossed in red); ON / OFF big (the frame's value) */
-static void d_follow(const ui_turn_t *v, qd_rgb col)
+static void d_limit(const ui_turn_t *v, qd_rgb c)
 {
-    const int on = v->value != 0;
-    const float px = 30.f + fmodf(v->t * 60.f, 180.f);
-    const qd_rgb c = on ? col : UI_G2;
+    int k;
+    for (k = 0; k < 8; k++) {                           /* the pool's voices as robots, the limit's lit */
+        const int x = 6 + (k % 4) * 28, y = 20 + (k / 4) * 32, in = k < v->value, busy = k < v->voices;
+        px_sprite_sc(x, y, busy ? PXS_ROBOT2 : PXS_ROBOT1, 0, 2, in ? (busy ? QD_NONE : c) : UI_G3);
+    }
+}
+
+static void d_len(const ui_turn_t *v, qd_rgb c)
+{
+    const int steps = v->value < 1 ? 1 : v->value > 128 ? 128 : v->value;
+    int p;
+    for (p = 0; p < 8; p++) {                           /* the loop over the eight pages: a bar a page */
+        const int y = 18 + p * 8, n = steps - p * 16;
+        px_box(8, y, 98, 6, UI_G3);
+        if (n > 0)
+            px_rect(9, y + 1, (n > 16 ? 16 : n) * 6, 4, c);
+    }
+}
+
+static void d_follow(const ui_turn_t *v, qd_rgb c)
+{
     int k;
     for (k = 0; k < 4; k++)
-        ui_RR(30.f + (float)k * 46.f, 60.f, 42.f, 52.f, 5.f, on && (int)((px - 30.f) / 46.f) == k ? col : UI_G2, 1.6f,
-              QD_NONE);
-    line2(px, 52.f, px, 120.f, UI_RED, 2.f);
-    line2(30.f, 140.f, 208.f, 140.f, c, 2.f);
-    {
-        const float a[6] = {198.f, 132.f, 210.f, 140.f, 198.f, 148.f};
-        ui_P(a, 3, c, 2.f, 0, QD_NONE);
+        px_box(10 + k * 26, 30, 22, 30, k == 1 ? c : UI_G2);
+    if (v->value) {                                     /* on: the arrow along the pages */
+        px_hline(10, 70, 96, c);
+        px_line(100, 66, 106, 70, c);
+        px_line(100, 74, 106, 70, c);
+    } else {
+        px_line(30, 66, 90, 76, PX_LRED);
+        px_line(30, 76, 90, 66, PX_LRED);
     }
-    if (!on)
-        line2(104.f, 126.f, 132.f, 154.f, UI_RED, 2.4f);
-}
-
-/* ---------------------------------------------------------------- the knob band (P1.3d) */
-void ui_band_draw(const ui_band_t *v)
-{
-    static const char *const BADGE[7] = {"S", "A", "P", "1", "2", "3", "4"};
-    const int k = v->knob < 0 ? 0 : v->knob > 6 ? 6 : v->knob;
-    const qd_rgb bc = k == 0 ? UI_KSEL : k >= 3 ? UI_K[k - 3] : UI_K3;
-    char top[48];
-    float nw, room, vw, size = 26.f;
-    qd_fill_rect(0.f, 0.f, (float)QD_W, 41.f, UI_BG);
-    ui_O(17.f, 21.f, 10.f, QD_NONE, 1.f, bc);
-    ui_T(BADGE[k], 17.f, 25.5f, 12.f, 700, 0.f, UI_BG, QD_CENTER);
-    top[0] = 0;
-    if (v->ctx) {
-        char *e = top;
-        const char *src[3];
-        int j;
-        src[0] = v->ctx, src[1] = v->mode ? " \xc2\xb7 " : 0, src[2] = v->mode;
-        for (j = 0; j < 3; j++)
-            for (; src[j] && *src[j] && e < top + sizeof top - 1; )
-                *e++ = *src[j]++;
-        *e = 0;
-    }
-    ui_lab(top, 33.f, 16.f, v->col, QD_LEFT);
-    ui_T(v->name ? v->name : "", 33.f, 35.f, 12.f, 600, 0.5f, UI_K3, QD_LEFT);
-    nw = ui_TW(v->name ? v->name : "", 12.f, 600, 0.5f);
-    room = 232.f - (33.f + nw + 10.f);
-    vw = ui_TW(v->val, size, 300, 0.f);
-    if (232.f - vw < 33.f + ui_TW(top, 12.f, 600, 0.5f) + 6.f) {   /* under the top line's end: low enough to clear it */
-        size = 21.f;
-        vw = ui_TW(v->val, size, 300, 0.f);
-    }
-    if (vw > room && vw > 0.f)
-        size = size * room / vw;
-    if (size < 12.f)                                    /* (P1.3v: never under 12 px) */
-        size = 12.f;
-    ui_T(v->val, 232.f, 34.f, size, 300, 0.f, v->col, QD_RIGHT);
-    {
-        const float p[4] = {0.f, 40.5f, (float)QD_W, 40.5f};
-        ui_P(p, 2, v->col, 1.f, 0, QD_NONE);
-    }
-}
-
-/* 2026-11-12 (owner, mockups/fizz-keys-modes.html): the word as a band over the top (keys held + B11: the track's
- * value now), black on the lock's blue */
-void ui_word_band(const char *s)
-{
-    const float w = ui_TW(s, 14.f, 700, 0.f);
-    float size = w > 224.f ? 14.f * 224.f / w : 14.f;
-    if (size < 12.f)
-        size = 12.f;
-    qd_fill_rect(0.f, 19.f, (float)QD_W, 27.f, UI_K1);   /* (under the step row, over the value under it) */
-    ui_T(s, 120.f, 37.f, size, 700, 0.f, UI_BG, QD_CENTER);
 }
 
 /* ---------------------------------------------------------------- the frame */
@@ -648,30 +272,33 @@ void ui_turn_draw(const ui_turn_t *v)
     const qd_rgb col = v->has_col ? v->col : UI_K[v->knob & 3];
     const char *val = v->val;
     char pg[8] = "PAGE 1";
-    if (v->kind == UI_TK_TAP) {                         /* 0.9.2: the TAP ape draws its whole screen */
+    if (v->kind == UI_TK_TAP) {
         ui_ape_draw(v);
         return;
     }
-    ui_knob_mark(14.f, 12.f, v->v < 0.f ? 0.f : v->v > 1.f ? 1.f : v->v, col);
-    ui_T(v->name, 26.f, 18.f, 12.f, 600, 0.8f, col, QD_LEFT);
+    if (v->kind == UI_TK_TRACKBIG) {                    /* (its own head) */
+        d_trackbig(v);
+        return;
+    }
+    px_rect(3, 3, 5, 5, col);                           /* the knob's colour, its name */
+    px_text(11, 3, v->name, col, PX_FS, 1);
     if (v->lock)
-        ui_lock(26.f + ui_TW(v->name, 12.f, 600, 0.8f) + 4.f, 7.f, col, 1.f);
+        px_rect(13 + px_text_w(v->name, PX_FS, 1), 4, 4, 3, col);
     if (v->ctx)
-        ui_T(v->ctx, 232.f, 18.f, 12.f, 500, 0.8f, UI_G1, QD_RIGHT);
-
+        px_rtext(116, 3, v->ctx, UI_G1, PX_FS, 1);
+    px_dots(0, 11, 120, UI_G3, 2);
     switch (v->kind) {
-    case UI_TK_FREQ: d_freq(v, col); break;
+    case UI_TK_FREQ: d_cutoff(v, col); break;
     case UI_TK_DECAY: d_decay(v, col); break;
-    case UI_TK_HARM: d_harm(v, col); break;
-    case UI_TK_FDBK: d_fdbk(v, col); break;
-    case UI_TK_ALGO: d_algo(v); break;
-    case UI_TK_TEMPO:                                   /* (2026-10-25: the TAP ape, ui_ape.c) */
+    case UI_TK_HARM: d_pw(v, col); break;
+    case UI_TK_FDBK: d_reso(v, col); break;
+    case UI_TK_TEMPO:
     case UI_TK_SWING: ui_ape_tempo(v, col); val = 0; break;
-    case UI_TK_RATE: d_rate(v, col); val = 0; break;
+    case UI_TK_RATE: picker(v, col); val = 0; break;
     case UI_TK_LEN: d_len(v, col); break;
     case UI_TK_LIMIT: d_limit(v, col); break;
     case UI_TK_PAGE:
-        d_page(v, col);
+        pages(v, col, 16);
         if (!val[0]) {
             pg[5] = (char)('1' + (v->page < 0 ? 0 : v->page > 7 ? 7 : v->page));
             val = pg;
@@ -679,80 +306,162 @@ void ui_turn_draw(const ui_turn_t *v)
         break;
     case UI_TK_SCALE:
     case UI_TK_ROOT: d_scale(v, col); val = 0; break;
-    case UI_TK_TRACK: d_track(v, col); val = 0; break;
+    case UI_TK_TRACK: d_tracks(v, col); val = 0; break;
     case UI_TK_TRACKBIG: d_trackbig(v); val = 0; break;
     case UI_TK_FOLLOW: d_follow(v, col); break;
     case UI_TK_TSWING:
-        metronome(120.f, 128.f, 0.62f, v->beats, v->beat, v->value ? (v->swing > 50 ? v->swing : 62) : 50);
+        metronome(60, 64, v->beats, v->beat, v->value ? (v->swing > 50 ? v->swing : 62) : 50, col);
         if (!val[0])
             val = v->value ? "ON" : "OFF";
         break;
     default: break;
     }
-    if (val)
-        ui_T(val, 120.f, 222.f, 58.f, 200, 0.f, col, QD_CENTER);
+    if (val && val[0])
+        foot_value(val, col);
     if (v->lock && v->ghost[0])
-        ui_T(v->ghost, 232.f, 236.f, 12.f, 500, 0.f, UI_G2, QD_RIGHT);
+        px_rtext(116, 113, v->ghost, UI_G2, PX_FS, 1);
 }
 
-/* ---------------------------------------------------------------- a brief full-screen word */
+/* ---------------------------------------------------------------- TAP (SHIFT + B6) and TEMPO / SWING (F3) */
+int ui_ape_pose(int n, int bpm) { return (n + (bpm >= 180 ? 1 : 0)) & 3; }
+void ui_ape_prewarm(int ext) { (void)ext; }
+void ui_ape_forget(void) {}
+
+void ui_ape_draw(const ui_turn_t *v)
+{
+    char s[12];
+    int k;
+    const qd_rgb c = v->ext ? UI_G1 : UI_K1;
+    px_text(4, 3, "TAP", c, PX_FS, 1);
+    if (v->ext)
+        px_rtext(116, 3, "EXT CLOCK", UI_G1, PX_FS, 1);
+    px_dots(0, 11, 120, UI_G3, 2);
+    villain_desk(v->bpm, v->since < 0.2f ? 0.f : 0.6f, v->ntotal, c);
+    for (k = 0; k < 8 && k < v->ntap; k++) {            /* the taps: dots, the newest brightest */
+        const qd_rgb dc = v->tap_age[k] < 0.3f ? UI_K3 : v->tap_age[k] < 1.5f ? c : UI_G2;
+        px_rect(36 + k * 6, 62, 4, 4, dc);
+    }
+    ui_itoa(s, v->tap_bpm[0] ? v->tap_bpm[0] : v->bpm);
+    px_ctext(60, 74, s, c, PX_FB, 3);
+    px_ctext(60, 100, "BPM", UI_G1, PX_FS, 1);
+}
+
+void ui_ape_tempo(const ui_turn_t *v, qd_rgb col)
+{
+    char s[16];
+    villain_desk(v->bpm, v->beat, v->beats, col);
+    ui_itoa(s, v->bpm);
+    if (v->kind == UI_TK_SWING) {
+        metronome(96, 80, v->beats, v->beat, v->swing, UI_K2);
+        ui_itoa(s, v->swing);
+        strcat(s, "%");
+        px_ctext(48, 74, s, UI_K2, PX_FB, 3);
+        px_ctext(48, 100, "SWING", UI_G1, PX_FS, 1);
+    } else {
+        px_ctext(60, 66, s, col, PX_FB, 3);
+        ui_itoa(s, v->swing);
+        strcat(s, "% SWING");
+        px_ctext(60, 92, "BPM", UI_G1, PX_FS, 1);
+        px_ctext(60, 104, s, UI_K2, PX_FS, 1);
+    }
+}
+
+/* ---------------------------------------------------------------- the knob band: a strip over the top */
+void ui_band_draw(const ui_band_t *v)
+{
+    static const char *const BADGE[7] = {"S", "A", "P", "1", "2", "3", "4"};
+    const int k = v->knob < 0 ? 0 : v->knob > 6 ? 6 : v->knob;
+    const qd_rgb bc = k == 0 ? UI_KSEL : k >= 3 ? UI_K[k - 3] : k == 1 ? UI_KALG : UI_K3;
+    char top[48];
+    int x, room;
+    px_rect(0, 0, 120, 20, UI_BG);
+    px_rect(3, 3, 9, 9, bc);
+    px_ctext(8, 5, BADGE[k], UI_BG, PX_FS, 1);
+    top[0] = 0;
+    if (v->ctx)
+        strncat(top, v->ctx, sizeof top - 1);
+    if (v->mode) {
+        strncat(top, " \xc2\xb7 ", sizeof top - 1 - strlen(top));
+        strncat(top, v->mode, sizeof top - 1 - strlen(top));
+    }
+    px_text(15, 3, top, v->col, PX_FS, 1);
+    x = px_text(15, 11, v->name ? v->name : "", UI_K3, PX_FS, 1);
+    room = 116 - x - 4;
+    if (px_text_w(v->val, PX_FB, 1) <= room && px_text_w(v->val, PX_FB, 1) <= 116 - 15 - px_text_w(top, PX_FS, 1) - 4)
+        px_rtext(116, 3, v->val, v->col, PX_FB, 1);
+    else
+        px_rtext(116, 11, v->val, v->col, PX_FS, 1);
+    px_hline(0, 19, 120, v->col);
+}
+
+void ui_word_band(const char *s)
+{
+    px_rect(0, 10, 120, 13, UI_K1);
+    px_ctext(60, 14, s, UI_BG, PX_FS, 1);
+}
+
+/* ---------------------------------------------------------------- the confirmation word, UNDO / REDO */
 void ui_confirm_draw(const char *big, const char *small, qd_rgb col)
 {
-    if (big) {                                          /* as big as fits (P1.3v: short and big; no sentence under) */
-        const float w = ui_TW(big, 40.f, 200, 0.f);
-        ui_T(big, 120.f, 134.f, w > 224.f ? 40.f * 224.f / w : 40.f, 200, 0.f, col, QD_CENTER);
+    if (big) {
+        const int sc = px_text_w(big, PX_FB, 3) <= 116 ? 3 : px_text_w(big, PX_FB, 2) <= 116 ? 2 : 1;
+        px_text_sh(60 - (px_text_w(big, PX_FB, sc) + 1) / 2, 60 - 7 * sc / 2 - 4, big, col, UI_G3, PX_FB, sc);
     }
-    if (small && small[0] && !strchr(small, ' '))      /* (P1.5o: a one-word state under it, "unlocked"; never a
-                                                         * sentence) */
-        ui_T(small, 120.f, 162.f, 16.f, 600, 1.f, col, QD_CENTER);
+    if (small && small[0] && !strchr(small, ' '))
+        px_ctext(60, 76, small, col, PX_FS, 1);
 }
 
-/* P1.5c: UNDO / REDO, what it was as a glyph */
 void ui_undo_draw(int redo, int kind, float t)
 {
     const qd_rgb c = kind < 0 ? UI_G2 : UI_K3;
-    const float cx = 120.f, cy = 150.f;
+    const int cx = 60, cy = 76;
     (void)t;
-    ui_T(redo ? "REDO" : "UNDO", 120.f, 92.f, 40.f, 200, 2.f, c, QD_CENTER);
-    {   /* an arc over the glyph, its head at the left (undo: back) or the right (redo: on) */
-        const float hx = redo ? 120.f + 64.f : 120.f - 64.f, hy = 120.f;
-        const float d = redo ? -1.f : 1.f;
-        const float h[6] = {hx + d * 7.f, hy - 6.f, hx, hy, hx + d * 9.f, hy + 3.f};
-        qd_ellipse_arc(120.f, 124.f, 64.f, 20.f, UI_PI * 1.05f, UI_PI * 1.95f, c, 1.4f);
-        ui_P(h, 3, c, 1.4f, 0, QD_NONE);
+    px_ctext(60, 22, redo ? "REDO" : "UNDO", c, PX_FB, 3);
+    {   /* the arc's head at the left (undo) or the right (redo) */
+        const int hx = redo ? 92 : 28;
+        int x;
+        for (x = 28; x <= 92; x++) {
+            const int d = x - 60;
+            px_pset(x, 56 - (int)(10.f * (1.f - (float)(d * d) / 1024.f)), c);
+        }
+        px_line(hx, 56, hx + (redo ? -4 : 4), 51, c);
+        px_line(hx, 56, hx + (redo ? -5 : 5), 58, c);
     }
     switch (kind) {
-    case QD_UK_PASTE: ui_icon(UI_IC_PASTE, cx, cy, 3.f, c); break;
-    case QD_UK_CLEAR: ui_icon(UI_IC_CLEAR, cx, cy, 3.f, c); break;
-    case QD_UK_REC: ui_O(cx, cy, 14.f, UI_RED, 2.f, QD_NONE), ui_O(cx, cy, 7.f, QD_NONE, 1.f, UI_RED); break;
-    case QD_UK_RANDOM: ui_icon(UI_IC_DICE, cx, cy, 3.f, c); break;
-    case QD_UK_KNOB:                                    /* a knob turned */
-        ui_O(cx, cy, 16.f, c, 2.f, QD_NONE);
-        line2(cx, cy, cx + 11.f, cy - 11.f, c, 2.f);
+    case QD_UK_PASTE: ui_icon(UI_IC_PASTE, (float)(2 * cx), (float)(2 * cy), 2.f, c); break;
+    case QD_UK_CLEAR: ui_icon(UI_IC_CLEAR, (float)(2 * cx), (float)(2 * cy), 2.f, c); break;
+    case QD_UK_REC: px_circle(cx, cy, 7, PX_LRED, QD_NONE), px_circle(cx, cy, 3, QD_NONE, PX_LRED); break;
+    case QD_UK_RANDOM: ui_icon(UI_IC_DICE, (float)(2 * cx), (float)(2 * cy), 2.f, c); break;
+    case QD_UK_KNOB:
+        px_circle(cx, cy, 8, c, QD_NONE);
+        px_line(cx, cy, cx + 5, cy - 5, c);
         break;
-    case QD_UK_SOUNDS: {                                /* a sound's tile: its envelope */
-        const float e[8] = {cx - 22.f, cy + 12.f, cx - 14.f, cy - 12.f, cx + 6.f, cy - 2.f, cx + 22.f, cy + 12.f};
-        ui_RR(cx - 28.f, cy - 20.f, 56.f, 40.f, 6.f, c, 1.6f, QD_NONE);
-        ui_P(e, 4, c, 1.6f, 0, QD_NONE);
+    case QD_UK_SOUNDS: {                                /* a floppy */
+        px_box(cx - 10, cy - 10, 20, 20, c);
+        px_rect(cx - 7, cy - 8, 14, 4, c);
+        px_circle(cx, cy + 3, 3, c, QD_NONE);
         break;
     }
-    case QD_UK_SNAP:                                    /* the snapshot: a frame, its shutter */
-        ui_RR(cx - 24.f, cy - 16.f, 48.f, 32.f, 5.f, c, 1.6f, QD_NONE);
-        ui_O(cx, cy, 9.f, c, 1.6f, QD_NONE);
+    case QD_UK_SNAP:
+        px_box(cx - 12, cy - 8, 24, 16, c);
+        px_circle(cx, cy, 4, c, QD_NONE);
         break;
-    case QD_UK_DOUBLE:                                  /* two pages */
-        ui_RR(cx - 30.f, cy - 12.f, 26.f, 24.f, 3.f, c, 1.6f, QD_NONE);
-        ui_RR(cx + 4.f, cy - 12.f, 26.f, 24.f, 3.f, c, 1.6f, QD_NONE);
+    case QD_UK_DOUBLE:
+        px_box(cx - 15, cy - 6, 13, 12, c);
+        px_box(cx + 2, cy - 6, 13, 12, c);
         break;
-    case QD_UK_EDIT: {                                  /* a step's cell, edited */
+    case QD_UK_EDIT: {
         int k;
-        for (k = 0; k < 4; k++)
-            ui_RR(cx - 34.f + (float)k * 18.f, cy - 8.f, 14.f, 16.f, 2.f, k == 1 ? QD_NONE : UI_G2, 1.2f,
-                  k == 1 ? c : QD_NONE);
+        for (k = 0; k < 4; k++) {
+            if (k == 1)
+                px_rect(cx - 17 + k * 9, cy - 4, 7, 8, c);
+            else
+                px_box(cx - 17 + k * 9, cy - 4, 7, 8, UI_G2);
+        }
         break;
     }
-    default:                                            /* nothing there: a dash */
-        line2(cx - 14.f, cy, cx + 14.f, cy, c, 2.f);
+    default:
+        px_hline(cx - 7, cy, 15, c);
         break;
     }
 }

@@ -18,18 +18,18 @@
 extern "C" {
 #endif
 
-/* ---- the palette (line.html's C): colour means a knob (K1 blue .. K4 orange), red is time, greys are structure */
+/* ---- the palette: EvilGenius's, the C64's sixteen (Colodore; px.h). FIZZ's roles kept (line.html's C): colour means a knob (K1 blue .. K4 orange), red is time, greys are structure */
 #define UI_BG 0x000000u
-#define UI_K1 0x3f7dffu
-#define UI_K2 0x1fd47eu
-#define UI_K3 0xf1f0eau
-#define UI_K4 0xff6a2cu
-#define UI_KSEL 0xffd23fu               /* P1.3c: SELECT's colour where SELECT moves a part of the drawing (NOTE's note 1) */
-#define UI_KALG 0xff8fc8u               /* P1.3e: NOTE's note 6 (from the keys; P1.3f: no knob has it) */
-#define UI_RED 0xff3448u
-#define UI_G1 0x8d8d96u
-#define UI_G2 0x4b4b54u
-#define UI_G3 0x26262du
+#define UI_K1 0x706debu
+#define UI_K2 0xa9ff9fu
+#define UI_K3 0xffffffu
+#define UI_K4 0xc46c71u
+#define UI_KSEL 0xedf171u               /* P1.3c: SELECT's colour where SELECT moves a part of the drawing (NOTE's note 1) */
+#define UI_KALG 0x75cec8u               /* P1.3e: NOTE's note 6 (from the keys; P1.3f: no knob has it) */
+#define UI_RED 0x813338u
+#define UI_G1 0x7b7b7bu
+#define UI_G2 0x4a4a4au
+#define UI_G3 0x2e2c9bu
 extern const qd_rgb UI_K[4];
 
 #define UI_TAU 6.28318530718f
@@ -171,7 +171,8 @@ void ui_mix_draw(const ui_mix_t *v);
 enum { UI_FXD_DELAY, UI_FXD_DELAY2, UI_FXD_REVERB, UI_FXD_REVERB2, UI_FXD_CHORUS, UI_FXD_MASTER,
        UI_FXD_OVER,                     /* SENDS (2026-10-26; P1.5b's OVERVIEW): the current track's CHORUS, DELAY, REVERB
                                          * as three bars, the page's steps as a row at the foot (or the keyboard's keys) */
-       UI_FXD_ROUTE };                  /* P1.5b: the chain (the bus, CHORUS, DELAY, REVERB, the filter, out), the feeds */
+       UI_FXD_ROUTE,                    /* P1.5b: the chain (the bus, CHORUS, DELAY, REVERB, the filter, out), the feeds */
+       UI_FXD_CRUSH, UI_FXD_ROBOT, UI_FXD_WARP, UI_FXD_GLITCH, UI_FXD_TV };   /* EvilGenius's rooms on the mix */
 typedef struct {
     const char *name;                   /* the page's */
     int draw, npg, ipg;                 /* UI_FXD_*, the effect's pages, this one's place */
@@ -209,9 +210,9 @@ void ui_fx_draw(const ui_fx_t *v);
 /* ---- P1.5a (ui_lib.c, built through ui_layer.c; mockups/fizz-save-pool.html; P1.5u: the name editor is the
  * typewriter's, ui_type.c): THE PROJECT: its number and name, the 64 patterns (bubbles off one when written), the flash
  * and the pool in use; THE PROJECTS: eight tiles. (P1.5t: the sounds page's grid is gone: ui_presets.c) */
-#define UI_LIB_COL 0xf3d9a4u
-#define UI_POOL_COL 0xb5e853u
-#define UI_PAD_COL 0x9664ffu
+#define UI_LIB_COL 0xedf171u
+#define UI_POOL_COL 0xa9ff9fu
+#define UI_PAD_COL 0x8e3c97u
 typedef struct {
     const char *name;
     int used, kind;                     /* (sounds.h QD_SK_*) */
@@ -330,7 +331,7 @@ enum { UI_F_NOTE, UI_F_VEL, UI_F_LEN, UI_F_MICRO, UI_F_RATCH, UI_F_CHNC, UI_F_CO
                                          * TRIG / SLIDE, B10 SOUND, B11 the hold key (ctl.c KEY_MODE, MODE_KEY) */
 extern const char *const UI_FIELD_NAME[UI_NFIELD];   /* "NOTE" .. "FUNC", "SLIDE", "SOUND" */
 extern const qd_rgb UI_MODE_COL[UI_NFIELD];
-#define UI_LOCK_COL 0xd8c39au           /* the padlock's sand (P-LOCK's colour, kept for the locks' icons) */
+#define UI_LOCK_COL 0x8e5029u           /* the padlock's sand (P-LOCK's colour, kept for the locks' icons) */
 
 /* ---- the kit's helpers (line.html's headTrack, lock, knobMark, keyboard's pos) */
 void ui_head_track(const char *left, int n, const char *name, qd_rgb lcol);   /* left; [n] name at the right */
@@ -365,13 +366,13 @@ enum { UI_IC_NONE, UI_IC_CLEAR, UI_IC_COPY, UI_IC_PASTE, UI_IC_UNDO, UI_IC_CUT, 
 int ui_fn_icon(int func);               /* P1.3w: a step function's icon (UI_IC_NONE for none) */
 #define UI_FN_JUMP 7                    /* (pattern.h's QD_FN_JUMP: JUMP n is UI_FN_JUMP + n) */
 #define UI_FN_LEAP 135                  /* (.. QD_FN_LEAP: LEAP n is UI_FN_LEAP + 15 + n, n -15..15) */
-#define UI_TRACK_COL 0xf03cffu          /* P1.3y: the TRACK colour: a track's default being edited (its drawing and head;
+#define UI_TRACK_COL 0x8e3c97u          /* P1.3y: the TRACK colour: a track's default being edited (its drawing and head;
                                          * P1.5d: no frame round it any more); no mode uses it */
-#define UI_STEP_FRAME 0xf03cffu         /* P1.5d (the frames the other way round): the frame round a held step's screen
+#define UI_STEP_FRAME 0x8e3c97u         /* P1.5d (the frames the other way round): the frame round a held step's screen
                                          * (or the latch's selection's) in the sequencer */
-#define UI_SND_FRAME_TRACK 0x8a3412u    /* P1.5d: the sound editor's frame, the track's sound (nothing held): dark orange */
-#define UI_MIDI_HEAD 0xee3cffu          /* FIZZ MIDI (e): the MIDI track editor's MIDI (magenta) */
-#define UI_SND_FRAME_STEP 0xff6a2cu     /* .. a step held or selected (its locks): bright orange (UI_K4) */
+#define UI_SND_FRAME_TRACK 0x553800u    /* P1.5d: the sound editor's frame, the track's sound (nothing held): dark orange */
+#define UI_MIDI_HEAD 0x8e3c97u          /* FIZZ MIDI (e): the MIDI track editor's MIDI (magenta) */
+#define UI_SND_FRAME_STEP 0x8e5029u     /* .. a step held or selected (its locks): bright orange (UI_K4) */
 extern const qd_rgb UI_LFO_COL[3];      /* P1.5k: LFO 1, 2, 3's colours (their marks, the mapping's takeover) */
 extern const qd_rgb UI_TRACK_PAL[8];    /* P1.3y: each track's colour (its big picture) */
 void ui_icon(int id, float cx, float cy, float s, qd_rgb col);   /* about 12 x 12 px at s 1, centred */
@@ -457,9 +458,9 @@ enum { UI_C_ON = 1, UI_C_LOCK = 2, UI_C_TIE = 4, UI_C_OVR = 8, UI_C_RANGE = 16, 
        UI_C_OWN = 64, UI_C_FUNC = 128 };   /* P1.3q: UI_C_OWN: the step has its own notes (the NOTE override);
                                          * P1.3w: UI_C_FUNC: a step function */
 /* P1.3q: the STEPS cells' kinds: own notes, the track's notes (filled), a ghost (LOCK: an outline) */
-#define UI_STEP_OWN 0xfff0d2u           /* warm white */
-#define UI_STEP_TRACK 0x63c4d6u         /* soft cyan */
-#define UI_STEP_GHOST 0xa57cffu         /* violet */
+#define UI_STEP_OWN 0xffffffu           /* warm white */
+#define UI_STEP_TRACK 0x75cec8u         /* soft cyan */
+#define UI_STEP_GHOST 0x8e3c97u         /* violet */
 qd_rgb ui_steps_fill(uint8_t cell);     /* a cell's fill: UI_STEP_OWN / UI_STEP_TRACK, QD_NONE (a ghost, off, out of range) */
 qd_rgb ui_steps_ink(uint8_t cell);      /* the notes' colour on that fill (a dark shade of it) */
 void ui_lane_draw(const ui_lane_t *v);
@@ -739,7 +740,8 @@ void ui_menu_draw(const ui_menu_t *v);
  * to 0; LEVEL's ROUTE: a FILTER / DRIVE chain in its order) */
 enum { UI_SD_ALGO, UI_SD_TONE, UI_SD_OFS, UI_SD_OPENV, UI_SD_TRIG, UI_SD_KEYS, UI_SD_FILTER, UI_SD_ADSR, UI_SD_BAND,
        UI_SD_DRIVE, UI_SD_LFO, UI_SD_LFOSHAPE, UI_SD_PORT, UI_SD_CRUSH, UI_SD_VOICE,   /* (E3: CRUSH: a sine as stairs) */
-       UI_SD_MOD };                     /* (E4: the eight slots as rows) */
+       UI_SD_MOD,                       /* (E4: the eight slots as rows) */
+       UI_SD_OSC, UI_SD_ENV, UI_SD_CHIP, UI_SD_WORD, UI_SD_DIGI };   /* EvilGenius: SID TONE's own pages */
 typedef struct ui_snd {
     const char *name;                   /* the page's ("RATIO", "ENV A") */
     int npg, ipg;                       /* its group's pages, this one's place (the dots in the head) */
@@ -878,7 +880,7 @@ void ui_band_draw(const ui_band_t *v);
  * selected raised and outlined), dots running along it as notes pass, a SELECTOR's block bracketed. The middle: the
  * selected effect's drawing (its name above in its colour); the foot: KNOB 1..4's labels and values. PRESETS' type
  * rolodex and ALGORITHM's group choice draw in the middle / over the screen while turning */
-#define UI_MFX_MINT 0x5cf2c4u          /* the MIDI FX colour (a group's hexagon) */
+#define UI_MFX_MINT UI_KALG            /* the MIDI FX colour (a group's hexagon: EvilGenius, the ALGORITHM knob's cyan) */
 extern const qd_rgb UI_MFX_COL[11];     /* each effect's colour (mfx.h QD_MFX_*; NONE grey) */
 void ui_mfx_glyph(int type, float cx, float cy, float s, qd_rgb col, float lw);   /* an effect's glyph, 2 s wide */
 void ui_mfx_hex(float x, float y, float r, int n, qd_rgb col, float lw, int dashed);   /* a group: n in a hexagon */

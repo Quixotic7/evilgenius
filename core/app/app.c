@@ -169,13 +169,12 @@ void qd_app_knob(qd_app_t *a, int knob, int detents)
     if (detents && knob >= 0 && knob < QD_NKNOB) {
         const int t = a->sel;
         const qd_track_t *k = &a->model.t[t];
-        const int rb = k->patch[QD_QP_RB1] * 19 + k->patch[QD_QP_RB2], dry = k->mix.dry;
+        const int dry = k->mix.dry;                     /* (EvilGenius: no RATIO B pair in SID TONE: FIZZ's RB CC
+                                                         * echo is gone) */
         qd_undo_input(a, 1);
         a->mo_knob = (uint8_t)(t + 1), a->mo_rb = 0;
         qd_ctl_knob(a, knob, detents);
         a->mo_knob = 0;
-        if (a->mo_rb)
-            mo_cc(a, t, QD_QP_RB1, rb, k->patch[QD_QP_RB1] * 19 + k->patch[QD_QP_RB2]);
         if (k->mix.dry != dry && a->ui.cc_out)
             mo_cc(a, t, QD_MM_DRY, dry, k->mix.dry);
         qd_ctl_preview_sync(a);

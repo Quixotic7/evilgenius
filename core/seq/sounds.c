@@ -55,27 +55,32 @@ static uint8_t tagc[QD_NFACTORY];                       /* (P2.1b: only the clas
 #endif
 void qd_factory_preset(int i, qd_sound_t *out)
 {
+    /* EvilGenius: the kit as SID TONE patches (over INIT): a kick a triangle with a pitch drop and a noise click, a
+     * snare noise over a dropping triangle, a hat high noise through the high-pass */
+#define LF(f) QD_QP_LFO(0, QD_QL_##f)
     static const kv_t KICK[] = {
-        {QD_QP_EDEC, 32}, {QD_QP_ESUS, 0}, {QD_QP_EREL, 20}, {QD_QP_LFO(0, QD_QL_SPEED), 4000},
-        {QD_QP_LFO(0, QD_QL_MULT), 18},   /* F64: x 64 at a fixed 120 BPM */
-        {QD_QP_LFO(0, QD_QL_DEST), 1},    /* PITCH */
-        {QD_QP_LFO(0, QD_QL_WAVE), 5},    /* EXP */
-        {QD_QP_LFO(0, QD_QL_TRIG), 4},    /* HALF */
-        {QD_QP_LFO(0, QD_QL_DEPTH), 6399}, {QD_QP_ALEV, 60}, {QD_QP_ADEC, 4}, {QD_QP_AEND, 0},
-        {QD_QP_RA, 8},                    /* RATIO A 2.00 */
-        {QD_QP_LEVEL, 127},
+        {QD_QP_W1, QD_SW_TRI}, {QD_QP_C1, -12}, {QD_QP_EDEC, 8}, {QD_QP_ESUS, 0}, {QD_QP_EREL, 6},
+        {LF(DEST), QD_D_P1}, {LF(WAVE), QD_LW_EXP}, {LF(TRIG), QD_LT_ONE}, {LF(SPEED), 72}, {LF(DEPTH), 127},
+        {QD_QP_W2, QD_SW_NOI}, {QD_QP_C2, 24}, {QD_QP_E2LINK, 0}, {QD_QP_E2A, 0}, {QD_QP_E2D, 2}, {QD_QP_E2S, 0},
+        {QD_QP_E2R, 1}, {QD_QP_LEVEL, 127}, {QD_QP_HR, 3},
     };
-#define NOISE_BODY(freq, reso, fdbk, dec, rel)                                                                       \
-    {QD_QP_FTYPE, QD_QF_LP12}, {QD_QP_FREQ, freq}, {QD_QP_RESO, reso}, {QD_QP_FDBK, fdbk}, {QD_QP_EDEC, dec},      \
-        {QD_QP_ESUS, 0}, {QD_QP_EREL, rel}
-    static const kv_t SNARE[] = {NOISE_BODY(9500, 1000, 110, 24, 18), {QD_QP_LEVEL, 120}};
-    static const kv_t CLAP[] = {NOISE_BODY(10500, 3000, 120, 14, 12)};
-    static const kv_t GHOST[] = {NOISE_BODY(8000, 0, 110, 16, 12), {QD_QP_LEVEL, 70}};
-#undef NOISE_BODY
-    static const kv_t HAT[] = {{QD_QP_FREQ, 9500}, {QD_QP_RESO, 1000}, {QD_QP_EDEC, 10}, {QD_QP_ESUS, 0},
-                               {QD_QP_EREL, 8}};
-    static const kv_t OHAT[] = {{QD_QP_FREQ, 9000}, {QD_QP_RESO, 1000}, {QD_QP_EDEC, 32}, {QD_QP_ESUS, 0},
-                                {QD_QP_EREL, 26}};
+#define SNARE_BODY(dec, rel, lvl)                                                                                     \
+    {QD_QP_W1, QD_SW_NOI}, {QD_QP_C1, 12}, {QD_QP_EDEC, dec}, {QD_QP_ESUS, 0}, {QD_QP_EREL, rel},                    \
+        {QD_QP_W2, QD_SW_TRI}, {QD_QP_C2, 7}, {QD_QP_E2LINK, 0}, {QD_QP_E2D, 5}, {QD_QP_E2S, 0}, {QD_QP_E2R, 4},     \
+        {LF(DEST), QD_D_P2}, {LF(WAVE), QD_LW_EXP}, {LF(TRIG), QD_LT_ONE}, {LF(SPEED), 80}, {LF(DEPTH), 100},      \
+        {QD_QP_FTYPE, QD_QF_HP}, {QD_QP_FREQ, 500}, {QD_QP_FROUTE, 1}, {QD_QP_LEVEL, lvl}, {QD_QP_HR, 3}
+    static const kv_t SNARE[] = {SNARE_BODY(7, 6, 120)};
+    static const kv_t CLAP[] = {{QD_QP_W1, QD_SW_NOI}, {QD_QP_C1, 10}, {QD_QP_EDEC, 5}, {QD_QP_ESUS, 0}, {QD_QP_EREL, 5},
+                                {QD_QP_FTYPE, QD_QF_BP}, {QD_QP_FREQ, 900}, {QD_QP_RESO, 8}, {QD_QP_LEVEL, 120},
+                                {LF(DEST), QD_D_LEVEL}, {LF(WAVE), QD_LW_SAW}, {LF(MULT), 1}, {LF(TRIG), QD_LT_TRIG},
+                                {LF(DEPTH), 100}, {LF(FADE), 80}};
+    static const kv_t GHOST[] = {SNARE_BODY(5, 4, 70)};
+#undef SNARE_BODY
+    static const kv_t HAT[] = {{QD_QP_W1, QD_SW_NOI}, {QD_QP_C1, 24}, {QD_QP_EDEC, 3}, {QD_QP_ESUS, 0},
+                               {QD_QP_EREL, 2}, {QD_QP_FTYPE, QD_QF_HP}, {QD_QP_FREQ, 1700}, {QD_QP_RESO, 4}};
+    static const kv_t OHAT[] = {{QD_QP_W1, QD_SW_NOI}, {QD_QP_C1, 24}, {QD_QP_EDEC, 7}, {QD_QP_ESUS, 0},
+                                {QD_QP_EREL, 7}, {QD_QP_FTYPE, QD_QF_HP}, {QD_QP_FREQ, 1600}, {QD_QP_RESO, 4}};
+#undef LF
     static const struct {
         const char *name;
         const kv_t *kv;
@@ -100,7 +105,7 @@ void qd_factory_preset(int i, qd_sound_t *out)
             strncpy(s->name, qd_quad_preset_name(k), QD_SOUND_NAME - 1);
         } else {
             const int d = k - QD_QUAD_NPRESET;
-            make_patch(d ? QD_SND_NOISE - 1 : 0, DRUM[d].kv, DRUM[d].n, s->patch);
+            make_patch(0, DRUM[d].kv, DRUM[d].n, s->patch);   /* (EvilGenius: over INIT) */
             strncpy(s->name, DRUM[d].name, QD_SOUND_NAME - 1);
         }
         s->preset = (uint16_t)(k + 1);
@@ -528,28 +533,30 @@ int qd_sound_add(qd_project_t *pr, const char *name, const int16_t *patch)
 /* ---------------------------------------------------------------- P1.5a: a name from the sound */
 int qd_sound_kind(const int16_t *p)
 {
-    const int noise = p[QD_QP_FDBK] >= 100, perc = p[QD_QP_ESUS] <= 10 && p[QD_QP_EDEC] <= 40;
-    const int lp = p[QD_QP_FTYPE] == QD_QF_LP12 || p[QD_QP_FTYPE] == QD_QF_LP24;
+    const int noise = p[QD_QP_W1] == QD_SW_NOI, perc = p[QD_QP_ESUS] <= 2 && p[QD_QP_EDEC] <= 9;
+    const int lp = p[QD_QP_FTYPE] == QD_QF_LP;
+    const int drop = p[QD_QP_LFO(0, QD_QL_TRIG)] == QD_LT_ONE && p[QD_QP_LFO(0, QD_QL_WAVE)] == QD_LW_EXP &&
+                     (p[QD_QP_LFO(0, QD_QL_DEST)] == QD_D_PITCH || p[QD_QP_LFO(0, QD_QL_DEST)] == QD_D_P1);
     if (noise && perc) {
-        if (p[QD_QP_FTYPE] == QD_QF_HP12)
+        if (p[QD_QP_FTYPE] == QD_QF_HP && p[QD_QP_W2] == QD_SW_OFF)
             return QD_SK_HAT;
-        if (p[QD_QP_EDEC] < 20 && p[QD_QP_RESO] >= 2000)
+        if (p[QD_QP_FTYPE] == QD_QF_BP)
             return QD_SK_CLAP;
         return QD_SK_SNARE;
     }
     if (noise)
         return QD_SK_NOISE;
-    if (perc && p[QD_QP_ADEC] <= 6 && p[QD_QP_ALEV] >= 40)
-        return QD_SK_KICK;                              /* (a fast pitch-like drop of the modulator) */
-    if (p[QD_QP_EATK] >= 30)
+    if (perc && drop)
+        return QD_SK_KICK;
+    if (p[QD_QP_EATK] >= 6)
         return QD_SK_PAD;
-    if (p[QD_QP_ESUS] <= 40 && p[QD_QP_EDEC] >= 40)
+    if (p[QD_QP_ESUS] <= 4 && p[QD_QP_EDEC] >= 8)
         return QD_SK_BELL;
-    if (p[QD_QP_ESUS] <= 10)
+    if (p[QD_QP_ESUS] <= 2)
         return QD_SK_PLUCK;
-    if (p[QD_QP_ESUS] < 80)
+    if (p[QD_QP_ESUS] < 12)
         return QD_SK_KEYS;
-    if (lp && p[QD_QP_FREQ] < 9500 && p[QD_QP_EATK] < 10)
+    if (lp && p[QD_QP_FREQ] < 900 && p[QD_QP_EATK] < 3)
         return QD_SK_BASS;
     return QD_SK_LEAD;
 }
@@ -571,30 +578,30 @@ static int sound_adjectives(const int16_t *p, const char **cand, const char **ki
     int n = 0, i;
     const int lp = p[QD_QP_FTYPE] == QD_QF_LP12 || p[QD_QP_FTYPE] == QD_QF_LP24;
     const int drum = k == QD_SK_KICK || k == QD_SK_SNARE || k == QD_SK_CLAP || k == QD_SK_HAT;
-    *kind = k == QD_SK_HAT && p[QD_QP_EDEC] >= 24 ? "OPEN HAT" : qd_sound_kind_name(k);
+    *kind = k == QD_SK_HAT && p[QD_QP_EDEC] >= 6 ? "OPEN HAT" : qd_sound_kind_name(k);
     if (k == QD_SK_KICK)
         cand[n++] = "DEEP";
-    if (lp && p[QD_QP_FREQ] < 8000)
+    if (lp && p[QD_QP_FREQ] < 700)
         cand[n++] = "DARK";
-    if (p[QD_QP_LEVEL] < 80 || (p[QD_QP_EATK] >= 20 && k != QD_SK_PAD))
+    if (p[QD_QP_LEVEL] < 80 || (p[QD_QP_EATK] >= 4 && k != QD_SK_PAD))
         cand[n++] = "SOFT";
-    if (p[QD_QP_DTUN] >= 8000 && k != QD_SK_PAD && !drum)
+    if ((p[QD_QP_M1] & 2 || p[QD_QP_M2] & 2 || p[QD_QP_M3] & 2) && !drum)
         cand[n++] = "METAL";
-    if (p[QD_QP_HARM] <= -1000 && !drum)
+    if (p[QD_QP_W1] == QD_SW_TRI && !drum)
         cand[n++] = "HOLLOW";
-    if (p[QD_QP_DTUN] >= 3000 && !drum)
+    if (p[QD_QP_DETUNE] >= 40 && !drum)
         cand[n++] = "WIDE";
-    if ((p[QD_QP_FDBK] >= 30 && p[QD_QP_FDBK] < 100) || p[QD_QP_DRIVE] >= 20)
+    if (p[QD_QP_DRIVE] >= 20 || p[QD_QP_BITS] >= 40)
         cand[n++] = "HARD";
-    if (p[QD_QP_FREQ] >= 12000 && !drum && (p[QD_QP_HARM] > 0 || p[QD_QP_RA] >= 7 || p[QD_QP_RB1] >= 6))
+    if (p[QD_QP_FREQ] >= 1600 && p[QD_QP_FTYPE] != QD_QF_OFF && !drum)
         cand[n++] = "BRIGHT";
-    if (p[QD_QP_ESUS] <= 10 && p[QD_QP_EDEC] <= 14)
+    if (p[QD_QP_ESUS] <= 2 && p[QD_QP_EDEC] <= 6)
         cand[n++] = k == QD_SK_KICK || k == QD_SK_HAT ? "TIGHT" : "SHORT";
-    if (p[QD_QP_EREL] >= 50)
+    if (p[QD_QP_EREL] >= 10)
         cand[n++] = "LONG";
-    if (p[QD_QP_RESO] >= 4000 && !drum)
+    if (p[QD_QP_RESO] >= 10 && p[QD_QP_FTYPE] != QD_QF_OFF && !drum)
         cand[n++] = "RUBBER";
-    if (p[QD_QP_HARM] > 0 && !drum)
+    if (p[QD_QP_M1] & 1 && !drum)
         cand[n++] = "GLASS";
     for (i = 0; i < (int)(sizeof MORE / sizeof MORE[0]); i++)
         cand[n++] = MORE[i];
@@ -669,7 +676,7 @@ int qd_preset_kind(const int16_t *p)
         return QD_PK_FX;
     if (k == QD_SK_PAD)
         return QD_PK_PAD;
-    if (p[QD_QP_DTUN] >= 8000 || p[QD_QP_FDBK] >= 40)  /* (METAL, FEEDBACK: strongly detuned or fed back) */
+    if (p[QD_QP_WORD] > 0 || p[QD_QP_LFO(0, QD_QL_TRIG)] == QD_LT_ONE)   /* (a voice speaking, a zap) */
         return QD_PK_FX;
     switch (k) {
     case QD_SK_BASS: return QD_PK_BASS;

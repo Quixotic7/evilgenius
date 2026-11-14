@@ -1,26 +1,21 @@
 /* SPDX-License-Identifier: MPL-2.0
  * This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0. If a copy of the MPL was not
  * distributed with this file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-/* KEYS (PLAN.md §8 "KEYS mode"; mockups/line.html s18 without the recording roll): the keybed plays the selected track.
- * Top left the track's box and name, top right the pool's sixteen voices as dots (lit: in use; white this track's,
- * grey another's); the sound's name in the middle, medium; the line-drawn keybed of two octaves with the keys
- * sounding filled white; OCT at the foot. The keybed is the FM-1's own: its 27 keys from F (F3 .. G5 at OCT 0,
- * QD_NOTE0), so each drawn key is the one pressed (2026-10-25: it started on C), one octave lower when the notes
- * sounding are all below it.
- * Recording (P1.3): rec 1, STEP recording, adds the cursor's page as sixteen little squares under the sound (trigs
- * filled grey, the cursor's square outlined red in the blink's lit half), STEP REC in red and the cursor's step at the
- * foot. rec 2, LIVE recording, is line.html s18: the RECORDING badge blinking (a Q by it with quantize on), the notes
- * scrolling in from the red line (11 px a step, the grid's beats darker), the keybed small at the foot with the keys
- * held white, OCT and the step under the playhead. The live keybed is the FM-1's own: 27 keys from F (F3 .. G5 at OCT
- * 0), so each drawn key is the one pressed.
- * P1.3b: the sound's pool number has three digits; a track in a scale shows the scale's name by the octave.
- * 2026-11-10: B11 held, or steps selected (the keys write into them): the page edited's row of sixteen, the selected
- * outlined white, over the sound's name (the keybed white again: the owner, 2026-11-10; a selected step's notes in
- * the held step's magenta). */
+/* EvilGenius: KEYS, the keyboard page (FIZZ's, redrawn at 120 x 120): the keybed plays the selected track.
+ * The head: the track's box, kind and name; at the right the pool's sixteen voices as dots (white this track's, grey
+ * another's). The sound's pool number and name on a nameplate in the middle; the FM-1's own keybed under it, its 27
+ * keys from F (F3 .. G5 at OCT 0, QD_NOTE0) so each drawn key is the one pressed (an octave lower when the notes
+ * sounding are all below it), the keys sounding white, a selected step's notes in the held step's purple; the octave
+ * (and the track's scale) at the foot.
+ * rec 1, STEP recording: the cursor's page as sixteen squares over the nameplate (the cursor's blinking red), the red
+ * dot and the cursor's step at the foot. B11 held or steps selected: the page edited's row there, the selected outlined.
+ * rec 2, LIVE recording: the REC badge blinking (Q by it with quantize on), the notes scrolling left from the red line
+ * (a step 5 px, the beats dotted), the keybed small at the foot with the keys held white. */
 #include <math.h>
-#include "fz_math.h"                   /* (the drawing's own sinf .. atan2f: the flash diet) */
+#include "fz_math.h"
 
 #include "ui.h"
+#include "px.h"
 
 static const char *const OCT[5] = {"OCT -2", "OCT -1", "OCT 0", "OCT +1", "OCT +2"};
 static const char *oct_name(int o) { return OCT[o < -2 ? 0 : o > 2 ? 4 : o + 2]; }
@@ -36,24 +31,65 @@ static char *cat(char *d, const char *s)
     return d;
 }
 
-static qd_rgb fill[128];                               /* (the keybed's, both drawings') */
+#define KB_BLACK(n) ((0x54au >> ((n) % 12)) & 1u)       /* C# D# F# G# A# */
+static qd_rgb fill[128];                               /* (the keybed's, both drawings': QD_NONE not lit) */
 
-/* rec 2: LIVE recording (s18) */
+/* the keybed: 16 white keys from the F lo, 7 px a key, x0 .. x0 + 111 */
+static void kb(int x0, int y, int h, int lo)
+{
+    const int bh = h * 3 / 5;
+    int n, w;
+    for (n = lo, w = 0; w < 16; n++) {
+        if (KB_BLACK(n))
+            continue;
+        px_rect(x0 + w * 7, y, 6, h, n < 128 && fill[n] != QD_NONE ? fill[n] : PX_GREY);
+        px_hline(x0 + w * 7, y + h - 1, 6, PX_DGREY);   /* the key's lip */
+        w++;
+    }
+    for (n = lo, w = 0; w < 16; n++) {
+        if (!KB_BLACK(n)) {
+            w++;
+            continue;
+        }
+        px_rect(x0 + w * 7 - 3, y, 5, bh + 1, PX_BLACK);
+        if (n < 128 && fill[n] != QD_NONE)
+            px_rect(x0 + w * 7 - 2, y, 3, bh, fill[n] == UI_K3 ? PX_LGREY : fill[n]);
+    }
+}
+
+/* the pool's first sixteen voices, two rows of eight at the head's right */
+static void voices(const ui_keys_t *v, int x)
+{
+    int i;
+    for (i = 0; i < v->nvoice && i < UI_NVOICE_DOTS; i++)
+        px_rect(x + (i % 8) * 3, 2 + (i / 8) * 4, 2, 2, v->voice[i] == 2 ? UI_K3 : v->voice[i] ? UI_G1 : UI_G3);
+}
+
+/* the foot: the octave, the track's scale */
+static void foot(const ui_keys_t *v, int y)
+{
+    char s[64];
+    s[0] = 0;
+    cat(s, oct_name(v->octave));
+    if (v->scale && v->scale_name && v->scale_name[0])
+        cat(cat(s, " \xc2\xb7 "), v->scale_name);
+    px_ctext(60, y, s, UI_G1, PX_FS, 1);
+}
+
+/* rec 2: LIVE recording */
 static void live(const ui_keys_t *v)
 {
-    const float now = 186.f, pxs = 11.f;
-    char s[64], n[12];
-    int i, lo = 53 + 12 * v->octave, mn = 128, rl;   /* the FM-1's keybed: F3 .. G5 at OCT 0 (QD_NOTE0) */
+    const int now = 94, top = 16, bot = 74;
+    int i, lo = 53 + 12 * v->octave, mn = 128, rl;      /* the FM-1's keybed: F3 .. G5 at OCT 0 (QD_NOTE0) */
     float st;
 
     ui_head(v->name, 0, v->track, UI_K3, UI_G1);
-    ui_RR(140.f, 3.f, 92.f, 19.f, 3.f, QD_NONE, 1.f, v->blink ? UI_RED : 0xa01c2au);
-    ui_T("REC", 186.f, 17.5f, 12.f, 700, 1.f, 0xffffffu, QD_CENTER);
+    px_rect(92, 1, 25, 9, v->blink ? UI_RED : PX_BROWN);   /* the badge */
+    px_ctext(105, 3, "REC", PX_WHITE, PX_FS, 1);
     if (v->quantize)
-        ui_T("Q", 134.f, 18.f, 12.f, 700, 0.f, UI_G1, QD_RIGHT);
+        px_text(85, 3, "Q", UI_G1, PX_FS, 1);
+    px_dots(0, 11, 120, UI_G3, 2);
 
-    /* the keybed as the FM-1's (27 keys from the octave's F), one lower when the roll has notes below it; the roll two
-     * semitones under it */
     for (i = 0; i < 128; i++)
         fill[i] = v->sounding[i] ? UI_K3 : QD_NONE;
     for (i = 0; i < v->nroll && i < 32; i++) {
@@ -66,40 +102,28 @@ static void live(const ui_keys_t *v)
         lo -= 12;
     rl = lo - 2;
 
-    for (st = ceilf(v->pos - 16.f); st <= v->pos; st += 1.f) {   /* the grid, scrolling with the playhead */
-        const float x = now - (v->pos - st) * pxs;
-        const float g[4] = {x, 40.f, x, 156.f};
-        ui_P(g, 2, (int)st % 4 == 0 ? UI_G3 : 0x121216u, 1.f, 0, QD_NONE);
+    for (st = ceilf(v->pos - 18.f); st <= v->pos; st += 1.f) {   /* the beats, scrolling with the playhead */
+        const int x = now - (int)floorf((v->pos - st) * 5.f + 0.5f);
+        if ((int)st % 4 == 0 && x >= 2)
+            px_vdots(x, top, bot - top, UI_G3, 2);
     }
-    {
-        const float r[4] = {now, 34.f, now, 160.f};
-        ui_P(r, 2, UI_RED, 1.f, 0, QD_NONE);
-    }
-    qd_save();
-    qd_clip_rect(0.f, 30.f, 240.f, 132.f);
     for (i = 0; i < v->nroll && i < 32; i++) {          /* the notes played, scrolling left from the red line */
-        const float x0 = now - v->roll[i].start * pxs, x1 = now - v->roll[i].end * pxs;
-        const float xa = x0 > 8.f ? x0 : 8.f, w = x1 - xa;
-        const float y = 152.f - (float)(v->roll[i].note - rl) * 6.5f;
-        if (x1 < 8.f)
+        const int x0 = now - (int)floorf(v->roll[i].start * 5.f + 0.5f);
+        const int x1 = now - (int)floorf(v->roll[i].end * 5.f + 0.5f);
+        const int xa = x0 > 2 ? x0 : 2, w = x1 - xa, y = bot - 2 - (v->roll[i].note - rl) * 2;
+        if (x1 < 2 || y < top || y > bot)
             continue;
-        ui_RR(xa, y - 2.5f, w > 3.f ? w : 3.f, 5.f, 2.5f, QD_NONE, 1.f, v->roll[i].live ? UI_K3 : UI_G1);
+        px_rect(xa, y, w > 2 ? w : 2, 2, v->roll[i].live ? UI_K3 : UI_G1);
     }
-    qd_restore();
-    ui_keybed(22.f, 170.f, 196.f, 48.f, lo, 16, fill);
-    s[0] = 0;
-    cat(s, oct_name(v->octave));
-    if (v->scale && v->scale_name && v->scale_name[0])
-        cat(cat(s, " \xc2\xb7 "), v->scale_name);
-    (void)n;                                            /* (P1.3v: the octave and scale, 12 px; no step count) */
-    ui_lab(s, 120.f, 236.f, UI_G1, QD_CENTER);
+    px_vline(now, top - 2, bot - top + 4, UI_RED);
+    kb(4, 80, 22, lo);
+    foot(v, 108);
 }
 
 void ui_keys_draw(const ui_keys_t *v)
 {
-    char num[24], step[12];
+    char num[24];
     int i, lo = 53 + 12 * v->octave, below = 0, above = 0;   /* (QD_NOTE0, as live()) */
-    float x;
 
     if (v->rec == 2) {
         live(v);
@@ -107,54 +131,47 @@ void ui_keys_draw(const ui_keys_t *v)
     }
 
     ui_head(v->name, 0, v->track, UI_K3, UI_G1);
-    for (i = 0; i < v->nvoice && i < UI_NVOICE_DOTS; i++)
-        ui_O(186.f + (float)(i % 8) * 6.f, 8.f + (float)(i / 8) * 6.f, 1.6f, QD_NONE, 1.f,
-             v->voice[i] == 2 ? UI_K3 : v->voice[i] ? UI_G1 : UI_G3);
+    voices(v, 94);
+    px_dots(0, 11, 120, UI_G3, 2);
 
-    /* the sound: its pool number small, its name medium */
-    /* (P1.3v: no SOUND word: the name is the sound) */
+    if (v->rec == 1 || v->row) {                        /* STEP recording: the cursor's page (B11 held or a selection:
+                                                         * the page edited's, the selected outlined) */
+        const int c = v->rec == 1 && v->blink ? (v->cursor - 1) % 16 : -1;
+        uint16_t trig = 0;
+        for (i = 0; i < 16; i++)
+            trig |= (uint16_t)((v->page_trig[i] != 0) << i);
+        ui_page_row(30.f, trig, v->sel, c, -1);
+    }
+
+    /* the sound: a nameplate, its pool number small over its name */
     num[0] = (char)('0' + (v->preset / 100) % 10);
     num[1] = (char)('0' + (v->preset / 10) % 10);
     num[2] = (char)('0' + v->preset % 10);
     num[3] = 0;
-    x = 120.f - ui_TW(v->sound, 26.f, 300, 0.5f) / 2.f;
-    ui_T(num, x - 6.f, 82.f, 12.f, 600, 0.5f, UI_G1, QD_RIGHT);
-    ui_T(v->sound, 120.f, 92.f, 26.f, 300, 0.5f, UI_K3, QD_CENTER);
-    if (v->edited)
-        ui_O(x + ui_TW(v->sound, 26.f, 300, 0.5f) + 6.f, 74.f, 2.f, QD_NONE, 1.f, UI_K4);
+    {
+        const int w = px_text_w(v->sound, PX_FB, 1), x = 60 - (w + 1) / 2;
+        px_rbox(x - 5, 26, w + 10, 22, UI_G2, QD_NONE);
+        px_rect(x - 5 + 3, 25, px_text_w(num, PX_FS, 1) + 4, 3, PX_BLACK);   /* the number breaks the frame */
+        px_text(x - 5 + 5, 24, num, UI_G1, PX_FS, 1);
+        px_text_sh(x, 33, v->sound, UI_K3, UI_G3, PX_FB, 1);
+        if (v->edited)
+            px_rect(x + w + 2, 32, 2, 2, UI_K4);
+    }
 
     /* the keybed */
-    for (i = 0; i < 128; i++) {                         /* (2026-11-10: back to the white keybed; a selected step's
-                                                         * notes in the held step's magenta) */
+    for (i = 0; i < 128; i++) {                         /* (a selected step's notes in the held step's purple) */
         fill[i] = v->sounding[i] == 1 ? UI_K3 : v->sounding[i] ? UI_STEP_FRAME : QD_NONE;
         below |= v->sounding[i] && i < lo;
         above |= v->sounding[i] && i >= lo;
     }
     if (below && !above && lo >= 12)
         lo -= 12;
-    ui_keybed(14.f, 118.f, 212.f, 78.f, lo, 16, fill);
+    kb(4, 56, 40, lo);
+    foot(v, 102);
 
-    num[0] = 0;                                         /* the octave; a track in a scale: the scale */
-    cat(num, oct_name(v->octave));
-    if (v->scale && v->scale_name && v->scale_name[0]) {
-        char sc[48];
-        sc[0] = 0;
-        cat(cat(cat(sc, num), " \xc2\xb7 "), v->scale_name);
-        ui_lab(sc, 120.f, 224.f, UI_G1, QD_CENTER);
-    } else {
-        ui_lab(num, 120.f, 224.f, UI_G1, QD_CENTER);
-    }
-
-    if (v->rec == 1 || v->row) {                        /* STEP recording: the cursor's page (2026-11-10: B11 held
-                                                         * or a selection: the page edited's, the selected outlined) */
-        const int c = v->rec == 1 && v->blink ? (v->cursor - 1) % 16 : -1;
-        uint16_t trig = 0;
-        for (i = 0; i < 16; i++)
-            trig |= (uint16_t)((v->page_trig[i] != 0) << i);
-        ui_page_row(38.f, trig, v->sel, c, -1);         /* (above the sound's name, 12 px: the owner, 2026-11-10) */
-    }
     if (v->rec == 1) {
-        ui_icon(UI_IC_REC, 20.f, 220.f, 1.f, UI_RED);  /* (P1.3v: step recording: the red dot, the step number) */
-        ui_T(ui_itoa(step, v->cursor), 226.f, 224.f, 12.f, 600, 0.f, UI_K3, QD_RIGHT);
+        char step[12];
+        px_circle(6, 112, 2, UI_RED, UI_RED);           /* step recording: the red dot, the step number */
+        px_rtext(116, 110, ui_itoa(step, v->cursor), UI_K3, PX_FS, 1);
     }
 }

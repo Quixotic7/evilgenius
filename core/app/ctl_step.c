@@ -46,7 +46,7 @@
 #include "../seq/scale.h"
 #include "../seq/sounds.h"
 
-static const uint8_t QUICK_ID[4] = {QD_QP_FREQ, QD_QP_EDEC, QD_QP_HARM, QD_QP_FDBK};   /* PLAN question 11 */
+static const uint8_t QUICK_ID[4] = {QD_QP_FREQ, QD_QP_EDEC, QD_QP_PW1, QD_QP_RESO};   /* (SID TONE: CUTOFF, DECAY, PW, RESO) */   /* PLAN question 11 */
 int qd_step_quick_id(int k) { return QUICK_ID[k & 3]; }
 
 int qd_step_id_detent(int id)
@@ -99,8 +99,8 @@ static int fn_kind(int f) { return QD_FN_IS_LEAP(f) ? 7 : f >= QD_FN_JUMP && f <
 
 /* ---- P-LOCK's hook: the screens' lockable knobs, one table a screen */
 static const qd_lockknob_t STEPVIEW_LOCKS[] = {
-    {QD_K_1, QD_QP_FREQ, UI_TK_FREQ}, {QD_K_2, QD_QP_EDEC, UI_TK_DECAY}, {QD_K_3, QD_QP_HARM, UI_TK_HARM},
-    {QD_K_4, QD_QP_FDBK, UI_TK_FDBK}, {QD_K_PRESETS, QD_LOCK_SOUND, QD_TK_PRESET},
+    {QD_K_1, QD_QP_FREQ, UI_TK_FREQ}, {QD_K_2, QD_QP_EDEC, UI_TK_DECAY}, {QD_K_3, QD_QP_PW1, UI_TK_HARM},
+    {QD_K_4, QD_QP_RESO, UI_TK_FDBK}, {QD_K_PRESETS, QD_LOCK_SOUND, QD_TK_PRESET},
 };
 static const qd_lockscreen_t STEPVIEW = {"STEP VIEW", (int)(sizeof STEPVIEW_LOCKS / sizeof STEPVIEW_LOCKS[0]),
                                          STEPVIEW_LOCKS};

@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: MPL-2.0
 # FIZZ's build settings (fm1-base tools/build.py, through firmware/build.py: run that, not fm1-base's directly)
-name = "FIZZ"                  # the build's files: build/fizz.fwsc (APP_NAME is in app.h)
-id_prefix = "FM-1_46"          # package identity: dev FM-1_4600, releases FM-1_46XXYYZZ (46: "F", FIZZ's SysEx 7D 46 5A)
-usb_manufacturer = "FIZZ"
-usb_product = "FIZZ FM-1"      # (FM-1 in the name: fm1-base's installers find the unit by it)
+name = "EVILGENIUS"            # the build's files: build/evilgenius.fwsc (APP_NAME is in app.h)
+id_prefix = "FM-1_45"          # package identity: dev FM-1_4500, releases FM-1_45XXYYZZ (45: "E", EvilGenius; FIZZ is 46)
+usb_manufacturer = "EVILGENIUS"
+usb_product = "EVILGENIUS FM-1"      # (FM-1 in the name: fm1-base's installers find the unit by it)
 words = "words.tsv"
 # FIZZ's core and plutovg, each a unit of its own (made by tools/gen_units.py from FIZZ's tools/Makefile lists), and
 # the port's side of the seam. "o2" is fm1-base's name for an app's separate units; -Os again here (the budget's)
@@ -11,7 +11,7 @@ o2 = ["fz_port.c", "fz_libc.c", "build/units/*.c"]
 o2_cflags = ["-Os", "-std=gnu11"]
 o2_include = ["fizz_prefix.h"]
 include = ["../../core/app", "../../core/ui", "../../core/gfx", "../../core/seq", "../../core/voice",
-           "../../core/voice/quad", "../../core/voice/fx", "../../core/tests", "../../third_party/plutovg/include"]
+           "../../core/voice/quad", "../../core/voice/sid", "../../core/voice/fx", "../../core/tests", "../../third_party/plutovg/include"]
 vendored = ["build/"]
 gen = ["tools/gen_units.py {gen} --gfx fb"]     # the drawing: plutovg, fast (core/gfx/qd_gfx_fast.c) or fb (P2.12: fast, into the 8-bit frame)
 # USB only (the owner, 2026-10-23): no Bluetooth, no WiFi. USB audio in (2026-10-27): the computer records FIZZ over
@@ -31,7 +31,7 @@ backup = false                 # (fm1-base's backup carries Felucca's storage ob
 cpu2 = true
 cpu2_fallback = true
 # the site
-tagline = "an FM step sequencer"
-repo = "https://github.com/Quixotic7/FIZZ"
+tagline = "a SID step sequencer that talks"
+repo = "https://github.com/Quixotic7/EvilGenius"
 licence = "MPL-2.0"
-credits = "Built on fm1-base and felucca-bsp."
+credits = "Built on FIZZ, fm1-base and felucca-bsp; the SID model from fm1-sid (Joakim Eriksson, BSD-2); the words spoken by SAM (s-macke/SAM)."

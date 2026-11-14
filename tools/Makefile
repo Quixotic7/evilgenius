@@ -40,12 +40,12 @@ CR_TAG ?= v0.25.1
 CRB := $(B)/cr-$(CR_TAG)
 PY ?= python3
 
-VOICE_SRC := $(ROOT)/core/voice/quad/quad_voice.c $(ROOT)/core/voice/pool.c $(ROOT)/core/voice/mix.c \
+VOICE_SRC := $(ROOT)/core/voice/quad/quad_voice.c $(ROOT)/core/voice/sid/sid.c $(ROOT)/core/voice/pool.c $(ROOT)/core/voice/mix.c \
              $(ROOT)/core/voice/fx/qd_fx.c
 APP_SRC := $(ROOT)/core/app/app.c $(ROOT)/core/app/ctl.c $(ROOT)/core/app/ctl_step.c $(ROOT)/core/app/ctl_rec.c \
            $(ROOT)/core/app/ctl_leds.c $(ROOT)/core/app/ctl_latch.c $(ROOT)/core/app/ctl_preview.c \
            $(ROOT)/core/app/view.c
-UI_SRC := $(ROOT)/core/ui/ui_kit.c $(ROOT)/core/ui/ui_idle.c $(ROOT)/core/ui/ui_keys.c $(ROOT)/core/ui/ui_picker.c \
+UI_SRC := $(ROOT)/core/ui/px.c $(ROOT)/core/ui/ui_kit.c $(ROOT)/core/ui/ui_idle.c $(ROOT)/core/ui/ui_keys.c $(ROOT)/core/ui/ui_picker.c \
           $(ROOT)/core/ui/ui_tracks.c $(ROOT)/core/ui/ui_lane.c $(ROOT)/core/ui/ui_held.c $(ROOT)/core/ui/ui_turn.c \
           $(ROOT)/core/ui/ui_layer.c $(ROOT)/core/ui/ui_octave.c
 CORE_SRC := $(APP_SRC) $(UI_SRC) $(ROOT)/core/gfx/qd_gfx_$(GFX_FILE).c \
@@ -55,9 +55,9 @@ CORE_SRC := $(APP_SRC) $(UI_SRC) $(ROOT)/core/gfx/qd_gfx_$(GFX_FILE).c \
 PVG_SRC := $(wildcard $(PVG)/source/*.c)
 DEV_PVG_SRC := $(if $(filter fast fb,$(GFX)),,$(PVG_SRC))     # (what the unit links of plutovg: tools/budget/budget.py)
 INC := -I$(ROOT)/core/app -I$(ROOT)/core/ui -I$(ROOT)/core/gfx -I$(ROOT)/core/seq -I$(ROOT)/core/voice \
-       -I$(ROOT)/core/voice/quad -I$(ROOT)/core/voice/fx -I$(ROOT)/core/tests -I$(PVG)/include
-DEFS := -DPLUTOVG_BUILD -DPLUTOVG_BUILD_STATIC -DPLUTOVG_DISABLE_FONT_FACE_CACHE_LOAD
-HDRS := $(ROOT)/core/gfx/qd_fb_pal.h $(ROOT)/core/qd_config.h $(ROOT)/core/gfx/qd_arena.c $(ROOT)/core/gfx/qd_gfx_rec.c $(wildcard $(ROOT)/core/*/*.h) $(wildcard $(ROOT)/core/voice/*/*.h) $(wildcard $(ROOT)/core/voice/*/*.c) \
+       -I$(ROOT)/core/voice/quad -I$(ROOT)/core/voice/sid -I$(ROOT)/core/voice/fx -I$(ROOT)/core/tests -I$(PVG)/include
+DEFS := -DSID_COMB_CONST -DPLUTOVG_BUILD -DPLUTOVG_BUILD_STATIC -DPLUTOVG_DISABLE_FONT_FACE_CACHE_LOAD
+HDRS := $(ROOT)/core/gfx/qd_fb_pal.h $(ROOT)/core/ui/px_art.h $(ROOT)/core/qd_config.h $(ROOT)/core/gfx/qd_arena.c $(ROOT)/core/gfx/qd_gfx_rec.c $(wildcard $(ROOT)/core/*/*.h) $(wildcard $(ROOT)/core/voice/*/*.h) $(wildcard $(ROOT)/core/voice/*/*.c) \
         $(wildcard $(ROOT)/core/store/*) $(ROOT)/core/seq/names.c $(ROOT)/core/seq/mfx.c $(ROOT)/core/app/view_labels.c $(ROOT)/core/app/ctl_snd.c $(ROOT)/core/app/ctl_mix.c $(ROOT)/core/app/ctl_lib.c $(ROOT)/core/app/ctl_shift.c $(ROOT)/core/app/ctl_presets.c $(ROOT)/core/app/ctl_type.c $(ROOT)/core/app/undo.c $(ROOT)/core/app/fizz_sx.c $(ROOT)/core/app/midi_map.c $(ROOT)/core/app/persist.c $(ROOT)/core/ui/ui_lib.c $(ROOT)/core/ui/ui_presets.c $(ROOT)/core/ui/ui_type.c $(ROOT)/core/ui/ui_snd.c $(ROOT)/core/ui/ui_mfx.c $(ROOT)/core/app/ctl_mfx.c $(ROOT)/core/ui/ui_ape.c $(ROOT)/core/ui/ui_geek.c $(ROOT)/core/ui/ui_tools.c $(ROOT)/core/ui/ui_ov.c $(ROOT)/core/app/ctl_tools.c $(ROOT)/core/seq/tools.c \
         $(PVG)/include/plutovg.h
 CORE_OBJ := $(addprefix $(B)/,$(notdir $(CORE_SRC:.c=.o)))
@@ -69,7 +69,7 @@ SAN_ENGINE := -O2 -g -fsanitize=address,signed-integer-overflow -fno-sanitize-re
 T := $(ROOT)/core/tests
 
 vpath %.c $(ROOT)/core/app $(ROOT)/core/ui $(ROOT)/core/gfx $(ROOT)/core/seq $(ROOT)/core/voice \
-          $(ROOT)/core/voice/quad $(ROOT)/core/voice/fx .
+          $(ROOT)/core/voice/quad $(ROOT)/core/voice/sid $(ROOT)/core/voice/fx .
 
 all: render_frames render_audio
 
@@ -342,5 +342,17 @@ print-%:
 	@echo $($*)
 
 include gfx_fast.mk
+
+# EvilGenius: the screen tour (tools/eg/tour.c): a script of panel gestures -> PNGs (make tour; then
+# ./tour eg/tour.txt OUT_DIR)
+tour: $(B)/tour.o $(CORE_OBJ) $(PVG_OBJ)
+	$(CC) -o $@ $^ -lm
+$(B)/tour.o: eg/tour.c $(HDRS) | $(B)
+	$(CC) $(OPT) $(WARN) $(INC) $(DEFS) -c $< -o $@
+# the retro rooms alone on a test signal (tools/eg/fxtest.c): make fxtest; ./fxtest OUT_DIR
+fxtest: $(B)/fxtest.o $(B)/qd_fx.o $(B)/quad_voice.o $(B)/sid.o
+	$(CC) -o $@ $^ -lm
+$(B)/fxtest.o: eg/fxtest.c $(HDRS) | $(B)
+	$(CC) $(OPT) $(WARN) $(INC) $(DEFS) -c $< -o $@
 
 .PHONY: all frames strips audio values values-check test test-host test-dev test-pace test-dev-fast test-dev8 test-dev-fast8 test-dev-fb8 test-dev-ble test-dev16 test-dev-run budget-pvg budget-16 abi midimon remote budget budget-gate budget-ratchet
