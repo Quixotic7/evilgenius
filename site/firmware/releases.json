@@ -1,7 +1,44 @@
 {
   "name": "EVILGENIUS",
-  "latest": "0.1.0-beta.1",
+  "latest": "0.1.0-beta.2",
   "releases": [
+    {
+      "version": "0.1.0-beta.2",
+      "date": "2026-11-14",
+      "channel": "beta",
+      "identity": "FM-1_45000100",
+      "source": "a469370baf76355f7bb2b4b682a2f33376da5806",
+      "fm1base": "934e40d846d84e76e9c428d37b74bccb6192c823",
+      "notes": "- **Notes start on time.** A note on a voice that had gone silent could start 33 ms late (a 32nd note at 124 BPM), or\n  with its click on time and its body late: the emulated SID chip's own ADSR delay, which C64 players work round\n  with a hard restart. A note on a silent voice, and one after a hard restart (HR over 0), now starts at once; kicks\n  land on the beat. A note struck over a sounding voice with HR at 0 is as the chip plays it.\n- **The Evil Genius has a face.** The mascot is a SID chip's brain in a jar of green liquid on its computer, from the\n  owner's own pictures. The start screen is its hall: the agent runs and somersaults two robots while it throws\n  bolts at the floor behind him; it laughs, EVIL GENIUS drops in under the jar, and then the name melts away, a\n  column at a time. It is on the effects' SENDS page and in the scenes too, and small wherever the villain was.\n- **A new demo: one song in four patterns.** Dark minimal techno at 124 BPM: A01 INTRO, A02 GROOVE, A03 BUILD (a\n  filter sweep in step locks, a snare roll in ratchets, a noise riser, a lift in fifths) and A04 DROP, with the\n  villain's EVIL and GENIUS. The drop's effects are PAL arpeggios locked a step on the KEYS track: a chord buzzing\n  at 50 Hz, octave runs, falls; its lead's pulse flickers an octave every frame. Play it as a song: hold SEQ and press a pattern's key, and it starts when the playing one ends. The demo\n  comes with its own mix (levels, echo and room sends). Projects you saved keep what they have.\n- **USB HOST** (FIZZ's, 2026-11-14): the FM-1's USB port can be the host of a USB-MIDI keyboard, controller or synth,\n  with no computer. Hold HOME for the settings, turn SELECT to page 3, KNOB 1 to ON. The device then plays\n  EVILGENIUS as MIDI from a computer does (notes, CCs, clock and transport), and MIDI OUT goes to it. STATUS says\n  WAITING, CONNECTED or NOT MIDI. The FM-1 gives the port no power: use a powered hub or a powered USB-C OTG adapter.\n  While it is on there is no computer on the port (no USB audio, no manager, no updates over USB); turn it OFF or\n  switch the unit off and on: it is never saved. BLUETOOTH is page 4 now.\n- The start, update and crash screens are in the small face (the room USB HOST needed).\n\n- **72 more factory sounds**, 95 in all: nine basses, eleven leads, eleven keys and plucks, eight pads, ten drums\n  (made to be played at C4), eleven effects and twelve VOX sounds, after the first set and the kit. Each loads with\n  sends chosen for it. The demo's pool and your saved projects keep the sounds they had.\n- **PAL arpeggios.** An LFO's WAVE goes on past RAMP to nine ARP waves (OCT, 5TH, MAJ, MIN, SUS, 7, MI7, MA7, DIM):\n  with DEST on PITCH the one voice plays the chord's notes one after another, as C64 music does, so a chord costs one\n  voice. SPEED is a note's length in PAL frames (127: a note a frame, 50 Hz), or MULT makes it a division of the\n  tempo; DEPTH over 0 runs up, under 0 down, and further out covers two and three octaves. PITCH 1..3 arpeggiates\n  one oscillator over the others. Thirteen of the new sounds use it (MAJOR 50HZ, OCTAVE RUN, LIFT UP ..).\n- WOBBLE no longer clips at full velocity (its LEVEL is 85).",
+      "packages": [
+        {
+          "name": "evilgenius",
+          "kind": "ble",
+          "label": "8 voices across both cores, USB and Bluetooth MIDI, USB audio; 4 projects, 128 MY presets",
+          "projects": 4,
+          "presets": 128,
+          "fwsc": {
+            "path": "0.1.0-beta.2/evilgenius.fwsc",
+            "bytes": 1042154,
+            "sha256": "00cc2572559eae55c50de71ffbc9d938989fbcc87c78a4082daeeeae540346e2"
+          },
+          "data": {
+            "path": "0.1.0-beta.2/evilgenius-xdata.bin",
+            "bytes": 51288,
+            "sha256": "47934e2669dae25cc4ac0aca35dffb3805f6de5d534e1cea49d478fe1b503e1e",
+            "crc32": 3949394276,
+            "at": 946176
+          },
+          "data2": {
+            "path": "0.1.0-beta.2/evilgenius-xdata2.bin",
+            "bytes": 92548,
+            "sha256": "814b4d071256f9e4127a2396d514d4bcb16e3f25474305fb0cdf3c125678183b",
+            "crc32": 579924357,
+            "at": 618496
+          }
+        }
+      ]
+    },
     {
       "version": "0.1.0-beta.1",
       "date": "2026-11-14",
