@@ -304,7 +304,7 @@ static const char *const NOTE_BITS[7][7] = {
     {"....###", "....###", "....###", "....#.#", ".####..", "#####..", ".###..."},   /* 1/64 */
 };
 
-void ui_icon(int id, float cx, float cy, float s, qd_rgb c)
+FZ_COLD void ui_icon(int id, float cx, float cy, float s, qd_rgb c)
 {
     const int sc = s >= 1.6f ? 2 : 1;
     if (id > UI_IC_NONE && id < UI_IC_NOTE)

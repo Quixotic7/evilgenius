@@ -295,7 +295,6 @@ enum { QD_LATCH_NONE, QD_LATCH_F3,
  * PRESETS the track's preset (layout A, hard-wired 2026-10-25: the B..D experiments are gone). With a finger on a
  * step: KNOB_JOB, the sound lock on PRESETS. */
 enum { QD_KR_NONE, QD_KR_PAGE, QD_KR_CURSOR, QD_KR_PRESET, QD_NKR };
-int qd_ctl_sel_map(const struct qd_app *a);
 int qd_ctl_seq_map(const struct qd_app *a);
 int qd_ctl_seq_page(const struct qd_app *a);   /* 2026-11-13: SEQ's page on screen (QD_SEQ_*), -1 none */
 int qd_ctl_home_view(const struct qd_app *a);  /* .. the Home view HOME goes back to (QD_VIEW_*) */
@@ -482,8 +481,13 @@ typedef struct {
     int boost;                         /* 2026-10-26 (the owner: the engine clipped): SETTINGS' BOOST: the tracks at their
                                         * old level (+6 dB); off (the default): 6 dB under it, the engine's headroom */
     uint8_t clk_out, cc_out;           /* FIZZ MIDI (c): SETTINGS' CLOCK OUT and CC OUT (on at power-on) */
-    uint8_t set_page;                  /* SETTINGS' page, SELECT (2026-11-10: 0, 1 HOME; the Bluetooth package: 2
-                                        * BLUETOOTH) */
+    uint8_t set_page;                  /* SETTINGS' page, SELECT (2026-11-10: 0, 1 HOME; the USB package: 2 USB HOST;
+                                        * the Bluetooth package: 2 BLUETOOTH) */
+#if QD_USB_HOST
+    uint8_t usbh_on;                   /* .. its USB HOST ON (never saved: OFF at power-on; app.h qd_app_usb_host_on) .. */
+    uint8_t usbh_st;                   /* .. the port's state as it says (qd_app_usb_host_state: 0 waiting, 1 a device
+                                        * connected, 2 a device that is not MIDI), shown only */
+#endif
 #if QD_PKG_BLE
     uint8_t ble_off;                   /* .. its BLUETOOTH OFF (0, ON: power-on, an older record; app.h qd_app_ble_on) .. */
     uint8_t ble_st;                    /* .. the radio's state as the port says (qd_app_ble_state: 0 off, 1 waiting,

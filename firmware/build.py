@@ -164,6 +164,15 @@ DEFS += [f"-D{d}" for d in EXTRA]
 if BLE_PKG:
     DEFS.append("-DQD_PKG_BLE=1")                # (the core's Bluetooth profile: core/qd_config.h)
     DEFS = [d if not d.startswith("-DFZ_FB_LO=") else f"-DFZ_FB_LO={BLE_FB_LO}u" for d in DEFS]
+# USB HOST (2026-11-14; fm1.toml usb_host, PLAYING.md "USB host"): every package's (fm1-base's host: ~3.4 KB of flash,
+# 432 B of RAM; FIZZ's side ~1.4 KB). The Bluetooth package had 240 B of its slot and 160 B of RAM free, the single-core
+# one 2.4 KB: the room is fm1-base's FONT_B (8.7 KB with its tables), no longer linked (app.h APP_SYS_TEXT: fm1-base's
+# own screens in its small face, the one FIZZ's messages use), and for the RAM the blob writer's 512 B buffer in the
+# Bluetooth unit's NOINIT (app.c fz_xdata_write). FM1B_USB_HOST=0 in the environment leaves it out (the core's
+# QD_USB_HOST with it: no SETTINGS page 3)
+USB_HOST = os.environ.get("FM1B_USB_HOST", "1") == "1"   # (2026-11-14: every package, FONT_B gone)
+os.environ["FM1B_USB_HOST"] = "1" if USB_HOST else "0"
+DEFS.append(f"-DQD_USB_HOST={int(USB_HOST)}")
 if EXTRA:
     DEFS.append('-DFZ_DEFINES="' + ",".join(EXTRA) + '"')
 if VARIANT == "o2ram":                           # (the render's 22.6 KB at -O2 fits only with the effects out, and
@@ -216,11 +225,9 @@ if SINGLE and VARIANT not in ("xip", "o2"):      # (o2: the render at -O2 does n
 BLE_X2 = ["*/o2/build_units_c_ui_layer.o(.text* .rodata*)", "*/o2/build_units_c_ui_held.o(.text* .rodata*)",
           "*/o2/build_units_c_ui_tracks.o(.text* .rodata*)", "*/o2/build_units_c_ui_turn.o(.text* .rodata*)", "*(.qd_xdata.qf_bits_18_300 .qd_xdata.qf_g_18_300)",
           "*/o2/build_units_c_ctl_latch.o(.text.qd_msnd_engine .text.side_keep .text.qd_trk_engine "
-          ".text.qd_trk_engine_set .text.qd_msnd_put .text.qd_msnd_take .text.qd_side_clear "
-          ".text.qd_pc_white .text.qd_pc_ms .text.qd_pc_up .text.qd_pc_layer .text.pc_do .text.pc_run)",
-          "*/o2/build_units_c_ctl.o(.text.b_seq .text.qd_ctl_seq_page .text.qd_ctl_home_view)",
-          "*/o2/build_units_c_quad_voice.o(.text.qd_quad_side_pack .text.qd_quad_side_unpack .text.qd_msnd_over)",
-          "*/o2/build_units_c_app.o(.text.qd_app_fm_auto .text.qd_undo_forget_pat .text.qd_hist_recall_k)", "*(.fzx2.*)"]
+          ".text.qd_trk_engine_set .text.qd_msnd_put .text.qd_msnd_take .text.qd_side_clear)",   # (2026-11-14: PATTERNS' F1 / F2 and SEQ's click back in the slot, which FONT_B's 8.7 KB left room
+          #    in: USB HOST's settings page is ui_layer.o's, the blob 780 B over with it)
+          "*/o2/build_units_c_app.o(.text.qd_app_fm_auto .text.qd_undo_forget_pat)", "*(.fzx2.*)"]
 BLE_SLOT = {"build_units_c_ui_layer.o": ["ui_geek_draw", "ui_menu_draw"]}
 # (2026-11-10) .. and single functions of other units the other way, into the second blob (sections renamed .fzx2.*;
 # main-loop drawing only, noinline in the source): OVERVIEW's model (view.c), ~0.4 KB the slot did not have; the
@@ -253,6 +260,13 @@ BLE_X2_FN = {"build_units_c_view.o": ["fill_fx", "pr_fill", "fill_shift"]}   # (
 # room: the drawing's small helpers out of line (qd_line for the nine line helpers, noinline where -Os had copied a
 # helper into every caller), the dead takeovers gone. Only the controls (no drawing, main loop only) stay at -Oz.
 # ui_picker.o has no caller (the linker drops it). FZ_BLE_OZ=a.o,b.o adds units for a measure (FZ_MEASURE=1)
+# 2026-11-14 (the slot 1,808 B over, the blob 68): no unit to -Oz; FZ_COLD (now in qd_config.h, for every unit) on code
+# run seldom: the Manager's SysEx (fizz_sx.c, its LABELS view_labels.c), the undo's close / apply and the snapshots,
+# the TOOLS' operations (tools.c), the namesizer, the store's writes and reads (flash-bound), boot and project load /
+# new, the TAP ape's frame (ap_draw, ap_burst); the icons (ui_icon, ui_kind_icon: coordinates only, the raster stays
+# -Os) and fz_cosf a call to fz_sinf; the port's stats reply (app.c, fizz_xdata.py stats) minsize. ~2.0 KB. A measure
+# of every main-loop unit at -Oz (FZ_BLE_OZ) found ~5.3 KB in all, spread thin (held_body 558 B, ui_icon 392, the
+# rest under 200 a function). The pool: persist.c's record buffer (512 B) in NOINIT (app.h QD_BLE_NI): 8,688 free
 OZ_CTL = {"build_units_c_ctl.o", "build_units_c_ctl_rec.o", "build_units_c_ctl_step.o", "build_units_c_ctl_latch.o",
           "build_units_c_ctl_preview.o", "build_units_c_clip.o", "build_units_c_chord.o"}
 BLE_OZ = OZ_CTL | {"build_units_c_ui_idle.o",   # (the idle screen: nothing played on it; at -Os the slot
@@ -431,6 +445,54 @@ OVERLAY = {
          "    *p = sx_frames[sx_fr % SX_SLOTS];\n    *n = sx_lens[sx_fr % SX_SLOTS];\n"),
         ("    RING_PUBLISH();                                     /* done with the frame before the ISR may refill it */\n    sx_ready = 0;\n",
          "    RING_PUBLISH();                                     /* done with the frame before the ISR may refill it */\n    sx_fr++;\n"),
+    ],
+    # USB HOST (fm1.toml usb_host; FIZZ's settings, PLAYING.md "USB host"): felucca-bsp's host, usb.c's neighbour (the
+    # copy of usb.c above finds this copy). (1) Host entry drops the SysEx frames waiting: FIZZ's two slots above, not
+    # sx_ready (the pinned host still names it: felucca-bsp 5b0879b's fix, for its own queue). (2) RemoteFM1's
+    # felucca-bsp 0007 (2026-11-08, the owner's; found on an FM-1 with ChoralRoot): Host Off undoes what host mode wrote
+    # (DEVCTL's session, EP1's types, the address, a reset left on POWER) and keeps the port off the bus a second, or a
+    # computer saw nothing on the port until a power cycle. (3) RemoteFM1's 0009: a 50 ms root reset; a device that does
+    # not answer at all is reset again with the recovery doubled (100..1600 ms, five tries, ~3.3 s of the main loop at
+    # most), and NOT MIDI only for one that answered (a second FM-1 on a plain cable: not MIDI without it)
+    "bsp/chip/usb_host.c": [
+        ("            sx_collect = sx_ready = sx_busy = 0;\n",
+         "            sx_collect = sx_busy = 0;\n            sx_fr = sx_fw;                              /* (FIZZ: the frames waiting dropped) */\n"),
+        ("#define UH_MAX_ERRORS 16u\n",
+         "#define UH_MAX_ERRORS 16u\n#define UH_ROOT_TRIES 5u                                /* (FIZZ, RemoteFM1 0009) */\n"),
+        ("    uint8_t seen, next_addr, dev, tried;\n",
+         "    uint8_t seen, next_addr, dev, tried;\n"
+         "    uint8_t answered;                                   /* (RemoteFM1 0009) the root's device answered */\n"),
+        ("    r = uh_ctl(0, 0x80, 6, 0x0100, 0, 8, d8, 8);        /* GET_DESCRIPTOR(device), first 8 bytes */\n"
+         "    if (r < 8)\n        return 0;\n",
+         "    r = uh_ctl(0, 0x80, 6, 0x0100, 0, 8, d8, 8);        /* GET_DESCRIPTOR(device), first 8 bytes */\n"
+         "    if (r < 8)\n        return 0;\n    if (!depth)\n        uh.answered = 1;\n"),
+        ("    uh.hub_addr = 0;\n}\n\n/* a device is on the line: reset the bus and find the MIDI endpoint */\n",
+         "    uh.hub_addr = 0;\n}\n\n"
+         "/* (FIZZ, RemoteFM1 0007) host -> device: undo what host mode wrote and the device driver never writes */\n"
+         "static void uh_host_down(void)\n{\n    sie_wr(S_DEVCTL, 0);\n    sie_wr(S_INDEX, 1);\n    sie_wr(S_TXTYPE, 0);\n"
+         "    sie_wr(S_TXINTERVAL, 0);\n    sie_wr(S_RXTYPE, 0);\n    sie_wr(S_RXINTERVAL, 0);\n    sie_wr(S_TXCSR2, 0);\n"
+         "    sie_wr(S_RXCSR1, 0x10u);                            /* (flush) */\n    sie_wr(S_INDEX, 0);\n"
+         "    sie_wr(S_FADDR, 0);\n    sie_wr(S_POWER, 0);\n}\n\n"
+         "/* a device is on the line: reset the bus and find the MIDI endpoint */\n"),
+        ("    uh_midi_t m;\n    if (sie_rd(S_DEVCTL) & 0x20u) {",
+         "    uh_midi_t m;\n    uint32_t t;\n    int ok;\n    if (sie_rd(S_DEVCTL) & 0x20u) {"),
+        ("    sie_wr(S_POWER, 0x08u);                             /* bus reset */\n    uh_wait(30);\n"
+         "    sie_wr(S_POWER, 0);\n    uh_wait(30);\n    uh.next_addr = UH_FIRST_ADDR;\n    if (uh_probe(0, &m)) {\n",
+         "    for (t = 0;; t++) {                                 /* (FIZZ, RemoteFM1 0009) */\n"
+         "        sie_wr(S_POWER, 0x08u);                         /* bus reset, 50 ms (USB 2.0 TDRSTR) */\n"
+         "        uh_wait(50);\n        sie_wr(S_POWER, 0);\n"
+         "        uh_wait(100u << t);                             /* 100, 200, 400, 800, 1600 ms */\n"
+         "        uh.next_addr = UH_FIRST_ADDR;\n        uh.answered = 0;\n"
+         "        if ((ok = uh_probe(0, &m)) || uh.answered || t + 1u == UH_ROOT_TRIES)\n            break;\n    }\n"
+         "    if (ok) {\n"),
+        ("        if (!uh.tried)\n            uh.msg = UH_MSG_NOMIDI;                     /* said once per attach */\n",
+         "        if (!uh.tried && uh.answered)\n            uh.msg = UH_MSG_NOMIDI;                     /* said once per attach"
+         " (FIZZ: for one that answered) */\n"),
+        ("            RING_PUBLISH();\n            fm1_usb_off();\n            usb_retry_ms = now - 1000u;"
+         "                 /* usb_retry makes the port a device again at once */\n",
+         "            RING_PUBLISH();\n            uh_host_down();                             /* (FIZZ, RemoteFM1 0007) */\n"
+         "            fm1_usb_off();\n            usb_retry_ms = now;                         /* a device a second later:"
+         " a computer sees a clean attach */\n"),
     ],
     # (2026-11-08) the FM-1s with the logo on the front carry a UC25HQ80 (JEDEC 0xB36014), not the Puya P25Q80
     # (0x856014): fm1-base 934e40d took the unit for unknown (saves in RAM only, no update session). fm1-base 317cb86's

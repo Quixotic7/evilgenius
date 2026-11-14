@@ -32,13 +32,7 @@ extern "C" {
 #define UI_G3 0x2e2c9bu
 extern const qd_rgb UI_K[4];
 
-/* (2026-11-13) a screen drawn seldom (menus, browser, TOOLS, ...): optimised for size, whatever its unit's flags
- * (clang's minsize: what -Oz is, function by function), so its unit can stay at -Os for the screens drawn often */
-#if defined(__clang__)
-#define FZ_COLD __attribute__((minsize))
-#else
-#define FZ_COLD __attribute__((cold))
-#endif
+/* (FZ_COLD: a screen drawn seldom, optimised for size: qd_config.h) */
 
 #define UI_TAU 6.28318530718f
 #define UI_PI 3.14159265359f
@@ -750,6 +744,10 @@ typedef struct {
                                          * LOCK */
 #if QD_PKG_BLE
     int ble_on, ble_st;                 /* .. BLUETOOTH ON / OFF, its state: 0 OFF, 1 WAITING, 2 CONNECTED */
+#endif
+#if QD_USB_HOST
+    int usbh_on, usbh_st;               /* .. 2026-11-14: USB HOST ON / OFF, the port's state while ON: 0 WAITING,
+                                         * 1 CONNECTED, 2 NOT MIDI */
 #endif
     int last;                           /* the knob turned last (0..3, -1) */
 } ui_menu_t;

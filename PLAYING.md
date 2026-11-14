@@ -1115,9 +1115,10 @@ F1 / F2 show the ten before / after; B11 removes the sound lock.
   (2026-11-10, one key for the two: from another tool HUMANIZE, the timing and velocity jitter; B6 again QUANTIZE, the
   timing pulled back to the grid; again HUMANIZE, a new die). **B8 LENGTH** (the loop x2 / /2). **B9 STRETCH**
   squeezes or spreads the track in time (x2..x8, /2../8, or onto 1..8 pages). **B10 CLIP**: COPY, PASTE or CLEAR
-  (KNOB 1 picks, OCT+ does it; CLEAR on a track or the pattern wants OCT+ twice). **PRESETS** steps through them all.
-- **B7 or ALGORITHM** (2026-11-10; B11 was): the scope, SELECTED STEPS, PAGE, TRACK or PATTERN. **W1..W16** put steps
-  in or out of the selection (the scope turns SELECTED); **SELECT** the page shown. **KNOB 1..4** the tool's values.
+  (KNOB 1 picks, OCT+ does it; CLEAR on a track or the pattern wants OCT+ twice). **SELECT** steps through them all (2026-11-13).
+- **B7 or PRESETS** (2026-11-13; ALGORITHM was): the scope, SELECTED STEPS, PAGE, TRACK or PATTERN. **ALGORITHM** selects
+  steps, one at a time, as on every page (fully left: none). **W1..W16** put steps in or out of the selection (the
+  scope turns SELECTED). **KNOB 1..4** the tool's values.
 - **B11** is the hold key, as on every page: held, the pages over TOOLS, + W the selection (SELECTED), + F1 / F2 as
   everywhere; a click the white keys the keys (along the foot) and back.
 - Every change plays at once; the white keys and the screen show the result, the steps it removes as ghosts.
@@ -1138,14 +1139,16 @@ F1 / F2 show the ten before / after; B11 removes the sound lock.
   when the group's arp is off, high (60 .. 100 %) when it is on; outside the screen it is steady when the arp is on.
   - **B1 .. B8** select slot 1 .. 8; the selected one again: its next page (the dots, on the release). **SELECT** turns
     the page too.
-  - **Hold a slot key and turn any knob** (0.9.1): that slot moves along the rail, a place a detent, the others
+  - **Hold a slot key and turn KNOB 2** (2026-11-13; any knob before): that slot moves along the rail, a place a detent, the others
     making room. 0.9.3: held past a tap, the tile **lifts with arrows either side** (it can move); turning only
     **previews** the move (the chain plays as it was) and **it drops into its new place when you let go of the key**
     (one undo level). A plain tap still selects. (0.9.3 fixes a move that stayed stuck on the knob after the release.)
-  - **PRESETS** chooses the slot's effect (NONE, then the ten, a rolodex while turning); it is heard at once.
+  - **Hold a slot key and turn KNOB 1** (2026-11-13; PRESETS before): the slot's effect (NONE, then the ten, a rolodex
+    while turning); it is heard at once.
   - **KNOB 1 .. 4** the page's values; **KNOB 4 is CHANCE** on every effect's first page (the effect acts on that share
     of the notes; the others pass untouched).
-  - **ALGORITHM** puts the track on a group (OFF, 1 .. 5); the screen follows, **keeping the slot number** (0.9.1).
+  - **PRESETS** (2026-11-13; ALGORITHM before, which now selects steps as on every page) puts the track on a group
+    (OFF, 1 .. 5); the screen follows, **keeping the slot number** (0.9.1).
     While you turn (2026-11-10), **the routing map** is up: the six tracks' icons on the left (the selected one boxed),
     the five groups as numbered hexagons on the right with their eight slots beside them (lit where a slot holds an
     effect, dim when bypassed), OFF below. Every track on a group has a wire to it in its colour (two tracks may share
@@ -1238,7 +1241,32 @@ SELECT turns the pages (the dots at the top):
   HOME always brings you back to that view (a padlock under it). Saved with the other settings. **KNOB 3 VOICE**
   (EvilGenius): when the villain and the lift speak, STOPPED (only while nothing plays), ALWAYS or OFF; **KNOB 4 VOICE
   LEVEL** how loud.
-- Page 3 (the Bluetooth package): **BLUETOOTH** on / off and its state.
+- Page 3: **KNOB 1 USB HOST** on / off (the USB mark, struck through when OFF), and its state
+  (KNOB 2's row, shown only): OFF, WAITING (no device yet), CONNECTED, or NOT MIDI (a device that is not USB-MIDI, or
+  a low-speed one). Never saved: OFF at every start. Below, "USB host".
+- Page 4 (the Bluetooth package; 2026-11-14: it was page 3): **BLUETOOTH** on / off and its state.
+
+### USB host
+
+The FM-1's USB-C port can be the host of a USB-MIDI keyboard, controller or synth, with no computer:
+
+1. Connect the device through **a powered USB hub, or a powered USB-C OTG adapter** (one with its own power input):
+   the FM-1 gives the port no 5 V, so a bus-powered keyboard on a plain OTG cable stays dark. A second FM-1 (any
+   firmware) works on a plain USB-C cable.
+2. **Hold HOME**, turn **SELECT** to page 3, turn **KNOB 1** to **ON**. STATUS says WAITING, then CONNECTED once the
+   device answers (a device that never answers stays WAITING; it takes up to about 3 seconds of tries, while the
+   screen waits and the sound plays on).
+3. Play: the device's notes, CCs and clock reach EVILGENIUS exactly as MIDI from a computer does (the selected track, the
+   keyboard page and recording, MIDI clock and transport in). Its MIDI OUT (the MIDI tracks, CLOCK OUT, CC OUT)
+   goes to the device.
+
+- Full-speed USB-MIDI 1.0 devices, directly or behind one hub. No SysEx from the device, no low-speed devices (NOT
+  MIDI).
+- While USB HOST is on there is **no computer on the port**: no USB audio, no manager, no `fizz_xdata.py`, no updates
+  over USB. **Turn it OFF** (the port is a device again a second later) **or switch the unit off and on**: it is never
+  saved. REC held at power-on (update mode) is as always.
+- Unplugging the device, or turning USB HOST off, lets go of the notes MIDI in holds (the TRS jack's too: the firmware does
+  not keep where a note came from).
 
 ## The maps
 

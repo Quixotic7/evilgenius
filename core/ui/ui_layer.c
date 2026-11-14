@@ -530,6 +530,37 @@ static __attribute__((noinline)) void menu_set2(const ui_menu_t *v)
 }
 #endif
 
+#if QD_USB_HOST
+/* SETTINGS' page 3 (FIZZ 2026-11-14), in pixels: KNOB 1 USB HOST ON / OFF (the USB mark, struck through when OFF),
+ * KNOB 2's row its state, shown only: OFF, WAITING (three lamps in turn), CONNECTED (all lit), NOT MIDI (red) */
+static __attribute__((noinline)) void menu_usbh(const ui_menu_t *v)
+{
+    static const char *const ST[4] = {"OFF", "WAITING", "CONNECTED", "NOT MIDI"};
+    const int st = !v->usbh_on ? 0 : v->usbh_st < 0 || v->usbh_st > 2 ? 1 : v->usbh_st + 1;
+    const qd_rgb c = v->usbh_on ? KCOL[0] : UI_G2;
+    const int x = 20, y = ROW_Y(0) + 10;
+    int i;
+    row(0, "USB HOST", v->usbh_on ? "ON" : "OFF");
+    px_vline(x, y + 2, 10, c);                          /* the mark: the stem and its arrow, the two branches */
+    px_rect(x - 1, y + 1, 3, 1, c);
+    px_rect(x - 1, y + 12, 3, 2, c);
+    px_line(x, y + 9, x - 4, y + 6, c);
+    px_rect(x - 5, y + 4, 2, 2, c);
+    px_line(x, y + 11, x + 4, y + 8, c);
+    px_box(x + 3, y + 5, 3, 3, c);
+    if (!v->usbh_on)
+        px_line(x - 6, y + 1, x + 6, y + 13, PX_LRED);
+    row(1, "STATUS", ST[st]);
+    for (i = 0; i < 3; i++) {
+        const int on = st == 2 || (st == 1 && i == (int)fmodf(v->t * 3.f, 3.f));
+        if (on || st == 3)
+            px_rect(14 + i * 8, ROW_Y(1) + 13, 5, 5, st == 3 ? PX_LRED : KCOL[1]);
+        else
+            px_box(14 + i * 8, ROW_Y(1) + 13, 5, 5, UI_G3);
+    }
+}
+#endif
+
 static __attribute__((noinline)) void menu_home(const ui_menu_t *v)
 {
     static const char *const VN[3] = {"STEPS", "EDIT", "GEEK OUT"};   /* (FIZZ 2026-11-13: the PIANO ROLL is SEQ's) */
@@ -555,11 +586,17 @@ static __attribute__((noinline)) void menu_home(const ui_menu_t *v)
 static void menu_set(const ui_menu_t *v)
 {
     int k;
-    menu_head("SETTINGS", QD_PKG_BLE ? 3 : 2, v->set_page);
+    menu_head("SETTINGS", 2 + QD_USB_HOST + QD_PKG_BLE, v->set_page);
     if (v->set_page == 1) {
         menu_home(v);
         return;
     }
+#if QD_USB_HOST
+    if (v->set_page == 2) {
+        menu_usbh(v);
+        return;
+    }
+#endif
 #if QD_PKG_BLE
     if (v->set_page) {
         menu_set2(v);

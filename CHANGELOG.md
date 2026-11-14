@@ -12,6 +12,14 @@ EVILGENIUS began as FIZZ 0.12.0-beta.17 with another engine and another face; FI
 
 <!-- The next release's notes, for testers, in plain language. firmware/release.py moves them. -->
 
+- **USB HOST** (FIZZ's, 2026-11-14): the FM-1's USB port can be the host of a USB-MIDI keyboard, controller or synth,
+  with no computer. Hold HOME for the settings, turn SELECT to page 3, KNOB 1 to ON. The device then plays
+  EVILGENIUS as MIDI from a computer does (notes, CCs, clock and transport), and MIDI OUT goes to it. STATUS says
+  WAITING, CONNECTED or NOT MIDI. The FM-1 gives the port no power: use a powered hub or a powered USB-C OTG adapter.
+  While it is on there is no computer on the port (no USB audio, no manager, no updates over USB); turn it OFF or
+  switch the unit off and on: it is never saved. BLUETOOTH is page 4 now.
+- The start, update and crash screens are in the small face (the room USB HOST needed).
+
 - **72 more factory sounds**, 95 in all: nine basses, eleven leads, eleven keys and plucks, eight pads, ten drums
   (made to be played at C4), eleven effects and twelve VOX sounds, after the first set and the kit. Each loads with
   sends chosen for it. The demo's pool and your saved projects keep the sounds they had.
