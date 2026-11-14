@@ -6,7 +6,7 @@
  *           ECHO and ROOM sends two little bars under it; the selected track in the knobs' colours; a muted one
  *           crossed, a soloed one's number yellow. SENDS (ENV again): CHORUS, ECHO, ROOM as three bars a track
  *   EFFECTS the retro rooms (qd_fx.h), a drawing each, KNOB 1..4 along the foot:
- *           SENDS   the villain listening, the track's sends at the four corners
+ *           SENDS   the Evil Genius's machine, the track's sends on its parts (fx_sends)
  *           CHORUS  two waves swaying apart       ECHO / 2  bouncing balls, the repeats darkening (LOFI)
  *           ROOM / 2  the room as big as SIZE     CRUSH  the staircase   ROBOT  the antenna sparking
  *           WARP    the comb's teeth             GLITCH  a slice caught and repeated   TV  the set, its scanlines
@@ -200,23 +200,84 @@ static void fx_shaft(const ui_fx_t *v)
     px_pset(3, cy + 4, PX_LGREY), px_pset(5, cy + 4, PX_LGREY);
 }
 
+/* SENDS: the Evil Genius's whole machine, the track's four sends on its parts (no words on it):
+ *   ROOM (KNOB 1)    the spark between the pylons: taller and busier with the send, none at 0
+ *   CHORUS (KNOB 2)  the left monitor: a wave, its height the send (a flat line at 0)
+ *   ECHO (KNOB 3)    the right monitor: a hit and its repeats, as many and as tall as the send
+ *   DRY (KNOB 4)     the spark under its feet
+ * each in its knob's colour; a part locked on the held step has a filled mark by it, one locked on some step an
+ * outlined one. The knob turned last names its send and the value in a small plate by its part, for a moment (the
+ * view lets v->last go after it). The machine's legs are left out: the page's row is at the foot. */
+#define SM_X 14                                         /* the machine's corner (GENIUS_BIG's row 1 at SM_Y) */
+#define SM_Y 10
+static uint32_t sm_hash(uint32_t a, uint32_t b)
+{
+    uint32_t h = a * 0x9E3779B1u ^ (b + 0x7F4A7C15u) * 0x85EBCA77u;
+    h ^= h >> 15, h *= 0x2C1B3C6Du;
+    return h ^ h >> 12;
+}
+/* a spark from x0 to x1 about y: its corners up and down by amp, new ones every tick */
+static void sm_spark(int x0, int x1, int y, int amp, int tick, qd_rgb c)
+{
+    int x, px0 = x0, py0 = y, k = 0;
+    for (x = x0 + 4; x <= x1; x += 4, k++) {
+        const int last = x + 4 > x1;
+        const int yy = last ? y : y + (int)(sm_hash((uint32_t)k, (uint32_t)tick) % (uint32_t)(2 * amp + 1)) - amp;
+        px_line(px0, py0, last ? x1 : x, yy, c);
+        px0 = last ? x1 : x, py0 = yy;
+    }
+}
 static void fx_sends(const ui_fx_t *v)
 {
-    static const int AT[4][2] = {{24, 26}, {104, 26}, {24, 70}, {104, 70}};
     static const char *const NM[4] = {"ROOM", "CHORUS", "ECHO", "DRY"};
-    int k;
-    px_sprite_sc(40, 28, v->beat >= 0.f && v->beat < 0.15f ? PXS_GENIUS_TALK : PXS_GENIUS, 0, 3, QD_NONE);
+    static const int MARK[4][2] = {{SM_X + 50, SM_Y - 1}, {SM_X + 4, SM_Y + 46}, {SM_X + 82, SM_Y + 46}, {SM_X + 28, SM_Y + 79}};
+    static const int PLATE[4][2] = {{SM_X + 50, SM_Y + 10}, {SM_X + 22, SM_Y + 28}, {SM_X + 78, SM_Y + 28}, {SM_X + 50, SM_Y + 64}};
+    const int tick = (int)(v->t * 14.f);
+    int k, i;
+    px_sprite_part(SM_X, SM_Y, PXS_GENIUS_BIG, 0, 1, 100, 76);       /* the pylons to the computer's underside */
+    if (v->beat >= 0.f && v->beat < 0.15f)                          /* it laughs at the track's notes */
+        px_sprite(SM_X + 33, SM_Y + 27, PXS_GENIUS_HA, 0);
+    px_rect(SM_X + 37, SM_Y, 33, 9, PX_BLACK);                      /* (its own sparks and screens out) */
+    px_rect(SM_X + 9, SM_Y + 43, 12, 8, PX_BLACK);
+    px_rect(SM_X + 86, SM_Y + 43, 12, 8, PX_BLACK);
+    if (v->has[0] && v->x[0] > 0.f) {                               /* ROOM: the pylons' spark, two strands */
+        sm_spark(SM_X + 37, SM_X + 70, SM_Y + 4, 1 + (int)(v->x[0] * 3.9f), tick, FK[0]);
+        sm_spark(SM_X + 37, SM_X + 70, SM_Y + 5, 1 + (int)(v->x[0] * 3.9f), tick + 3, PX_WHITE);
+    }
+    if (v->has[1]) {                                                /* CHORUS: the left monitor's wave */
+        int prev = SM_Y + 47;
+        for (i = 0; i < 12; i++) {
+            const int y = SM_Y + 47 - (int)(fz_sinf((float)i * 1.1f + v->t * 5.f) * v->x[1] * 3.6f);
+            px_line(SM_X + 9 + (i ? i - 1 : 0), prev, SM_X + 9 + i, y, v->x[1] > 0.f ? FK[1] : UI_G3);
+            prev = y;
+        }
+    }
+    if (v->has[2]) {                                                /* ECHO: the right monitor: the hit, its repeats */
+        const int n = v->x[2] > 0.f ? 1 + (int)(v->x[2] * 3.9f) : 0;
+        px_rect(SM_X + 86, SM_Y + 44, 2, 7, v->x[2] > 0.f ? FK[2] : UI_G3);
+        for (i = 0; i < n; i++) {
+            const int h = (int)(6.f * v->x[2]) - i;
+            if (h > 0)
+                px_rect(SM_X + 89 + i * 3 - (i == 3), SM_Y + 51 - h, 2, h, FK[2]);
+        }
+    }
+    if (v->has[3] && v->x[3] > 0.f) {                               /* DRY: the spark under its feet */
+        sm_spark(SM_X + 30, SM_X + 68, SM_Y + 77, 1 + (int)(v->x[3] * 1.9f), tick + 7, FK[3]);
+        sm_spark(SM_X + 30, SM_X + 68, SM_Y + 78, 1 + (int)(v->x[3] * 1.9f), tick + 11, PX_WHITE);
+    }
     for (k = 0; k < 4; k++) {
         if (!v->has[k])
             continue;
-        px_ctext(AT[k][0], AT[k][1] - 8, NM[k], UI_G1, PX_FS, 1);
-        if (v->locked[k] || v->lockany[k]) {
-            if (v->locked[k])
-                px_rect(AT[k][0] - 12, AT[k][1] - 1, 24, 11, FK[k]);
-            else
-                px_box(AT[k][0] - 12, AT[k][1] - 1, 24, 11, FK[k]);
+        if (v->locked[k])                                           /* a lock: a mark by the part */
+            px_rect(MARK[k][0], MARK[k][1], 3, 3, FK[k]);
+        else if (v->lockany[k])
+            px_box(MARK[k][0], MARK[k][1], 3, 3, FK[k]);
+        if (v->last == k) {                                         /* the knob being turned: its plate */
+            const int w = px_text_w(NM[k], PX_FS, 1) + 3 + px_text_w(v->txt[k], PX_FS, 1) + 5;
+            const int x = PLATE[k][0] - w / 2, y = PLATE[k][1];
+            px_rbox(x, y, w, 9, FK[k], UI_BG);
+            px_text(px_text(x + 3, y + 2, NM[k], UI_G1, PX_FS, 1) + 3, y + 2, v->txt[k], FK[k], PX_FS, 1);
         }
-        px_ctext(AT[k][0], AT[k][1] + 1, v->txt[k], v->locked[k] ? UI_BG : FK[k], PX_FB, 1);
     }
 }
 

@@ -2331,6 +2331,9 @@ static __attribute__((noinline)) void fill_fx(const qd_app_t *a, ui_fx_t *v)   /
     v->flow = v->fhigh = 0.f;                         /* (EvilGenius: no master filter) */
     v->fslope = v->fon = 0;
     v->last = u->menu_knob;
+    if (pg->draw == UI_FXD_OVER && v->last >= 0 && v->last < 4 &&   /* SENDS: its plate is up a moment only */
+        a->ms - u->knob_ms[QD_K_1 + v->last] > 1500u)
+        v->last = -1;
     v->step = u->nheld > 0 || u->wk_pending;            /* P1.6d (P1.6h: from the key's press) */
     v->nsel = u->nheld;
     fill_rooms(a, v->room, v->room_txt, v->room_lk);

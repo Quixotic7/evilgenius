@@ -1655,7 +1655,7 @@ static void demo_drums_test(void)                      /* demo.h's table: what t
             bad += P.snd[t].sound != 0;
             for (s = 0; s < QD_NSTEP; s++) {
                 const qd_step_t *x = &P.step[t][s];
-                const int want = t == 0 && s < 16 ? QD_DEMO_DRUMS[d][s] : 0;
+                const int want = t == 0 && s < QD_DEMO_NSTEP ? QD_DEMO_DRUMS[d][s] : 0;
                 bad += x->sound != want || (want && (!(x->flags & QD_SF_ON) || !(x->ovr & QD_OV(QD_PM_SOUND))));
             }
         }

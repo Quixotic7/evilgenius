@@ -832,6 +832,8 @@ static void proj_initial(qd_app_t *a, int demo, int pool_empty)
         a->model.t[t].reserve = m.t[t].reserve;
         qd_track_name_default(&a->model.t[t], t);       /* P1.6d (a project of 0.9.0: the names it had) */
     }
+    if (demo)
+        qd_demo_model(&a->model);                       /* (the demo's own mix) */
 }
 
 /* a pattern's track sounds of 0.6 (no preset id): their preset from their pool source, else their factory sound */
@@ -1990,7 +1992,7 @@ static int rec_refs(qd_app_t *a, int p, int k, int *on, uint8_t *tracks, int rec
     if (len <= 0 || len == (int)QDS_DELETED) {          /* (its default: blank, or a demo: its drums' locks) */
         if (!a->proj.demo || p >= QD_DEMO_N)
             return 0;
-        for (s = 0; s < 16; s++)
+        for (s = 0; s < QD_DEMO_NSTEP; s++)
             if (QD_DEMO_DRUMS[p][s] == k) {
                 n++;
                 if (rec)

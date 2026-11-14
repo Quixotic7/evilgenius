@@ -19,3 +19,6 @@ tools/presets
 dist/
 firmware/firmware.json
 art-eg/*.wav
+
+# the promo video: its takes and frames (promo/make.py)
+promo/build/

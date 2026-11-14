@@ -64,8 +64,11 @@ steps, so everything in it stands over its own step:
   default, hold a mode key or select with the latch and the mode's own picture is back**, exactly as before: the
   room is only what EDIT shows at rest.
 
-**The FX tower (FX tapped).** The effects are floors, B1 SENDS (the villain's control room) at the top and B9 TV at
-the bottom. The shaft at the left has a window a floor, lit when that effect is heard (a send up, a room's MIX over
+**The FX tower (FX tapped).** The effects are floors, B1 SENDS at the top and B9 TV at the bottom. SENDS is the
+Evil Genius's machine (a SID chip's brain in a jar on its computer), the track's four sends on its parts and no
+words: ROOM (KNOB 1) the spark between its pylons, CHORUS (KNOB 2) the left monitor's wave, ECHO (KNOB 3) the right
+monitor's hit and its repeats, DRY (KNOB 4) the spark under its feet; turn a knob and a small plate by its part
+names the send and its value for a moment; a send locked on a step has a small mark by its part. The shaft at the left has a window a floor, lit when that effect is heard (a send up, a room's MIX over
 0), and the agent's car at the floor you are on. A black key, FX again or SELECT rides the lift: the car moves, the
 next room slides in, and the lift calls the floor. The rooms: CHORUS the agent and his two doubles, ECHO the bouncing
 orb (a bounce a repeat), ROOM the agent calling out in a room as big as SIZE, CRUSH the press, ROBOT the sentry

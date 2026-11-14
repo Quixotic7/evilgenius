@@ -947,6 +947,12 @@ void qd_quad_voice_start(qd_quad_voice_t *v, const int16_t *patch, qd_quad_owner
         v->hr_left = (uint8_t)clamp(1 + v->patch[QD_QP_HR] * 138 / 100, 1, 180);
     else if (sounding)
         v->gated = 0;                                   /* (a gate edge this block: the attack again) */
+    /* The chip's ADSR delay: its 15-bit rate counter runs on at the last note's release rate, and an attack whose
+     * period is under the count waits for the counter to go all the way round, 32768 cycles, 33 ms: a kick a 32nd
+     * late, or its noise on time and its body late. A C64 player's hard restart is there to prevent it, so a note
+     * on a silent voice, and one after a hard restart, starts the counters at 0; a note struck over a sounding
+     * voice with HR 0 is left as the chip plays it. */
+    v->esync = (uint8_t)(!sounding || v->patch[QD_QP_HR] != 0);
     for (k = 0; k < 3; k++) {                           /* the LFOs that restart with a note */
         v->lph[k] = (uint32_t)v->patch[QD_QP_LFO(k, QD_QL_PHASE)] << 25;
         v->lstage[k] = 0;
@@ -1178,6 +1184,8 @@ static void registers(qd_quad_voice_t *v, const int32_t *d, int *vox_only)
             if (v->gate && !hr && v->gated)
                 ctrl |= SID_GATE;
             else if (v->gate && !hr) {                  /* the edge: off, then on */
+                if (v->esync)
+                    c->v[n].rate_cnt = 0;
                 sid_write(c, (uint32_t)(7 * n + SID_CTRL), ctrl);
                 ctrl |= SID_GATE;
             }
@@ -1185,6 +1193,8 @@ static void registers(qd_quad_voice_t *v, const int32_t *d, int *vox_only)
         sid_write(c, (uint32_t)(7 * n + SID_CTRL), ctrl);
     }
     v->gated = (uint8_t)(v->gate && !hr);
+    if (v->gated)
+        v->esync = 0;
     *vox_only = !(on & 3) && !(on & 4 && !boost) && v->vox.on;
     /* the filter: its cutoff from the knob, the envelope, the key and the modulation */
     cut = p[QD_QP_FREQ] + (int)(((int64_t)(p[QD_QP_FDEPTH] - 64 + (d[QD_D_FENV] * 64 >> 15)) * v->fenv) >> 14) +

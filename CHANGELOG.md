@@ -12,6 +12,19 @@ EVILGENIUS began as FIZZ 0.12.0-beta.17 with another engine and another face; FI
 
 <!-- The next release's notes, for testers, in plain language. firmware/release.py moves them. -->
 
+- **Notes start on time.** A note on a voice that had gone silent could start 33 ms late (a 32nd note at 124 BPM), or
+  with its click on time and its body late: the emulated SID chip's own ADSR delay, which C64 players work round
+  with a hard restart. A note on a silent voice, and one after a hard restart (HR over 0), now starts at once; kicks
+  land on the beat. A note struck over a sounding voice with HR at 0 is as the chip plays it.
+- **The Evil Genius has a face.** The mascot is a SID chip's brain in a jar of green liquid on its computer, from the
+  owner's own pictures. The start screen is its hall: the agent runs and somersaults two robots while it throws
+  bolts at the floor behind him; it laughs, EVIL GENIUS drops in under the jar, and then the name melts away, a
+  column at a time. It is on the effects' SENDS page and in the scenes too, and small wherever the villain was.
+- **A new demo: one song in four patterns.** Dark minimal techno at 124 BPM: A01 INTRO, A02 GROOVE, A03 BUILD (a
+  filter sweep in step locks, a snare roll in ratchets, a noise riser, a lift in fifths) and A04 DROP, with the
+  villain's EVIL and GENIUS. The drop's effects are PAL arpeggios locked a step on the KEYS track: a chord buzzing
+  at 50 Hz, octave runs, falls; its lead's pulse flickers an octave every frame. Play it as a song: hold SEQ and press a pattern's key, and it starts when the playing one ends. The demo
+  comes with its own mix (levels, echo and room sends). Projects you saved keep what they have.
 - **USB HOST** (FIZZ's, 2026-11-14): the FM-1's USB port can be the host of a USB-MIDI keyboard, controller or synth,
   with no computer. Hold HOME for the settings, turn SELECT to page 3, KNOB 1 to ON. The device then plays
   EVILGENIUS as MIDI from a computer does (notes, CCs, clock and transport), and MIDI OUT goes to it. STATUS says

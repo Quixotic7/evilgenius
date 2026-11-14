@@ -181,6 +181,7 @@ struct qd_quad_voice {
     uint32_t idx;
     int32_t level;                      /* the last block's peak (Q15) */
     uint8_t hr_left, gated, model;      /* hard restart blocks left; the gate as the chip has it; its model */
+    uint8_t esync;                      /* the next gate edge starts the chip's envelope rate counters at 0 (below) */
     uint8_t lstage[3];                  /* the LFOs: 0 running, 1 stopped (ONE / HALF done) */
     uint32_t lph[3];                    /* their phases (32-bit: a cycle) */
     int32_t lhold[3], lsh[3];           /* HOLD's value (an ARP wave: its semitones); S&H's current value */

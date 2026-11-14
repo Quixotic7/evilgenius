@@ -48,6 +48,7 @@ void px_checker(int x, int y, int w, int h, qd_rgb c, int phase);   /* every oth
 /* text: x the left, y the TOP of the cell; scale 1..; returns the x after the text. Lower case is drawn upper case;
  * UTF-8's · × → ← … ° ± are glyphs too */
 int px_text(int x, int y, const char *s, qd_rgb c, int font, int scale);
+int px_glyph_row(int font, int ch, int row);                    /* a glyph's pixels: bit 7 the leftmost */
 int px_text_w(const char *s, int font, int scale);              /* the drawn width (no trailing gap) */
 int px_ctext(int cx, int y, const char *s, qd_rgb c, int font, int scale);
 int px_rtext(int rx, int y, const char *s, qd_rgb c, int font, int scale);
@@ -55,6 +56,7 @@ int px_text_sh(int x, int y, const char *s, qd_rgb c, qd_rgb sh, int font, int s
 
 /* the sprites (art-eg/sprites.txt, px_art.h PXS_*) */
 void px_sprite(int x, int y, int id, int flip);
+void px_sprite_part(int x, int y, int id, int sx, int sy, int w, int h);   /* a rectangle of it, its corner at x, y */
 void px_sprite_tint(int x, int y, int id, int flip, qd_rgb tint);   /* every lit pixel in one colour */
 void px_sprite_sc(int x, int y, int id, int flip, int scale, qd_rgb tint);   /* scaled (tint QD_NONE: its colours) */
 int px_sprite_w(int id);

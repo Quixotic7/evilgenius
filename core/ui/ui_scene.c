@@ -145,7 +145,7 @@ static void sc_drop(float t)
 static void sc_word(float t)
 {
     const int talk = t < 0.8f && ((int)(t * 9.f) & 1);
-    px_sprite_sc(36, 8, talk ? PXS_GENIUS_TALK : PXS_GENIUS, 0, 3, QD_NONE);
+    ui_genius(32, 13, talk, t);
     px_rect(20, 56, 80, 2, PX_GREY);                    /* his desk */
     px_rect(24, 58, 2, 6, PX_DGREY), px_rect(94, 58, 2, 6, PX_DGREY);
 }

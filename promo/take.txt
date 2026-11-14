@@ -1,0 +1,105 @@
+# The promo's two takes (from promo/build: ../../tools/tour ../take.txt .): the idle title, then 30 s of the
+# firmware's own demo (core/seq/demo.c: A01 INTRO, A02 GROOVE, A03 BUILD, A04 DROP). The film's time is the video's
+# time. A bar is 1.935 s (124 BPM), a pattern two bars. The sequencer's chain plays the song (INTRO GROOVE BUILD
+# DROP DROP BUILD DROP DROP): 3.87 GROOVE, 7.74 BUILD, 11.61 DROP, 19.35 BUILD, 23.23 DROP; the panel is played
+# over it. No screen is up for a frame or two on the way to another: a change is one press, or the film holds
+# its picture across the two (hold).
+wait 3300
+film idle.rgb
+wait 3000
+
+reset
+wait 300
+tap HOME
+wait 300
+# the villain speaks while it plays: HOME held, page 2, KNOB 3 VOICE -> ALWAYS
+down HOME
+wait 700
+up HOME
+knob SELECT 1
+knob K3 1
+wait 200
+tap HOME
+wait 300
+# the arp's track; the sound editor left on FILTER (it comes back to its page)
+down FX
+knob ALGO 3
+up FX
+wait 1500
+tap EDIT
+wait 300
+tapkey B4
+wait 300
+tap HOME
+wait 500
+chain 1 2 3 4 4 3 4 4
+film take.rgb
+wav take.wav
+play
+mark intro
+# 0 .. 3.87 INTRO: THE ROOM, the arp (a robot under every locked step); the title lies over the first bar
+wait 3850
+# 3.87 .. 7.74 GROOVE: OVERVIEW, then the arp's FILTER in the sound editor, CUTOFF turned
+tap SEL
+mark overview
+wait 1900
+tap EDIT
+mark editor
+wait 500
+knob K1 14
+wait 500
+knob K1 14
+wait 180
+# 7.74 .. 11.61 BUILD: THE ROOM, the locks' robots, the sweep
+tap HOME
+mark build
+wait 3780
+# 11.61 .. 15.48 DROP: the words' track (its number up for a second), WORD under it
+down FX
+knob ALGO 1
+up FX
+mark words
+wait 900
+hold 180
+tap EDIT
+tapkey B5
+mark word
+wait 2600
+# 15.48 .. 23.23: the FX tower, the lift down through it (the words' sends); the BUILD again from 19.35
+tap FX
+mark tower
+wait 800
+tapkey B2
+mark chorus
+wait 300
+knob K4 14
+wait 600
+tapkey B3
+mark echo
+wait 300
+knob K4 6
+wait 700
+tapkey B6
+mark robot
+wait 300
+knob K4 16
+wait 600
+tapkey B8
+mark glitch
+wait 300
+knob K4 16
+wait 500
+tapkey B9
+mark tv
+wait 300
+knob K4 14
+wait 100
+# the arp's track again (its number up over the tower); 23.23 DROP: THE ROOM
+down FX
+knob ALGO -1
+up FX
+wait 320
+tap HOME
+mark drop2
+wait 8000
+mark end

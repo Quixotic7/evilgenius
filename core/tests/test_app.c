@@ -88,9 +88,19 @@ static void run(uint32_t n, int thr)
         }
     }
 }
+static void plain_mix(qd_app_t *a)       /* the default kit's mix (the demo comes with its own: demo.h
+                                          * qd_demo_model), so a check of the mix starts from the same place */
+{
+    static qd_model_t m;
+    int t;
+    qd_model_init(&m);
+    for (t = 0; t < QD_NTRACK; t++)
+        a->model.t[t].mix = m.t[t].mix;
+}
 static void fresh(void)
 {
     qd_app_init(&A);
+    plain_mix(&A);
     A.ui.view = QD_VIEW_ROLL;   /* (P1.5s: EDIT is the power-on view; made on the PIANO ROLL) */
     now = frames_done = 0;
     qd_app_tick(&A, 0);
@@ -341,6 +351,7 @@ static double lock_energy(int lock, int *locked_voice)
     qd_ann_stop();
     qd_fx_set(QD_FXP_XBITS, 2), qd_fx_set(QD_FXP_XRATE, 6);
     run(60, 0);
+    qd_seq_select(&A.seq, 1, 0);                        /* A02: the kick on step 1 (A01, the intro, has no drums) */
     if (lock)
         qd_lock_set(qd_proj_pat(&A.proj, A.seq.cur), 0, 0, QD_LK_CRUSH, 127);
     qd_app_play(&A);
@@ -938,7 +949,7 @@ static void t_play(void)
     uint32_t starts;
     int green = 0, k;
     fresh_keys();
-    CHECK(A.seq.cur == 0 && A.bpm == 100 && !A.seq.playing, "power-on: A01 (the beat alone) at 100 BPM, stopped");
+    CHECK(A.seq.cur == 0 && A.bpm == 124 && !A.seq.playing, "power-on: A01 (the intro) at 124 BPM, stopped");
     tap_button(QD_B_PLAY);
     starts = A.pool.starts;
     for (k = 0; k < 1200; k++) {
@@ -949,7 +960,7 @@ static void t_play(void)
     CHECK(A.seq.playing && A.playing && A.pool.starts >= starts + 6 && peak_l > 1000, "PLAY: A01 plays (%u starts)",
           A.pool.starts - starts);
     CHECK(green > 100 && green < 300, "PLAY's green LED on the beat (%d of 1200 ms)", green);
-    CHECK(app_beats() > 1.8 && app_beats() < 2.2, "the transport moved 2 beats in 1.2 s at 100 BPM (%f)", app_beats());
+    CHECK(app_beats() > 2.3 && app_beats() < 2.7, "the transport moved 2.5 beats in 1.2 s at 124 BPM (%f)", app_beats());
     qd_app_key(&A, 9, 1, 100);                          /* a key held across the stop */
     run(5, 0);
     tap_button(QD_B_PLAY);
@@ -983,12 +994,12 @@ static void t_patterns(void)
     run(250, 0);
     h1 = frame_hash();
     CHECK(h0 != h1, "the screen's pattern blinks while one is queued");
-    t0 = now;                                           /* the change: 32 sixteenths at 100 BPM = 4800 ms from PLAY
+    t0 = now;                                           /* the change: 32 sixteenths at 124 BPM = 3871 ms from PLAY
                                                          * (P1.3x: released at 20 ms: the transport starts at the next
                                                          * block after the release) */
     while (A.seq.cur == 1 && now < 10000)
         run(1, 0);
-    CHECK(A.seq.cur == 0 && qd_seq_queued(&A.seq) < 0 && now >= 4855 && now <= 4870,
+    CHECK(A.seq.cur == 0 && qd_seq_queued(&A.seq) < 0 && now >= 3926 && now <= 3941,
           "A01 takes over at the end of A02's master length (at %u ms; PLAY released at 60, after the wake's 40)", now);
     (void)t0;
     qd_app_button(&A, QD_B_MIX, 1);                     /* P1.3c: the key held 400 ms: at the next 16th */
@@ -1001,12 +1012,12 @@ static void t_patterns(void)
     qd_app_button(&A, QD_B_MIX, 0);
     CHECK(A.seq.cur == 2 && now - t0 <= 151, "SEQ + white key 3 held 400 ms: A03 within a 16th (%u ms)", now - t0);
     run(200, 0);
-    CHECK(A.bpm == 118, "A03's tempo (%d)", A.bpm);
+    CHECK(A.bpm == 124, "A03's tempo (%d)", A.bpm);
     tap_button(QD_B_PLAY);
     qd_app_button(&A, QD_B_MIX, 1);                 /* stopped: at once */
     tap_key(WK[1]);
     qd_app_button(&A, QD_B_MIX, 0);
-    CHECK(A.seq.cur == 1 && qd_seq_queued(&A.seq) < 0 && A.bpm == 100, "stopped: A02 at once, its tempo");
+    CHECK(A.seq.cur == 1 && qd_seq_queued(&A.seq) < 0 && A.bpm == 124, "stopped: A02 at once, its tempo");
     qd_app_button(&A, QD_B_FUNC, 1);                    /* (2026-10-25: FILL is SHIFT + FX held) */
     qd_app_button(&A, QD_B_TRACKS, 1);
     CHECK(A.seq.fill, "SHIFT + FX held: FILL");
@@ -1317,7 +1328,7 @@ static uint32_t split_run(int mode, uint64_t *hs, uint32_t max, uint32_t *maxv, 
     int j, t;
     qd_app_init(a);
     qd_app_tick(a, 0);
-    qd_seq_select(&a->seq, 1, 0);                       /* A02, the band (power-on is A01, the beat) */
+    qd_seq_select(&a->seq, 3, 0);                       /* A04, the drop: every track (power-on is A01, the intro) */
     qd_app_play(a);
     for (ms = 1; ms <= 9000u; ms++) {
         if (ms % 3000u == 300u || ms % 3000u == 1700u)  /* chords on tracks 1 and 4, struck and released */

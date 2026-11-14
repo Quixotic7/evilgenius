@@ -3,7 +3,7 @@
 EVILGENIUS is a SID Chip Groovebox for the MVave FM-1. 6 tracks, SID Chips, Speech Synthesis, Advanced Sequencing. Full P-Lock sound locks.
 
 It is a firmware for the M-VAVE FM-1: FIZZ's sequencer and controls, a C64 SID for every voice, the SAM speech
-synthesizer for the words, and the screen of a C64 game about a villain's tower (an agent, robots, lifts, searched
+synthesizer for the words, and the screen of a C64 game about the Evil Genius's tower (an agent, robots, lifts, searched
 cabinets). The art and the spoken lines are original.
 
 - **[Try it in the browser](https://quixotic7.github.io/evilgenius/try/)**: the code the FM-1 runs, on a drawn FM-1.

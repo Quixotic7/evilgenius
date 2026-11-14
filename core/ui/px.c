@@ -226,6 +226,14 @@ static void glyph(int x, int y, int gi, qd_rgb c, int font, int sc)
     }
 }
 
+int px_glyph_row(int font, int ch, int row)             /* a glyph's row, bit 7 its leftmost pixel (0: none) */
+{
+    const int gi = glyph_index((uint32_t)ch);
+    if (gi < 0 || row < 0 || row >= (font == PX_FB ? 7 : 5))
+        return 0;
+    return font == PX_FB ? PX_FONT_B_ROWS[gi][row] : PX_FONT_S_ROWS[gi][row];
+}
+
 int px_text(int x, int y, const char *s, qd_rgb c, int font, int sc)
 {
     if (sc < 1)
@@ -291,5 +299,27 @@ static void sprite_sc(int x, int y, int id, int flip, qd_rgb tint, int sc)
     }
 }
 void px_sprite(int x, int y, int id, int flip) { sprite_sc(x, y, id, flip, QD_NONE, 1); }
+void px_sprite_part(int x, int y, int id, int sx, int sy, int w, int h)
+{
+    const px_sprite_t *s;
+    int r, i;
+    if (id < 0 || id >= PXS_N)
+        return;
+    s = &PX_SPR[id];
+    if (sx < 0 || sy < 0 || sx + w > s->w || sy + h > s->h)
+        return;
+    for (r = 0; r < h; r++) {
+        const uint8_t *row = s->d + (sy + r) * s->w + sx;
+        for (i = 0; i < w;) {                           /* runs of one colour */
+            const uint8_t v = row[i];
+            int n = 1;
+            while (i + n < w && row[i + n] == v)
+                n++;
+            if (v != 255u)
+                fill(x + i, y + r, n, 1, PX_C64[v & 15u]);
+            i += n;
+        }
+    }
+}
 void px_sprite_tint(int x, int y, int id, int flip, qd_rgb tint) { sprite_sc(x, y, id, flip, tint, 1); }
 void px_sprite_sc(int x, int y, int id, int flip, int sc, qd_rgb tint) { sprite_sc(x, y, id, flip, tint, sc < 1 ? 1 : sc); }

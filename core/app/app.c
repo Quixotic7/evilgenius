@@ -48,6 +48,7 @@ FZ_COLD void qd_app_init(qd_app_t *a)
     qd_project_init(&a->proj);
     qd_persist_io(a);                                   /* P2.1: the patterns' backing (paged at the device's sizes) */
     qd_demo_load(&a->proj);
+    qd_demo_model(&a->model);                           /* (the demo's own mix) */
     qd_seq_init(&a->seq, &a->proj, &a->model);
     qd_player_init(&a->player, &a->seq, &a->pool, &a->model);
     a->player.out = mo_note, a->player.edit = mo_edit, a->player.out_ctx = a;   /* FIZZ MIDI (c): MIDI OUT */

@@ -14,7 +14,14 @@
  *     knob KNOB N                  KNOB: SELECT ALGO PRESETS K1 K2 K3 K4; N detents (+ clockwise), 30 ms apart
  *     shot NAME [caption..]        OUT_DIR/NAME.png (and a line in OUT_DIR/index.tsv)
  *     reset                        the app again from power-on
- *     wav PATH                     the audio from here on into PATH (16-bit stereo; closed at the script's end) */
+ *     wav PATH                     the audio from here on into PATH (16-bit stereo; closed at the script's end)
+ *     film PATH                    the screen from here on into PATH, 30 frames a second, raw RGB24 (240 x 240), in
+ *                                  step with a wav begun on the same line of time
+ *     hold MS                      the film keeps its last picture for MS (the app and the sound run on): two
+ *                                  presses that only pass through a screen do not show it for a frame
+ *     mark NAME                    prints the film's time here (ms)
+ *     chain P P ..                 the patterns PLAY plays, one after another, and round again (1 = A01; up to 16)
+ *     solo TRACK                   the first eight patterns keep only TRACK's steps (0..5): one track's level */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -25,11 +32,25 @@
 #include "qd_gfx.h"
 
 static qd_app_t A;
+
 static uint32_t now;
 static uint64_t frames_done;
 static uint16_t lcd[QD_W * QD_H];
-static FILE *wavf;
-static uint32_t wavn;
+static FILE *wavf, *filmf;
+static uint32_t wavn, filmms, filmn, filmhold;      /* (the film's own clock: a reset does not turn it back) */
+
+static void film_frame(void)
+{
+    static unsigned char rgb[QD_W * QD_H * 3];
+    int i;
+    for (i = 0; i < QD_W * QD_H && !filmhold; i++) {    /* (held: the last picture again) */
+        const uint16_t be = lcd[i], c = (uint16_t)((be >> 8) | (be << 8));
+        rgb[i * 3] = (unsigned char)(((c >> 11) & 31u) * 255u / 31u);
+        rgb[i * 3 + 1] = (unsigned char)(((c >> 5) & 63u) * 255u / 63u);
+        rgb[i * 3 + 2] = (unsigned char)((c & 31u) * 255u / 31u);
+    }
+    fwrite(rgb, 1, sizeof rgb, filmf);
+}
 
 static void run(uint32_t n)
 {
@@ -38,6 +59,15 @@ static void run(uint32_t n)
         qd_app_tick(&A, now);
         if (now % 15u == 0u)
             qd_app_frame(&A, lcd);
+        if (filmf) {
+            if ((uint64_t)filmn * 1000u <= (uint64_t)filmms * 30u) {
+                film_frame();
+                filmn++;
+            }
+            filmms++;
+            if (filmhold)
+                filmhold--;
+        }
         while (frames_done + 128u <= (uint64_t)now * QD_FS / 1000u) {
             int16_t blk[256];
             qd_app_audio(&A, blk, 128);
@@ -145,6 +175,34 @@ int main(int argc, char **argv)
             if ((wavf = fopen(a, "wb")))
                 fwrite(H, 1, 44, wavf);
         }
+        else if (!strcmp(cmd, "film")) {
+            if (filmf)
+                fclose(filmf);
+            filmf = fopen(a, "wb");
+            filmms = 0, filmn = 0;
+        } else if (!strcmp(cmd, "mark"))
+            printf("%-12s %6u ms\n", a, (unsigned)filmms);
+        else if (!strcmp(cmd, "hold"))
+            filmhold = (uint32_t)atoi(a);
+        else if (!strcmp(cmd, "chain")) {               /* (the sequencer's chain: the panel has no page for it) */
+            int pats[QD_SEQ_NCHAIN], np = 0;
+            char *q = strstr(line, "chain") + 5;
+            while (np < QD_SEQ_NCHAIN && *q) {
+                char *e;
+                const long v = strtol(q, &e, 10);
+                if (e == q)
+                    break;
+                pats[np++] = (int)v - 1;
+                q = e;
+            }
+            qd_seq_chain(&A.seq, pats, np);
+        } else if (!strcmp(cmd, "solo")) {                /* (a check of one track's level) */
+            int p, t;
+            for (p = 0; p < 8; p++)
+                for (t = 0; t < QD_PAT_NTRACK; t++)
+                    if (t != atoi(a))
+                        memset(qd_proj_pat(&A.proj, p)->step[t], 0, sizeof qd_proj_pat(&A.proj, p)->step[t]);
+        }
         else if (!strcmp(cmd, "play"))
             qd_app_play(&A);
         else if (!strcmp(cmd, "tap") || !strcmp(cmd, "down") || !strcmp(cmd, "up")) {
@@ -204,6 +262,8 @@ int main(int argc, char **argv)
     }
     fclose(f);
     fclose(idx);
+    if (filmf)
+        fclose(filmf);
     if (wavf) {                                         /* the WAV's sizes */
         const uint32_t riff = 36u + wavn;
         fseek(wavf, 4, SEEK_SET), fwrite(&riff, 4, 1, wavf);
