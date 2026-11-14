@@ -43,10 +43,50 @@ static void step_frame(int on)
 }
 
 /* ---------------------------------------------------------------- the mix: lift shafts */
+/* FX MIX: the selected track's sends into the five rooms as five lifts, the car as high as the send (how much of
+ * the track goes through that room); 0: none, its shaft dark. KNOB 1..4 and PRESETS (the pink P) */
+static void mix_rooms(const float *room, const char txt[5][8], const uint8_t *lk, int last, int x0, int pitch)
+{
+    static const char *const NM[5] = {"CRUSH", "ROBOT", "WARP", "GLITCH", "TV"};
+    static const char *const KB[5] = {"1", "2", "3", "4", "P"};
+    int k;
+    for (k = 0; k < 5; k++) {
+        const int x = x0 + k * pitch, top = 26, bot = 86;
+        const qd_rgb kc = k < 4 ? FK[k] : UI_KALG;
+        const int on = room[k] > 0.f, fy = bot - (int)((float)(bot - top) * room[k]);
+        px_rect(x - 3, 15, 7, 7, kc);                   /* the knob's badge */
+        px_ctext(x + 1, 16, KB[k], UI_BG, PX_FS, 1);
+        px_vline(x - 5, top, bot - top + 3, on ? UI_G1 : UI_G3);   /* the shaft */
+        px_vline(x + 5, top, bot - top + 3, on ? UI_G1 : UI_G3);
+        if (on)
+            px_checker(x - 4, fy + 3, 9, bot - fy, kc, 0);
+        px_rect(x - 4, fy, 9, 2, on ? kc : UI_G2);      /* the car */
+        px_rect(x - 4, fy + 2, 9, 1, on ? PX_ORANGE : UI_G3);
+        px_hline(x - 7, bot + 3, 15, UI_G2);
+        px_ctext(x + 1, 93, NM[k], last == k ? kc : UI_G1, PX_FS, 1);
+        if (last == k)
+            px_hline(x - 8, 99, 17, kc);
+if (lk[k] == 1)                                 /* a lock: a chip (filled here, outlined somewhere) */
+            px_rect(x - 10, 102, 21, 11, kc);
+        else if (lk[k] == 2)
+            px_box(x - 10, 102, 21, 11, kc);
+        px_ctext(x + 1, 105, on || lk[k] == 1 ? txt[k] : "OFF", lk[k] == 1 ? UI_BG : on ? kc : UI_G2, PX_FS, 1);
+    }
+}
+
 void ui_mix_draw(const ui_mix_t *v)
 {
+    static const char *const PG[3] = {"MIX", "SENDS", "FX MIX"};
     int i, k;
-    panel_head(v->page ? "SENDS" : "MIX", 2, v->page ? 1 : 0, v->nsel);
+    panel_head(PG[v->page % 3], 3, v->page % 3, v->nsel);
+    if (v->page == 2) {
+        char n[2] = {(char)('1' + v->sel), 0};
+        px_rect(94, 2, 8, 8, UI_K4);                    /* (the track these sends are) */
+        px_ctext(98, 3, n, UI_BG, PX_FS, 1);
+        mix_rooms(v->room, v->room_txt, v->room_lk, v->last, 14, 23);
+        step_frame(v->step);
+        return;
+    }
     for (i = 0; i < UI_NTRACK; i++) {
         const int x = 10 + i * 20, sel = i == v->sel, mute = v->tr[i].mute == 1, solo = v->tr[i].mute == 2;
         const qd_rgb col = mute ? UI_G3 : sel ? UI_K3 : UI_G1;
@@ -77,15 +117,15 @@ void ui_mix_draw(const ui_mix_t *v)
                     px_rect(x + 8, y - 1, 2, 3, FK[2 + k]);
             }
         } else {
-            for (k = 0; k < 3; k++) {                   /* CHORUS, ECHO, ROOM: three bars */
-                const int bx = x - 6 + k * 5, top = 24, bot = 88;
-                const int val = k == 0 ? v->tr[i].chorus : k == 1 ? v->tr[i].delay : v->tr[i].reverb;
+            for (k = 0; k < 4; k++) {                   /* CHORUS, ECHO, ROOM, DRY: four bars */
+                const int bx = x - 8 + k * 4, top = 24, bot = 88;
+                const int val = k == 0 ? v->tr[i].chorus : k == 1 ? v->tr[i].delay : k == 2 ? v->tr[i].reverb : v->tr[i].dry;
                 const int h = (bot - top) * val / 127;
-                px_box(bx, top, 4, bot - top, UI_G3);
+                px_box(bx, top, 3, bot - top, UI_G3);
                 if (h > 0)
-                    px_rect(bx, bot - h, 4, h, mute ? UI_G3 : sel ? FK[k] : UI_G1);
-                if (sel && v->locked[k])
-                    px_box(bx - 1, bot - h - 1, 6, 3, FK[k]);
+                    px_rect(bx, bot - h, 3, h, mute ? UI_G3 : sel ? FK[k] : k == 3 ? UI_G2 : UI_G1);
+                if (sel && k < 3 && v->locked[k])
+                    px_box(bx - 1, bot - h - 1, 5, 3, FK[k]);
             }
         }
         if (mute) {
@@ -98,12 +138,13 @@ void ui_mix_draw(const ui_mix_t *v)
             px_box(x - 5, 99, 11, 10, solo ? UI_KSEL : UI_K3);
     }
     if (v->page) {
-        static const char *const S[3] = {"CHORUS", "ECHO", "ROOM"};
-        for (k = 0; k < 3; k++)
-            px_ctext(20 + k * 40, 112, S[k], FK[k], PX_FS, 1);
-    } else if (v->last >= 0 && v->last < 4) {
+        static const char *const S[4] = {"CHORUS", "ECHO", "ROOM", "DRY"};
+        for (k = 0; k < 4; k++)
+            px_ctext(17 + k * 29, 112, S[k], FK[k], PX_FS, 1);
+    } else {                                            /* (the four knobs named, the turned one bright) */
         static const char *const L[4] = {"LEVEL", "PAN", "ECHO", "ROOM"};
-        px_ctext(60, 112, L[v->last], FK[v->last], PX_FS, 1);
+        for (k = 0; k < 4; k++)
+            px_ctext(17 + k * 29, 112, L[k], v->last == k || v->last < 0 ? FK[k] : UI_G2, PX_FS, 1);
     }
     for (k = 0; k < 4; k++)                             /* the locks as chips in the head */
         if (v->locked[k] || v->lockany[k]) {
@@ -116,13 +157,55 @@ void ui_mix_draw(const ui_mix_t *v)
     step_frame(v->step);
 }
 
-/* ---------------------------------------------------------------- the rooms */
+/* ---------------------------------------------------------------- the FX tower: the lift, the rooms
+ * The effects are the floors of a tower, B1 (SENDS, the villain's control room) at the top, the signal going down to
+ * the TV at the bottom. The shaft is at the left: a window a floor (lit: the effect is heard), the agent in the car at
+ * the page's floor. A change of floor rides the lift: the car moves, the new room slides in past the old one's place.
+ * A room: x 10..118, y 14..88; KNOB 1..4 along the foot. */
+#define FX_X 10
+#define FX_W 108
+#define FX_FLOOR 86
+
+static uint32_t fx_h(uint32_t a, uint32_t b)
+{
+    uint32_t h = a * 0x9E3779B1u ^ (b + 0x7F4A7C15u) * 0x85EBCA77u;
+    h ^= h >> 15;
+    h *= 0x2C1B3C6Du;
+    return h ^ (h >> 12);
+}
+
+static void fx_girder(void)
+{
+    px_rect(FX_X, FX_FLOOR, FX_W, 1, PX_LBLUE);
+    px_rect(FX_X, FX_FLOOR + 1, FX_W, 1, PX_BLUE);
+}
+
+static void fx_shaft(const ui_fx_t *v)
+{
+    const int n = v->nfloor > 0 ? v->nfloor : 1;
+    int k, cy = 15 + v->floor * 8;
+    px_vdots(0, 14, 75, UI_G2, 2);
+    px_vdots(8, 14, 75, UI_G2, 2);
+    if (v->ride_from >= 0 && v->ride < 1.f)
+        cy = 15 + v->ride_from * 8 + (int)((float)((v->floor - v->ride_from) * 8) * v->ride);
+    for (k = 0; k < n; k++) {
+        const int y = 15 + k * 8;
+        px_rect(3, y + 2, 3, 3, (v->floor_on >> k) & 1 ? PX_LGREEN : PX_DGREY);
+        px_hline(1, y + 7, 7, UI_G2);
+    }
+    px_rect(1, cy, 7, 7, PX_BLACK);                     /* the car, the agent in it */
+    px_box(1, cy, 7, 7, PX_YELLOW);
+    px_pset(4, cy + 1, PX_LRED);
+    px_rect(3, cy + 2, 3, 2, PX_LBLUE);
+    px_pset(3, cy + 4, PX_LGREY), px_pset(5, cy + 4, PX_LGREY);
+}
+
 static void fx_sends(const ui_fx_t *v)
 {
-    static const int AT[4][2] = {{14, 26}, {106, 26}, {14, 70}, {106, 70}};
+    static const int AT[4][2] = {{24, 26}, {104, 26}, {24, 70}, {104, 70}};
     static const char *const NM[4] = {"ROOM", "CHORUS", "ECHO", "DRY"};
     int k;
-    px_sprite_sc(36, 28, v->beat >= 0.f && v->beat < 0.15f ? PXS_GENIUS_TALK : PXS_GENIUS, 0, 3, QD_NONE);
+    px_sprite_sc(40, 28, v->beat >= 0.f && v->beat < 0.15f ? PXS_GENIUS_TALK : PXS_GENIUS, 0, 3, QD_NONE);
     for (k = 0; k < 4; k++) {
         if (!v->has[k])
             continue;
@@ -135,143 +218,208 @@ static void fx_sends(const ui_fx_t *v)
         }
         px_ctext(AT[k][0], AT[k][1] + 1, v->txt[k], v->locked[k] ? UI_BG : FK[k], PX_FB, 1);
     }
-    if (v->keys)
-        ui_rec_keys_foot(v->kst, 0);
-    else if (v->lane)
-        ui_steps_row((const ui_lane_t *)v->lane, 180.f, 58.f);
 }
 
+/* CHORUS: the agent and his two doubles, apart by WIDTH, drifting by DEPTH at RATE; the two waves over them */
 static void fx_chorus(const ui_fx_t *v)
 {
+    static const int RUN[4] = {PXS_AGENT_RUN1, PXS_AGENT_RUN2, PXS_AGENT_RUN3, PXS_AGENT_RUN2};
+    const int on = v->x[3] > 0.f;
     int x, k;
     for (k = 0; k < 2; k++) {
         int prev = -1;
-        for (x = 6; x < 114; x++) {
+        for (x = FX_X + 2; x < FX_X + FX_W - 2; x++) {
             const float sway = fz_sinf(v->t * 2.f * v->chorus_hz + (float)k * 2.f) * v->depth * 6.f * (k ? v->cwidth : 0.3f);
-            const int y = 52 - (int)(fz_sinf((float)x * 0.18f + sway) * 22.f);
+            const int y = 34 - (int)(fz_sinf((float)x * 0.18f + sway) * 12.f);
             if (prev >= 0)
                 px_line(x - 1, prev, x, y, k ? FK[1] : FK[0]);
             prev = y;
         }
     }
+    fx_girder();
+    for (k = 0; k < 3; k++) {
+        const int o = k == 0 ? -1 : k == 1 ? 1 : 0;      /* (the doubles first, the agent over them) */
+        const float drift = fz_sinf(v->t * UI_TAU * v->chorus_hz * 0.5f + (float)k * 2.1f) * v->depth * 5.f;
+        const int cx = 64 + o * (6 + (int)(v->cwidth * 26.f)) + (o ? (int)drift : 0);
+        const int spr = RUN[((int)(v->t * 8.f) + k) & 3];
+        if (o)
+            px_sprite_tint(cx - 4, FX_FLOOR - 16, spr, 0, on ? FK[k] : UI_G2);   /* (k 0, 1: the doubles; the
+                                                         * colour from the table: the unit's ROM-address check reads
+                                                         * a folded difference of two colours as an address) */
+        else
+            px_sprite(cx - 4, FX_FLOOR - 16, spr, 0);
+    }
 }
 
+/* ECHO: the orb bouncing across the room, a bounce a repeat, each lower by FEEDBACK (LOFI: the later ones coarser) */
 static void fx_echo(const ui_fx_t *v)
 {
-    int k;
-    const float fb = v->fdbk, lofi = v->tone;
-    for (k = 0; k < 7; k++) {                           /* the repeats: balls bouncing lower, darker, coarser */
-        const int x = 10 + k * 15, h = (int)(56.f * fz_powf(fb > 0.05f ? fb : 0.05f, (float)k));
-        const qd_rgb c = k == 0 ? UI_K3 : lofi > 0.5f && k > 2 ? UI_G2 : k < 3 ? FK[0] : UI_G1;
-        const int sz = k == 0 ? 6 : lofi > 0.3f ? 5 - k / 2 : 5;
-        if (h < 2)
+    const float fb = v->fdbk > 0.05f ? v->fdbk : 0.05f, lofi = v->tone;
+    const int on = v->x[3] > 0.f, pitch = 15;
+    float u;
+    int k, n = 0, hh[7];
+    for (k = 0; k < 7; k++) {
+        hh[k] = (int)(56.f * fz_powf(fb, (float)k));
+        if (hh[k] < 3)
             break;
-        px_rect(x, 80 - h, sz > 1 ? sz : 1, sz > 1 ? sz : 1, c);
-        px_vdots(x + 2, 80 - h + sz, h - sz, UI_G3, 2);
-        if (v->ping)
-            px_pset(x + 2, k & 1 ? 20 : 18, k & 1 ? FK[2] : FK[1]);
+        n++;
     }
-    px_hline(6, 82, 108, UI_G2);
+    fx_girder();
+    for (k = 0; k < n; k++) {                           /* each bounce's arc, dotted */
+        const int x0 = FX_X + 3 + k * pitch, st = lofi > 0.4f && k > 1 ? 3 : 2;
+        int i;
+        for (i = 0; i <= pitch; i += st) {
+            const float f = (float)i / (float)pitch;
+            px_pset(x0 + i, FX_FLOOR - 1 - (int)((float)hh[k] * 4.f * f * (1.f - f)),
+                    !on ? UI_G2 : v->ping ? (k & 1 ? FK[2] : FK[1]) : k < 3 ? FK[0] : UI_G1);
+        }
+    }
+    u = fz_fmodf(v->t / (v->delay_s > 0.06f ? v->delay_s : 0.06f), (float)(n > 0 ? n : 1));
+    k = (int)u;
+    if (n > 0 && k < n) {
+        const float f = u - (float)k;
+        px_sprite(FX_X + 3 + k * pitch + (int)(f * (float)pitch) - 3,
+                  FX_FLOOR - 7 - (int)((float)hh[k] * 4.f * f * (1.f - f)), PXS_ORB, 0);
+    }
 }
 
 static void fx_echo2(const ui_fx_t *v)
 {
     int k, x;
-    px_text(6, 18, v->sync ? "SYNC" : "FREE", FK[0], PX_FS, 1);
-    px_text(40, 18, v->ping ? "PING-PONG" : "STEREO", FK[1], PX_FS, 1);
+    px_text(FX_X + 2, 18, v->sync ? "SYNC" : "FREE", FK[0], PX_FS, 1);
+    px_text(FX_X + 34, 18, v->ping ? "PING-PONG" : "STEREO", FK[1], PX_FS, 1);
     for (k = 0; k < 2; k++)                             /* the two sides' repeats */
         for (x = 0; x < 6; x++)
             if (!v->ping || ((x + k) & 1))
-                px_rect(10 + x * 16 + k * 8, 34 + k * 14, 6, 6, x < 2 ? FK[k] : UI_G2);
-    for (x = 6; x < 114; x++)                           /* WOW: the line wobbling */
+                px_sprite_tint(FX_X + 4 + x * 16 + k * 8, 34 + k * 14, PXS_ORB, 0, x < 2 ? FK[k] : UI_G2);
+    for (x = FX_X + 2; x < FX_X + FX_W - 2; x++)        /* WOW: the line wobbling */
         px_pset(x, 74 + (int)(fz_sinf((float)x * 0.12f + v->t * 2.f) * v->wow * 5.f), FK[3]);
 }
 
+/* ROOM: the room as big as SIZE, the agent calling out in it (his call's rings to the walls), DECAY under it */
 static void fx_room(const ui_fx_t *v)
 {
-    const int w = 30 + (int)(v->size * 70.f), h = 20 + (int)(v->size * 40.f), x = 60 - w / 2, y = 52 - h / 2;
+    const int w = 30 + (int)(v->size * 72.f), h = 22 + (int)(v->size * 44.f), x = 64 - w / 2, y = 82 - h;
+    const int rmax = (w < h * 2 ? w / 2 : h) - 4;
     int k;
-    for (k = 0; k < 4; k++)                             /* the walls and their echoes inward, darker with DAMP */
-        px_box(x + k * 4, y + k * 3, w - k * 8, h - k * 6, k == 0 ? FK[0] : v->damp > 0.5f && k > 1 ? UI_G3 : UI_G2);
-    px_sprite(56, y + h - 17, PXS_AGENT_STAND, 0);
-    px_hline(x, y + h + 3, (int)((float)w * (v->decay < 0.f ? 1.f : v->decay)), FK[2]);
+    for (k = 0; k < 3; k++)                             /* the walls and their echoes inward, darker with DAMP */
+        px_box(x + k * 3, y + k * 2, w - k * 6, h - k * 2, k == 0 ? FK[0] : v->damp > 0.5f && k > 1 ? UI_G3 : UI_G2);
+    px_sprite(60, y + h - 17, PXS_AGENT_STAND, 0);
+    for (k = 0; k < 3 && rmax > 6; k++) {               /* the call: arcs growing from his head */
+        const int r = 5 + ((int)(v->t * 14.f) + k * (rmax / 3 + 1)) % rmax;
+        const int cx = 64, cy = y + h - 14;
+        int a;
+        for (a = -5; a <= 5; a++) {
+            const float an = (float)a * 0.16f;
+            const int dx = (int)(fz_cosf(an) * (float)r), dyy = (int)(fz_sinf(an) * (float)r);
+            if (cy + dyy > y + 1 && cy + dyy < y + h - 1) {
+                px_pset(cx + 5 + dx, cy + dyy, r > rmax * 2 / 3 ? UI_G2 : FK[1]);
+                px_pset(cx - 5 - dx, cy + dyy, r > rmax * 2 / 3 ? UI_G2 : FK[1]);
+            }
+        }
+    }
+    px_hline(x, 85, (int)((float)w * (v->decay < 0.f ? 1.f : v->decay)), FK[2]);
 }
 
 static void fx_room2(const ui_fx_t *v)
 {
     int x;
     const int gap = (int)(v->pre * 30.f);
-    px_rect(6, 30, 3, 40, UI_K3);                       /* the dry hit, the gap, the tail */
-    for (x = 0; x < 100 - gap; x++) {
+    px_rect(FX_X + 2, 30, 3, 40, UI_K3);                /* the dry hit, the gap, the tail */
+    for (x = 0; x < 96 - gap; x++) {
         const int h = (int)(38.f * fz_expf(-(float)x * 0.04f));
-        px_vline(10 + gap + x, 70 - h + (int)(fz_sinf((float)x * 0.5f + v->t * 3.f) * v->mod * 3.f), h + 1,
+        px_vline(FX_X + 6 + gap + x, 70 - h + (int)(fz_sinf((float)x * 0.5f + v->t * 3.f) * v->mod * 3.f), h + 1,
                  x & 1 ? UI_G2 : FK[1]);
     }
-    px_line(6, 84, 6 + (int)(v->low * 30.f), 76, FK[2]);   /* LOW CUT: a slope */
+    px_line(FX_X + 2, 84, FX_X + 2 + (int)(v->low * 30.f), 76, FK[2]);   /* LOW CUT: a slope */
 }
 
+/* CRUSH: the wave stamped into stairs (BITS the levels, RATE the treads), the press that does it at the right */
 static void fx_crush(const ui_fx_t *v)
 {
     const int levels = 2 + (int)(v->x[0] * 14.f), step = 2 + (int)(v->x[1] * 12.f);
+    const int on = v->x[3] > 0.f;
+    const float beat = fz_fmodf(v->t * 2.f, 1.f);
+    const int drop = on ? (int)((beat < 0.2f ? beat * 5.f : 1.f - (beat - 0.2f) * 1.25f) * 38.f) : 0;
     int x;
-    px_box(4, 16, 112, 70, UI_G3);
-    for (x = 6; x < 114; x += step) {
-        const float s = fz_sinf((float)(x - 6) * 0.06f);
+    for (x = FX_X + 2; x < FX_X + 86; x += step) {
+        const float s = fz_sinf((float)(x - FX_X - 2) * 0.075f);
         const int q = (int)(s * (float)levels / 2.f);
-        px_rect(x, 50 - q * 30 / (levels / 2 > 0 ? levels / 2 : 1), step, 2, v->x[3] > 0.f ? FK[0] : UI_G2);
+        px_rect(x, 50 - q * 30 / (levels / 2 > 0 ? levels / 2 : 1), step, 2, on ? FK[0] : UI_G2);
     }
+    fx_girder();
+    px_rect(104, 14, 4, 8 + drop, UI_G1);               /* the press: its ram, its head */
+    px_rect(96, 22 + drop, 20, 8, on ? PX_YELLOW : UI_G2);
+    for (x = 0; x < 5; x++)
+        px_rect(97 + x * 4, 24 + drop, 2, 4, PX_BLACK);
+    if (drop > 34)                                      /* (what was under it) */
+        px_rect(98, FX_FLOOR - 3, 16, 3, PX_LGREY);
+    else
+        px_sprite(101, FX_FLOOR - 12, PXS_ROBOT1, 0);
 }
 
+/* ROBOT: the sentry speaking (a ring modulator is its voice): its eye and arm spark at the carrier's rate */
 static void fx_robot(const ui_fx_t *v)
 {
     const int on = v->x[3] > 0.f, spark = on && ((int)(v->t * (4.f + v->x[0] * 20.f)) & 1);
     int x, prev = -1;
-    px_sprite_sc(8, 30, spark ? PXS_ROBOT2 : PXS_ROBOT1, 0, 3, on ? QD_NONE : UI_G2);
+    fx_girder();
+    px_sprite_sc(FX_X + 4, FX_FLOOR - 42, spark ? PXS_SENTRY2 : PXS_SENTRY1, 1, 3, on ? QD_NONE : UI_G2);
     if (spark) {
-        px_rect(23, 24, 2, 2, PX_YELLOW);
-        px_rect(21, 20, 2, 2, PX_WHITE);
-        px_rect(25, 17, 2, 2, PX_YELLOW);
+        px_rect(FX_X + 39, 66, 2, 2, PX_YELLOW);
+        px_rect(FX_X + 42, 63, 2, 2, PX_WHITE);
+        px_rect(FX_X + 44, 67, 2, 2, PX_YELLOW);
     }
-    for (x = 0; x < 64; x++) {                          /* the ring: the carrier times the voice */
-        const float c = fz_sinf((float)x * (0.3f + v->x[0] * 2.f));
-        const int y = 50 - (int)(fz_sinf((float)x * 0.1f) * c * 26.f);
+    for (x = 0; x < 58; x++) {                          /* the ring: the carrier times the voice */
+        const float c = fz_sinf((float)x * (0.3f + v->x[0] * 2.f) + (on ? v->t * 6.f : 0.f));
+        const int y = 40 - (int)(fz_sinf((float)x * 0.11f) * c * 22.f);
         if (prev >= 0)
-            px_line(48 + x - 1, prev, 48 + x, y, on ? FK[0] : UI_G2);
+            px_line(FX_X + 48 + x - 1, prev, FX_X + 48 + x, y, on ? FK[0] : UI_G2);
         prev = y;
     }
 }
 
+/* WARP: the teleporter. The comb's teeth are its beams (TIME how many, FEEDBACK how tall); the agent on the pad
+ * comes apart in bands that climb at RATE */
 static void fx_warp(const ui_fx_t *v)
 {
     const float teeth = 3.f + v->x[0] * 8.f, fb = v->x[1] * 2.f - 1.f;
-    int x;
-    px_box(4, 16, 112, 70, UI_G3);
-    for (x = 6; x < 114; x++) {                         /* the comb's notches, deeper with the feedback */
-        const float ph = (float)(x - 6) / 108.f * teeth * UI_PI + v->t * v->x[2] * 4.f;
-        const float g = fz_cosf(ph) * (fb >= 0.f ? 1.f : -1.f);
-        const int h = 8 + (int)((g * 0.5f + 0.5f) * (20.f + (fb < 0.f ? -fb : fb) * 40.f));
-        px_vline(x, 84 - h, h, x & 1 ? FK[0] : PX_BLUE);
+    const int on = v->x[3] > 0.f, ph = (int)(v->t * (2.f + v->x[2] * 14.f));
+    int x, r;
+    for (x = FX_X + 2; x < FX_X + FX_W - 2; x += 2) {
+        const float p = (float)(x - FX_X) / (float)FX_W * teeth * UI_PI + v->t * v->x[2] * 4.f;
+        const float g = fz_cosf(p) * (fb >= 0.f ? 1.f : -1.f);
+        const int h = 6 + (int)((g * 0.5f + 0.5f) * (18.f + (fb < 0.f ? -fb : fb) * 44.f));
+        px_vdots(x, FX_FLOOR - 2 - h, h, on ? PX_BLUE : UI_G2, 2);
     }
+    px_sprite_sc(50, FX_FLOOR - 50, PXS_AGENT_STAND, 0, 3, QD_NONE);
+    for (r = 0; r < 48 && on; r++)                      /* the bands taken out of him */
+        if (((r + ph) % 12) < 1 + (int)(v->x[3] * 4.f))
+            px_hline(48, FX_FLOOR - 50 + r, 32, (r + ph) % 12 == 0 ? FK[0] : PX_BLACK);
+    px_rect(44, FX_FLOOR - 2, 40, 2, on ? PX_YELLOW : UI_G2);   /* the pad */
+    px_rect(44, 15, 40, 2, on ? PX_YELLOW : UI_G2);
 }
 
+/* GLITCH: the picture breaks: the agent cut in bands thrown sideways, blocks of rubbish over the room, more with
+ * CHANCE, longer with SLICE */
 static void fx_glitch(const ui_fx_t *v)
 {
-    const int on = v->x[3] > 0.f, rep = (int)(v->t * 6.f) % 8;
-    int k;
-    px_box(4, 16, 112, 70, UI_G3);
-    for (k = 0; k < 13; k++) {                          /* the slices; the caught one repeated, stepping in pitch */
-        const int x = 6 + k * 8, caught = on && k >= 4 && k < 10;
-        const int dy = caught ? (k - 4) * (int)((v->x[2] - 0.5f) * 6.f) : 0;
-        if (caught)
-            px_rect(x, 40 - dy, 7, 14, k - 4 == rep % 6 ? UI_K3 : FK[0]);
-        else
-            px_rect(x, 44, 7, 10, UI_G2);
+    const int on = v->x[3] > 0.f, tick = (int)(v->t * 7.f);
+    const int amt = on ? 2 + (int)(v->x[1] * 14.f) : 0;
+    int b, k;
+    fx_girder();
+    for (b = 0; b < 8; b++) {                           /* the agent, 3x, a band at a time */
+        const uint32_t h = fx_h((uint32_t)b, (uint32_t)tick);
+        const int off = amt && (h & 3u) == 0u ? (int)((h >> 4) % (uint32_t)(2 * amt + 1)) - amt : 0;
+        qd_save();
+        qd_clip_rect(0.f, (float)(2 * (FX_FLOOR - 48 + b * 6)), 240.f, 12.f);
+        px_sprite_sc(50 + off, FX_FLOOR - 48, PXS_AGENT_STAND, 0, 3, off ? (h & 16u ? FK[0] : FK[3]) : QD_NONE);
+        qd_restore();
     }
-    {
-        char s[12];
-        ui_itoa(s, (int)(v->x[1] * 100.f));
-        strcat(s, "%");
-        px_text(8, 76, s, FK[1], PX_FS, 1);
+    for (k = 0; k < amt; k++) {                         /* the rubbish */
+        const uint32_t h = fx_h((uint32_t)k + 57u, (uint32_t)(tick / (1 + (int)(v->x[0] * 3.f))));
+        const int x = FX_X + 2 + (int)(h % 96u), y = 18 + (int)((h >> 8) % 60u);
+        px_checker(x, y, 4 + (int)((h >> 16) & 7u), 4, (h >> 20) & 1u ? FK[1] : FK[2], (int)(h >> 21) & 1);
     }
 }
 
@@ -279,36 +427,44 @@ static void fx_tv(const ui_fx_t *v)
 {
     const int on = v->x[3] > 0.f, roll = (int)(v->t * 10.f * v->x[1]) % 30;
     int y;
-    px_rbox(10, 16, 82, 62, UI_G1, PX_DGREY);
-    px_rect(16, 20, 64, 52, PX_BLUE);
+    px_rbox(14, 16, 82, 62, UI_G1, PX_DGREY);
+    px_rect(20, 20, 64, 52, PX_BLUE);
     for (y = 21; y < 72; y += 2)
-        px_hline(16, y, 64, on ? PX_LBLUE : UI_G3);
+        px_hline(20, y, 64, on ? PX_LBLUE : UI_G3);
     if (on && v->x[1] > 0.05f)                          /* the hum: a bar rolling up the screen */
-        px_rect(16, 70 - roll - 4, 64, 3, PX_LBLUE);
-    px_rect(20, 28, 28, 18, PX_BLUE);
-    px_text(22, 30, "READY.", PX_WHITE, PX_FS, 1);
+        px_rect(20, 70 - roll - 4, 64, 3, PX_LBLUE);
+    px_rect(24, 28, 28, 18, PX_BLUE);
+    px_text(26, 30, "READY.", PX_WHITE, PX_FS, 1);
     if (on && ((int)(v->t * 2.f) & 1))
-        px_rect(22, 38, 4, 5, PX_WHITE);
-    px_rect(84, 22, 6, 6, PX_BLACK);                    /* its knobs, its legs */
-    px_rect(84, 34, 6, 2, UI_G2);
-    px_rect(84, 40, 6, 2, UI_G2);
-    px_rect(30, 78, 4, 6, UI_G2);
-    px_rect(68, 78, 4, 6, UI_G2);
+        px_rect(26, 38, 4, 5, PX_WHITE);
+    px_rect(88, 22, 6, 6, PX_BLACK);                    /* its knobs, its legs */
+    px_rect(88, 34, 6, 2, UI_G2);
+    px_rect(88, 40, 6, 2, UI_G2);
+    px_rect(34, 78, 4, 6, UI_G2);
+    px_rect(72, 78, 4, 6, UI_G2);
     {
         int k;
         for (k = 0; k < 3; k++)                         /* DRIVE: the speaker's grille glowing */
-            px_rect(98 + k * 5, 70 - (int)(v->x[2] * 30.f) * (k + 1) / 3, 3, (int)(v->x[2] * 30.f) * (k + 1) / 3 + 1, FK[2]);
+            px_rect(101 + k * 5, 70 - (int)(v->x[2] * 30.f) * (k + 1) / 3, 3, (int)(v->x[2] * 30.f) * (k + 1) / 3 + 1, FK[2]);
     }
 }
 
 void ui_fx_draw(const ui_fx_t *v)
 {
-    int k;
+    int k, dy = 0;
     panel_head(v->name ? v->name : "", v->npg, v->ipg, v->nsel);
-    if (v->track >= 1 && v->track <= UI_NTRACK && (v->draw == UI_FXD_OVER || v->draw <= UI_FXD_CHORUS)) {
+    if (v->track >= 1 && v->track <= UI_NTRACK) {       /* (every page has a send of this track's) */
         char n[2] = {(char)('0' + v->track), 0};
         px_rect(94, 2, 8, 8, UI_K4);
         px_ctext(98, 3, n, UI_BG, PX_FS, 1);
+    }
+    if (v->ride_from >= 0 && v->ride < 1.f)             /* the lift's ride: the room slides in */
+        dy = (int)((1.f - v->ride) * 76.f) * (v->floor > v->ride_from ? 1 : -1);
+    qd_save();
+    qd_clip_rect((float)(2 * (FX_X - 1)), 26.f, (float)(2 * (FX_W + 2)), 152.f);
+    if (dy) {
+        qd_translate(0.f, (float)(2 * dy));
+        px_rect(FX_X, dy > 0 ? 9 : 91, FX_W, 3, UI_G2);  /* (the slab between the floors) */
     }
     switch (v->draw) {
     case UI_FXD_DELAY: fx_echo(v); break;
@@ -322,9 +478,20 @@ void ui_fx_draw(const ui_fx_t *v)
     case UI_FXD_WARP: fx_warp(v); break;
     case UI_FXD_GLITCH: fx_glitch(v); break;
     case UI_FXD_TV: fx_tv(v); break;
+    case UI_FXD_MIXES: break;                            /* (drawn below, over the foot too) */
     default: break;
     }
-    for (k = 0; k < 4 && v->draw != UI_FXD_OVER; k++) {   /* KNOB 1..4 along the foot */
+    qd_restore();
+    fx_shaft(v);
+    if (v->draw == UI_FXD_OVER) {                       /* SENDS: the page's row (or the keys) at the foot */
+        if (v->keys)
+            ui_rec_keys_foot(v->kst, 0);
+        else if (v->lane)
+            ui_steps_row((const ui_lane_t *)v->lane, 180.f, 58.f);
+    }
+    if (v->draw == UI_FXD_MIXES)                        /* FX MIX: the five rooms' lifts, their names and values */
+        mix_rooms(v->room, v->room_txt, v->room_lk, v->last, 21, 22);
+    for (k = 0; k < 4 && v->draw != UI_FXD_OVER && v->draw != UI_FXD_MIXES; k++) {   /* KNOB 1..4 along the foot */
         const int cx = 15 + k * 30;
         const int f = px_text_w(v->txt[k], PX_FB, 1) > 27 ? PX_FS : PX_FB;
         if (!v->has[k])

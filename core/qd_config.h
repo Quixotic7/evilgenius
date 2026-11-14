@@ -65,15 +65,19 @@
 #define QD_XDATA(name)
 #endif
 
-/* EvilGenius: SAM, the speech that renders words live (core/voice/sam/say.c): the words it keeps rendered at once
- * (slots, each up to QD_SAY_TENTHS tenths of a second at VOX_FS, 4-bit) and its own 22050 Hz buffer of as long. The
- * FM-1 itself: fewer and shorter (its RAM is tight; not measured there yet); the host and RemoteFM1: room to spare */
-#ifndef QD_SAY_SLOTS
+/* EvilGenius: SAM speaks every word live (core/voice/sam/say.c): no word is stored as samples. The words kept
+ * rendered at once: QD_SAY_WORDS of them at most, their samples (4-bit at 6 kHz, two a byte) in one arena of
+ * QD_SAY_ARENA bytes, a word as long as it is (a second is 3,000 bytes); SAM's own buffer holds one word of up to
+ * QD_SAY_TENTHS tenths of a second. The FM-1: 12 KB (about seven words at once: more in a pattern than fit stay
+ * silent until others leave); the host and RemoteFM1: room to spare */
+#ifndef QD_SAY_WORDS
 #ifdef QD_TARGET_FM1
-#define QD_SAY_SLOTS 4
+#define QD_SAY_WORDS 10
+#define QD_SAY_ARENA 12000u
 #define QD_SAY_TENTHS 10
 #else
-#define QD_SAY_SLOTS 24
+#define QD_SAY_WORDS 32
+#define QD_SAY_ARENA 96000u
 #define QD_SAY_TENTHS 20
 #endif
 #endif

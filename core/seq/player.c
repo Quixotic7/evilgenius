@@ -693,7 +693,8 @@ void qd_player_live_edit(qd_player_t *pl, int t, int id, int value)
     value = value < lo ? lo : value > hi ? hi : value;
     if (id >= QD_QUAD_NP) {                             /* the track's mix (the voices' own mix locks stay) */
         if (pl->edit) {                                 /* (FIZZ MIDI (c): its old value to the app) */
-            const int old = id == QD_LK_PAN ? tk->mix.pan : id == QD_LK_DELAY ? tk->mix.delay
+            const int old = id >= QD_LK_CRUSH ? tk->mix.room[id - QD_LK_CRUSH]
+                          : id == QD_LK_PAN ? tk->mix.pan : id == QD_LK_DELAY ? tk->mix.delay
                           : id == QD_LK_REVERB ? tk->mix.reverb : id == QD_LK_CHORUS ? tk->mix.chorus : tk->mix.level;
             if (old != value)
                 pl->edit(pl->out_ctx, t, id, old, value);
@@ -704,7 +705,10 @@ void qd_player_live_edit(qd_player_t *pl, int t, int id, int value)
         case QD_LK_REVERB: tk->mix.reverb = (uint8_t)value; break;
         case QD_LK_CHORUS: tk->mix.chorus = (uint8_t)value; break;
         case QD_LK_LEVEL: tk->mix.level = (uint8_t)value; break;
-        default: break;
+        default:
+            if (id >= QD_LK_CRUSH && id < QD_LK_N)      /* (EvilGenius: a room's send) */
+                tk->mix.room[id - QD_LK_CRUSH] = (uint8_t)value;
+            break;
         }
         return;
     }

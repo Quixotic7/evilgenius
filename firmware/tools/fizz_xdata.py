@@ -68,14 +68,14 @@ SCREENS = {f"s{m}.{v}": f"{MODES[m]}/{VIEWS[v]}" for m in range(4) for v in rang
 
 
 def is_fizz(ident):
-    return ident.text.startswith("FM-1_46") and not ident.loader
+    return ident.text.startswith("FM-1_45") and not ident.loader   # (EvilGenius: 45, "E"; FIZZ is 46)
 
 
 def find(port):
     up = fi.Updater(fi.MidoBackend(), port)
     dev = up.find(is_fizz)
     if not dev:
-        raise SystemExit("no FM-1 running FIZZ answered (identity FM-1_46..)" + (f" on {port!r}" if port else ""))
+        raise SystemExit("no FM-1 running EvilGenius answered (identity FM-1_45..)" + (f" on {port!r}" if port else ""))
     return dev
 
 

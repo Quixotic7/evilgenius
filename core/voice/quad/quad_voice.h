@@ -178,6 +178,7 @@ struct qd_quad_voice {
     uint8_t fstage;
     struct {                            /* VOX: the word playing */
         uint8_t on, dir, nib;
+        uint8_t filt;                   /* the word goes through the filter (ROUTE's V, a mode on): the chip's EXT IN */
         uint16_t word;
         const uint8_t *src;             /* the word's 4-bit samples (the stored ones, or SAM's render) and their count */
         uint32_t len;

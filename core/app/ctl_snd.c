@@ -280,23 +280,33 @@ int qd_msnd_take(qd_app_t *a, int t)
     return 1;
 }
 
-/* EvilGenius: the filter "machines" are the SID's modes (the popup on B4 held picks one; ALGORITHM steps them) */
-static const int16_t SND_MACH_FT[6] = {QD_QF_LP, QD_QF_BP, QD_QF_HP, QD_QF_NOTCH, QD_QF_LPBP, QD_QF_ALL};
+/* EvilGenius: the filter "machines" are the SID's eight modes, OFF first (the popup on B4 held picks one; PRESETS
+ * steps them). They were six: OFF and BP+HP were missing, so a sound with the filter off was named LOWPASS and the
+ * knob could not turn the filter off */
+static const int16_t SND_MACH_FT[QD_SND_NMACH] = {QD_QF_OFF, QD_QF_LP, QD_QF_BP, QD_QF_HP, QD_QF_NOTCH, QD_QF_LPBP,
+                                                  QD_QF_BPHP, QD_QF_ALL};
 int qd_snd_machine(int ftype)
 {
     int m;
-    for (m = 0; m < 6; m++)
+    for (m = 0; m < QD_SND_NMACH; m++)
         if (SND_MACH_FT[m] == ftype)
             return m;
     return 0;
 }
-const char *const QD_SND_MACHINE[6] = {"LOWPASS", "BANDPASS", "HIGHPASS", "NOTCH", "LP+BP", "ALL"};
-static const int8_t SND_FILTER_IDS[6][5] = {
-    {QD_QP_FREQ, QD_QP_RESO, QD_QP_FROUTE, QD_QP_FDEPTH, QD_QP_FTYPE}, {QD_QP_FREQ, QD_QP_RESO, QD_QP_FROUTE, QD_QP_FDEPTH, QD_QP_FTYPE},
-    {QD_QP_FREQ, QD_QP_RESO, QD_QP_FROUTE, QD_QP_FDEPTH, QD_QP_FTYPE}, {QD_QP_FREQ, QD_QP_RESO, QD_QP_FROUTE, QD_QP_FDEPTH, QD_QP_FTYPE},
-    {QD_QP_FREQ, QD_QP_RESO, QD_QP_FROUTE, QD_QP_FDEPTH, QD_QP_FTYPE}, {QD_QP_FREQ, QD_QP_RESO, QD_QP_FROUTE, QD_QP_FDEPTH, QD_QP_FTYPE}};
-static const char *const SND_FILTER_LAB[6][2] = {{"RESO", "ROUTE"}, {"RESO", "ROUTE"}, {"RESO", "ROUTE"},
-                                                 {"RESO", "ROUTE"}, {"RESO", "ROUTE"}, {"RESO", "ROUTE"}};
+const char *const QD_SND_MACHINE[QD_SND_NMACH] = {"OFF", "LOWPASS", "BANDPASS", "HIGHPASS", "NOTCH", "LP+BP", "BP+HP",
+                                                  "ALL"};
+static const int8_t SND_FILTER_IDS[QD_SND_NMACH][5] = {
+    {QD_QP_FREQ, QD_QP_RESO, QD_QP_FROUTE, QD_QP_FDEPTH, QD_QP_FTYPE},
+    {QD_QP_FREQ, QD_QP_RESO, QD_QP_FROUTE, QD_QP_FDEPTH, QD_QP_FTYPE},
+    {QD_QP_FREQ, QD_QP_RESO, QD_QP_FROUTE, QD_QP_FDEPTH, QD_QP_FTYPE},
+    {QD_QP_FREQ, QD_QP_RESO, QD_QP_FROUTE, QD_QP_FDEPTH, QD_QP_FTYPE},
+    {QD_QP_FREQ, QD_QP_RESO, QD_QP_FROUTE, QD_QP_FDEPTH, QD_QP_FTYPE},
+    {QD_QP_FREQ, QD_QP_RESO, QD_QP_FROUTE, QD_QP_FDEPTH, QD_QP_FTYPE},
+    {QD_QP_FREQ, QD_QP_RESO, QD_QP_FROUTE, QD_QP_FDEPTH, QD_QP_FTYPE},
+    {QD_QP_FREQ, QD_QP_RESO, QD_QP_FROUTE, QD_QP_FDEPTH, QD_QP_FTYPE}};
+static const char *const SND_FILTER_LAB[QD_SND_NMACH][2] = {{"RESO", "ROUTE"}, {"RESO", "ROUTE"}, {"RESO", "ROUTE"},
+                                                            {"RESO", "ROUTE"}, {"RESO", "ROUTE"}, {"RESO", "ROUTE"},
+                                                            {"RESO", "ROUTE"}, {"RESO", "ROUTE"}};
 const char *qd_snd_label(const qd_app_t *a, int page, int k)
 {
     const int8_t *ids = qd_snd_ids(a, page);
@@ -375,8 +385,13 @@ const int8_t *qd_snd_ids(const qd_app_t *a, int page)
     return snd_now(a, pg->alt_if) ? pg->alt : pg->id;
 }
 
-/* the editor's knob slots: KNOB 1..4, ALGORITHM */
-static const uint8_t SND_KNOB[5] = {QD_K_1, QD_K_2, QD_K_3, QD_K_4, QD_K_ALGO};
+/* the editor's knob slots: KNOB 1..4, PRESETS (2026-11-13, owner: ALGORITHM the step cursor, as on the Home views;
+ * the pages' fifth values on PRESETS; a page without one: PRESETS turns KNOB 1's value) */
+static const uint8_t SND_KNOB[5] = {QD_K_1, QD_K_2, QD_K_3, QD_K_4, QD_K_PRESETS};
+int qd_snd_fifth(const qd_app_t *a, int page)          /* the page has a fifth value (PRESETS turns it) */
+{
+    return qd_snd_ids(a, page)[4] >= 0 || QD_SND_PAGES[page].draw == UI_SD_MOD;
+}
 
 /* P-LOCK's hook: a lock table a page (built once from the pages; the knobs' own takeover none: the page shows it) */
 static qd_lockknob_t SND_LOCKS[6];                   /* (E2: built for the page as it is now) */
@@ -393,9 +408,12 @@ const qd_lockscreen_t *qd_snd_lock_screen(const qd_app_t *a, int page)
             SND_LOCKS[n].id = ids[k];
             SND_LOCKS[n++].tk = QD_TK_NONE;
         }
-    SND_LOCKS[n].knob = QD_K_PRESETS;                   /* PRESETS: the sound lock, as everywhere */
-    SND_LOCKS[n].id = QD_LOCK_SOUND;
-    SND_LOCKS[n++].tk = QD_TK_PRESET;
+    if (qd_msnd_is(a->model.t[a->sel].patch)) {        /* PRESETS: the sound lock on a MIDI track's page (2026-11-13,
+                                                         * owner: the editor's PRESETS a value of the page) */
+        SND_LOCKS[n].knob = QD_K_PRESETS;
+        SND_LOCKS[n].id = QD_LOCK_SOUND;
+        SND_LOCKS[n++].tk = QD_TK_PRESET;
+    }
     SND_SCREEN.name = qd_msnd_is(a->model.t[a->sel].patch) ? "MIDI" : QD_SND_PAGES[page].name;
     SND_SCREEN.n = n;
     SND_SCREEN.k = SND_LOCKS;
@@ -408,7 +426,7 @@ int qd_snd_keys(const qd_app_t *a)                     /* (2026-11-10: a B11 cli
 {
     const int l = a->ui.latch;
     return a->ui.mode == QD_MODE_STEP && a->ui.ekeys &&
-           (!l || l == QD_LATCH_SND || l == QD_LATCH_FX || l == QD_LATCH_MIX || l == QD_LATCH_TOOLS);
+           (!l || l == QD_LATCH_SND || l == QD_LATCH_FX || l == QD_LATCH_MIX);   /* (2026-11-13: not TOOLS: the steps) */
 }
 int qd_keys_on(const qd_app_t *a) { return a->ui.mode == QD_MODE_KEYS || qd_snd_keys(a); }
 
@@ -447,15 +465,8 @@ void qd_keys_leds(const qd_app_t *a, uint8_t *key)
         } else {
             n = QD_NOTE0 + i + 12 * a->oct;
         }
-        if (((a->keys_held >> i) & 1u) || (n >= 0 && n < 128 && notes[n]))   /* (2026-11-11, owner: a note sounding
-                                                         * lights the key of its own pitch, not every key that plays it) */
-            key[i] = QD_LED_LIT;
-        else if (n >= 0 && n < 128 && ((n % 12) + 12) % 12 == rt)
-            key[i] = QD_LED_ROOT;
-        else if (n >= 0 && n < 128 && qd_scale_has(sc, rt, n))
-            key[i] = QD_LED_SCALE;
-        else
-            key[i] = QD_LED_OFF;
+        key[i] = (uint8_t)qd_key_led(a, i, n, notes, sc, rt);   /* (2026-11-11, owner: a note sounding lights the key
+                                                         * of its own pitch, not every key that plays it) */
     }
 }
 
@@ -468,7 +479,7 @@ void qd_snd_button(qd_app_t *a)
         qd_latch_close(a);                              /* (2026-11-10: the keys stay as they are, a global flag) */
         return;
     }
-    qd_latch_open(a, QD_LATCH_SND);
+    qd_page_open(a, QD_LATCH_SND, QD_PO_OVER);
     u->snd_knob = -1;
 }
 
@@ -494,7 +505,9 @@ void qd_snd_lfo_key(qd_app_t *a, int n, int down)
     if (u->snd_lk != n + 1)
         return;
     u->snd_lk = 0;
-    if (!u->snd_lk_used) {                              /* a tap: the LFO's page, again its WAVE page, again back */
+    if (!u->snd_lk_used && a->ms - u->snd_lk_ms < QD_TAP_MS) {   /* a quick click: the LFO's page, again its WAVE
+                                                         * page, again back (2026-11-13, owner: held is the mapping,
+                                                         * never the page) */
         const int p0 = snd_lfo_page(n);
         u->snd_page = u->snd_page == p0 ? p0 + 1 : p0;
         u->snd_knob = -1;
@@ -591,7 +604,7 @@ static void snd_pair(qd_app_t *a, int d, int fine)
             const int c = snd_pair_step(b1, b2, d, fine);
             if (qd_lock_set(qd_ctl_pat(a), a->sel, s, QD_QP_RB1, c / SND_NRCB) == QD_EFULL ||
                 qd_lock_set(qd_ctl_pat(a), a->sel, s, QD_QP_RB2, c % SND_NRCB) == QD_EFULL) {
-                qd_ctl_confirm(a, "NO ROOM", "for locks: the pattern has 1024");
+                qd_ctl_no_room(a);
                 return;
             }
         }
@@ -633,7 +646,7 @@ static void snd_put(qd_app_t *a, int id, int v)
         int i;
         for (i = 0; i < u->nheld; i++)
             if (qd_lock_set(qd_ctl_pat(a), a->sel, u->held[i], id, v) == QD_EFULL) {
-                qd_ctl_confirm(a, "NO ROOM", "for locks: the pattern has 1024");
+                qd_ctl_no_room(a);
                 return;
             }
         return;
@@ -726,8 +739,8 @@ void qd_snd_mod_key(qd_app_t *a, int down)
     if (u->snd_lk != 4)
         return;
     u->snd_lk = 0;
-    if (!u->snd_lk_used)
-        qd_snd_black(a, 0);                             /* (a tap: B1's group, its next page) */
+    if (!u->snd_lk_used && a->ms - u->snd_lk_ms < QD_TAP_MS)
+        qd_snd_black(a, 0);                             /* (a quick click: B1's group, its next page; held: never) */
 }
 void qd_snd_mod_src(qd_app_t *a, int w)
 {
@@ -737,18 +750,18 @@ void qd_snd_mod_src(qd_app_t *a, int w)
     a->ui.snd_lk_used = 1;
 }
 
-const int8_t QD_SND_MENU[6] = {0, 1, 2, 3, 4, 5};
-int qd_snd_machine_pos(const qd_app_t *a)               /* the machine's place in the menu (0..5) */
+const int8_t QD_SND_MENU[QD_SND_NMACH] = {0, 1, 2, 3, 4, 5, 6, 7};
+int qd_snd_machine_pos(const qd_app_t *a)               /* the machine's place in the menu */
 {
     const int m = qd_snd_machine(snd_now(a, QD_QP_FTYPE));
     int pos = 0;
-    while (pos < 5 && QD_SND_MENU[pos] != m)
+    while (pos < QD_SND_NMACH - 1 && QD_SND_MENU[pos] != m)
         pos++;
     return pos;
 }
 static void snd_machine_at(qd_app_t *a, int pos)        /* (LEGACY: LP12, its default TYPE; through the dip) */
 {
-    pos = pos < 0 ? 0 : pos > 5 ? 5 : pos;
+    pos = pos < 0 ? 0 : pos > QD_SND_NMACH - 1 ? QD_SND_NMACH - 1 : pos;
     if (pos != qd_snd_machine_pos(a))
         snd_put(a, QD_QP_FTYPE, SND_MACH_FT[(int)QD_SND_MENU[pos]]);
 }
@@ -786,7 +799,7 @@ int qd_snd_fpop_key(qd_app_t *a, int b)                 /* B1..B6 with the popup
 {
     if (!a->ui.snd_fpop)
         return 0;
-    if (b >= 0 && b < 6)
+    if (b >= 0 && b < QD_SND_NMACH)
         snd_machine_at(a, b);
     return 1;
 }
@@ -817,12 +830,14 @@ int qd_snd_knob(qd_app_t *a, int knob, int d)
         u->snd_knob = -1;
         return 1;
     }
-    if (knob == QD_K_PRESETS) {
-        if (u->nheld)
-            return qd_step_lock_knob(a, knob, d);       /* the sound lock */
-        return 0;                                       /* (the track's preset: the step view's) */
+    if (knob == QD_K_ALGO) {                            /* 2026-11-13 (owner): the step cursor (fully left: LIVE) */
+        qd_step_cursor(a, d);
+        return 1;
     }
-    if (QD_SND_PAGES[u->snd_page].draw == UI_SD_MOD && knob == QD_K_ALGO && !u->snd_lk) {   /* E4: the slot */
+    if (knob == QD_K_PRESETS && !qd_snd_fifth(a, u->snd_page))
+        knob = QD_K_1;                                  /* (2026-11-13, owner: no fifth value: PRESETS turns KNOB 1's,
+                                                         * never the preset) */
+    if (QD_SND_PAGES[u->snd_page].draw == UI_SD_MOD && knob == QD_K_PRESETS && !u->snd_lk) {   /* E4: the slot */
         u->mod_slot = u->mod_slot + (d > 0 ? 1 : -1) < 0 ? 0 : u->mod_slot + (d > 0 ? 1 : -1) > QD_NMOD - 1
                     ? QD_NMOD - 1 : u->mod_slot + (d > 0 ? 1 : -1);
         u->snd_knob = 4;
@@ -865,7 +880,7 @@ int qd_snd_knob(qd_app_t *a, int knob, int d)
     }
     if (id == QD_QP_FTYPE) {                            /* E2: ALGORITHM the machine, LEGACY's KNOB 3 its TYPE */
         const int cur = snd_cur(a, QD_QP_FTYPE);
-        if (knob == QD_K_ALGO) {
+        if (knob == QD_K_PRESETS) {
             const int pos = qd_snd_machine_pos(a);
             snd_machine_at(a, pos + (d > 0 ? 1 : -1));
             u->snd_fpop_ms = a->ms ? a->ms : 1u;        /* (P1.6g: the popup, a second after the last detent) */

@@ -85,7 +85,7 @@ typedef struct {
     uint32_t pos;                                       /* bytes made */
     uint32_t h;                                         /* their FNV-1a */
 } em_t;
-static void em_init(em_t *e, uint8_t *win, uint32_t woff, uint32_t wn)
+static __attribute__((noinline)) void em_init(em_t *e, uint8_t *win, uint32_t woff, uint32_t wn)
 {
     e->win = win, e->woff = woff, e->wn = wn, e->pos = 0, e->h = 2166136261u;
 }
@@ -102,7 +102,7 @@ static void em(em_t *e, const void *src, uint32_t n)
     }
     e->pos += n;
 }
-static void em8(em_t *e, uint32_t v)
+static __attribute__((noinline)) void em8(em_t *e, uint32_t v)
 {
     const uint8_t b = (uint8_t)v;
     em(e, &b, 1);
@@ -488,7 +488,7 @@ static void snd_now(const qd_app_t *a, int it, qd_sound_t *out)
 
 /* a pool slot's (key 1..QD_NSOUND) or a library place's (QD_SK_LIB + i) sound from its record */
 static void pool_cache(const qd_app_t *a, qd_sound_t *s);
-static void snd_from_rec(const qd_app_t *a, int key, qd_sound_t *s, const uint8_t *b, uint32_t len)
+static __attribute__((noinline)) void snd_from_rec(const qd_app_t *a, int key, qd_sound_t *s, const uint8_t *b, uint32_t len)
 {
     if (key < QD_SK_LIB) {
         if (len == 4 && b[0] == 'R' && b[1] == 1) {     /* P1.5w: a reference (resolved below) */
@@ -535,6 +535,11 @@ static uint32_t ser_hdr(const qd_app_t *a, uint8_t *b)
     }
     for (t = 0; t < QD_NTRACK; t++)                     /* 2026-10-26: the tracks' DRY (older records: the default) */
         b[o++] = a->model.t[t].mix.dry;
+    for (t = 0; t < QD_NTRACK; t++) {                   /* EvilGenius: the tracks' sends into the five rooms (older
+                                                         * records: none) */
+        memcpy(b + o, a->model.t[t].mix.room, QD_NROOM);
+        o += QD_NROOM;
+    }
     return o;
 }
 
@@ -579,6 +584,12 @@ static int de_hdr(qd_app_t *a, int p, const uint8_t *b, uint32_t len, int apply)
         }
     for (t = 0; t < QD_NTRACK; t++)                     /* 2026-10-26: the tracks' DRY */
         a->model.t[t].mix.dry = o + (uint32_t)t < len ? (uint8_t)(b[o + t] & 127) : QD_MIX_DRY_DEFAULT;
+    o += QD_NTRACK;
+    for (t = 0; t < QD_NTRACK; t++) {                   /* EvilGenius: the tracks' rooms */
+        int k;
+        for (k = 0; k < QD_NROOM; k++)
+            a->model.t[t].mix.room[k] = o + (uint32_t)(t * QD_NROOM + k) < len ? (uint8_t)(b[o + t * QD_NROOM + k] & 127) : 0;
+    }
     return 1;
 }
 
@@ -590,9 +601,13 @@ static uint32_t ser_set(const qd_app_t *a, uint8_t *b)
     b[o++] = (uint8_t)a->per.proj, b[o++] = (uint8_t)a->seq.cur, b[o++] = (uint8_t)a->sel;
 #if QD_PKG_BLE
     b[o++] = (uint8_t)((a->ui.boost ? 0x80 : 0) | (a->ui.clk_out ? 0 : 0x40) | (a->ui.cc_out ? 0 : 0x20) |
-                       (a->ui.ble_off ? 0x10 : 0));     /* (2026-10-27, the Bluetooth package: bit 4 BLUETOOTH off) */
+                       (a->ui.ble_off ? 0x10 : 0) | (a->ui.voice_mode == QD_VOICE_OFF ? 0x08 : 0) |
+                       (a->ui.voice_mode == QD_VOICE_ALWAYS ? 0x04 : 0));     /* (2026-10-27, the Bluetooth package: bit 4 BLUETOOTH off) */
 #else
-    b[o++] = (uint8_t)((a->ui.boost ? 0x80 : 0) | (a->ui.clk_out ? 0 : 0x40) | (a->ui.cc_out ? 0 : 0x20));
+    b[o++] = (uint8_t)((a->ui.boost ? 0x80 : 0) | (a->ui.clk_out ? 0 : 0x40) | (a->ui.cc_out ? 0 : 0x20) |
+                       (a->ui.voice_mode == QD_VOICE_OFF ? 0x08 : 0) | (a->ui.voice_mode == QD_VOICE_ALWAYS ? 0x04 : 0));
+                                                        /* (EvilGenius: bit 3 THE VOICE off, bit 2 always; neither:
+                                                         * only while stopped) */
 #endif
     b[o++] = (uint8_t)(a->ui.view != QD_VIEW_OVERVIEW ? a->ui.view : a->ui.ov_back >= 0 ? a->ui.ov_back : QD_VIEW_EDIT),
     b[o++] = (uint8_t)a->ui.follow;   /* (2026-11-11: OVERVIEW is SEL's, never saved as the Home view) */   /* (2026-10-26: b[5]'s top bit BOOST; its low bits
@@ -604,7 +619,9 @@ static uint32_t ser_set(const qd_app_t *a, uint8_t *b)
         memcpy(b + o, &v, 2), o += 2;
     }
     b[o++] = (uint8_t)a->ui.lmode;                      /* P1.5b: the latch mode */
-    b[o++] = (uint8_t)(1 | (a->ui.home_lock ? 2 : 0));   /* P1.5s: the view is the user's (EDIT the default since);
+    b[o++] = (uint8_t)(1 | (a->ui.home_lock ? 2 : 0) | (uint32_t)(a->ui.voice_lvl + 1) << 2);   /* (EvilGenius: bits 2..6
+                                                         * THE VOICE's level + 1; 0: a record before it, full) */
+    (void)0;   /* P1.5s: the view is the user's (EDIT the default since);
                                                          * 2026-11-10: bit 1 the Home view LOCKed (an older FIZZ
                                                          * reads only the length: compatible both ways) */
     return o;
@@ -629,6 +646,7 @@ static int de_set(const uint8_t *b, uint32_t len, int *proj, int *pat, int *sel,
     a->ui.follow = b[7] != 0;
     a->ui.boost = (b[5] & 0x80u) != 0;
     a->ui.clk_out = !(b[5] & 0x40u), a->ui.cc_out = !(b[5] & 0x20u);
+    a->ui.voice_mode = (uint8_t)(b[5] & 0x08u ? QD_VOICE_OFF : b[5] & 0x04u ? QD_VOICE_ALWAYS : QD_VOICE_STOPPED);
 #if QD_PKG_BLE
     a->ui.ble_off = (b[5] & 0x10u) != 0;                /* (bit 4: 0 in every record before it, and the USB package's:
                                                          * ON) */
@@ -644,6 +662,10 @@ static int de_set(const uint8_t *b, uint32_t len, int *proj, int *pat, int *sel,
         qd_fx_set(QD_FXP_RDRY, 127), qd_fx_set(QD_FXP_RSPARE1, 64), qd_fx_set(QD_FXP_RSPARE2, 64);
     }
     a->ui.lmode = len >= 10u + 2u * nf ? b[9 + 2 * nf] % 2 : QD_LMODE_MODES;
+    a->ui.voice_lvl = (uint8_t)(len == 11u + 2u * nf && (b[10 + 2 * nf] >> 2 & 31u)
+                                    ? ((b[10 + 2 * nf] >> 2 & 31u) - 1u > QD_VOICE_LVL_MAX ? QD_VOICE_LVL_MAX
+                                                                                         : (b[10 + 2 * nf] >> 2 & 31u) - 1u)
+                                    : QD_VOICE_LVL_MAX);
     a->ui.home_lock = len == 11u + 2u * nf && (b[10 + 2 * nf] & 2u);   /* (2026-11-10: else unlocked) */
     return 1;
 }
@@ -730,7 +752,7 @@ static uint32_t item_hash(const qd_app_t *a, int it, uint32_t *len)
         *len = e.pos;
     return em_hash(&e);
 }
-static qd_store_t *item_store(qd_app_t *a, int it)
+static __attribute__((noinline)) qd_store_t *item_store(qd_app_t *a, int it)
 {
     return it >= QD_PI_LIB && it != QD_PI_MFX ? &a->per.lib_st : &a->per.prj_st;
 }
@@ -1917,7 +1939,7 @@ int qd_pool_users(const qd_app_t *a, int k, uint8_t *tracks, int *steps)
  * written): the steps locking it (on: those sounding; tracks: theirs), its track sounds' sources; rec: each lock kept
  * for undo. -1: a record it cannot read (read it in) */
 static qd_store_t *pat_store(qd_app_t *a);
-static int rd_skip(rd_t *r, uint32_t n)
+static __attribute__((noinline)) int rd_skip(rd_t *r, uint32_t n)
 {
     if (r->pos + n > r->len)
         return 0;
@@ -2689,7 +2711,7 @@ static int sw_prog(void *c, uint32_t off, const void *src, uint32_t n)
     return 0;
 }
 #endif
-static qd_store_t *pat_store(qd_app_t *a)
+static __attribute__((noinline)) qd_store_t *pat_store(qd_app_t *a)
 {
     if (a->per.on)
         return &a->per.prj_st;

@@ -89,10 +89,13 @@ def jieli(rel):
 
 _tc = fb.tc
 SINGLE = "--single-core" in sys.argv[1:]        # the single-core package (firmware/DUALCORE.md)
-BLE_PKG = "--ble" in sys.argv[1:]               # the Bluetooth package (2026-10-27; firmware/BUDGET.md)
+# EvilGenius (the owner, 2026-11-13): ONE package for the unit, the Bluetooth one. FIZZ has two (USB, and Bluetooth
+# with --ble); here the unit's build is the Bluetooth package with or without --ble (the host simulator and the
+# browser build stay the plain core unless --ble is given), and there is no single-core package
+BLE_PKG = "--ble" in sys.argv[1:] or not any(a in sys.argv[1:] for a in ("--host", "--web"))
 BLE_FB_LO = int(os.environ.get("FZ_BLE_FB_LO", "6"))   # (the Bluetooth package: the 8-bit frame's rows in RAM)
-if BLE_PKG and SINGLE:
-    raise SystemExit("--ble: the Bluetooth package is the dual-core one (no single-core Bluetooth package)")
+if SINGLE:
+    raise SystemExit("--single-core: EvilGenius has one package, the dual-core Bluetooth one")
 # P2.15i: --define NAME=VALUE (repeatable): a core option for every unit (e.g. the pacing flags, core/qd_config.h), named
 # in stats line 8 (defines=); --tag NAME: the package's name gets -NAME (fizz-NAME.fwsc)
 EXTRA, TAG, _rest = [], "", []
@@ -134,8 +137,10 @@ if SINGLE and "FM1B_POOL_SPARE" not in os.environ:
 # P2.15g (the unit): the effects' seven hot functions in RAM (the drawing's set in their place gained the drawing ~3 %
 # and cost the interrupt more than the pipeline hides: cpu_isr 45-51 -> 61). FZ_HOT_DRAW=1 builds the drawing's set
 # instead (P2.15f)
-HOT = {"build_units_c_qd_fx.o": ["xf_reverb", "xf_delay", "out_master", "xq_block", "xc_block",
-                                 "fz_real_qd_fx_block", "qd_fx_block"]}
+# (EvilGenius: its effects are qd_fx.c's own rooms, not ChoralRoot's: the names its unit does not have are skipped (?),
+# so what it has of them goes to RAM and the rest runs from the flash)
+HOT = {"build_units_c_qd_fx.o": ["?xf_reverb", "?xf_delay", "?out_master", "?xq_block", "?xc_block",
+                                 "?fz_real_qd_fx_block", "?qd_fx_block"]}
 if os.environ.get("FZ_HOT_DRAW") == "1":
     HOT = {"build_units_c_qd_gfx_fast.o": ["qd_dl_play", "text_draw", "fill_path", "paint_setup", "acc_edge",
                                            "qd_text_mask_rows", "quad_dev", "rect_dev"]}
@@ -170,11 +175,11 @@ if VARIANT == "o2ram":                           # (the render's 22.6 KB at -O2 
 BEGIN_RAM = not SINGLE and os.environ.get("FZ_BEGIN_RAM", "1") == "1"
 DEFS.append(f"-DFZ_BEGIN_RAM={int(BEGIN_RAM)}")    # (stats line 8: begin_ram=)
 if BEGIN_RAM:
-    HOT.update({"build_units_c_player.o": ["qd_player_block", "fz_real_qd_player_block", "?qd_player_event"],
-                "build_units_c_app.o": ["qd_app_block_begin", "?qd_app_tempo"],
-                "build_units_c_pool.o": ["qd_pool_block_begin"],
+    HOT.update({"build_units_c_player.o": ["?qd_player_block", "?fz_real_qd_player_block", "?qd_player_event"],
+                "build_units_c_app.o": ["?qd_app_block_begin", "?qd_app_tempo"],
+                "build_units_c_pool.o": ["?qd_pool_block_begin"],
                 "build_units_c_seq.o": ["?qd_seq_bpm"],
-                "build_units_c_quad_voice.o": ["qd_quad_owner_block"]})
+                "build_units_c_quad_voice.o": ["?qd_quad_owner_block"]})
 # the Bluetooth package: its radio needs ~4.7 KB of the RAM code region (the radio's trim, 3.6 KB, must run from RAM;
 # the packed reverb is ~0.6 KB longer), so the least hot of FIZZ's RAM code stays in the flash there: the master
 # filter (xq_block: runs only while the filter is on), the chorus's taps (xc_block: only while the chorus holds
@@ -206,7 +211,10 @@ if SINGLE and VARIANT not in ("xip", "o2"):      # (o2: the render at -O2 does n
 # blob two sectors shorter). Balance (2026-10-27): the slot ~4.4 KB free, the first blob ~1.5 KB, the second ~2.3 KB
 # 2026-11-10: and ENGINE's side and FM+MIDI's main-loop functions (their own sections: -ffunction-sections), 1.3 KB:
 # the switch, a load's side, the 1 ms sync's (qd_app_sounds, in the locked ms: the main loop), REC + AUTOMATION's send
-BLE_X2 = ["*/o2/build_units_c_ui_layer.o(.text* .rodata*)", "*(.qd_xdata.qf_bits_18_300 .qd_xdata.qf_g_18_300)",
+# (EvilGenius: the held step's screens, the mix and the FX tower, the takeovers and the scenes go there too: drawing
+# only, main loop only; the slot was 9 KB over with the SID's tables and SAM in it)
+BLE_X2 = ["*/o2/build_units_c_ui_layer.o(.text* .rodata*)", "*/o2/build_units_c_ui_held.o(.text* .rodata*)",
+          "*/o2/build_units_c_ui_tracks.o(.text* .rodata*)", "*/o2/build_units_c_ui_turn.o(.text* .rodata*)", "*(.qd_xdata.qf_bits_18_300 .qd_xdata.qf_g_18_300)",
           "*/o2/build_units_c_ctl_latch.o(.text.qd_msnd_engine .text.side_keep .text.qd_trk_engine "
           ".text.qd_trk_engine_set .text.qd_msnd_put .text.qd_msnd_take .text.qd_side_clear)",
           "*/o2/build_units_c_quad_voice.o(.text.qd_quad_side_pack .text.qd_quad_side_unpack .text.qd_msnd_over)",
@@ -222,8 +230,9 @@ BLE_SLOT = {"build_units_c_ui_layer.o": ["ui_geek_draw", "ui_menu_draw"]}
 # (2026-11-11, OVERVIEW's black keys: the tracks' sweep, the mode's band, M / S in ui_ov.c: the second blob 1,020 B
 # over: the SHIFT screen's, the mix's and OVERVIEW's band models (fill_shift, fill_mix, fill_ovband) back in the slot,
 # which ui_held.o and ui_turn.o at -Oz made room for, below)
-BLE_X2_FN = {"build_units_c_view.o": ["qd_view_ov", "fill_fx"]}   # (2026-11-13: qd_ctl_ov_knob back in the slot: the
-                                                         # blob 28 B over with view.o at -Oz)
+BLE_X2_FN = {"build_units_c_view.o": ["fill_fx", "pr_fill", "fill_shift"]}   # (2026-11-13, the MIDI FX knobs: 224 B
+                                                         # over: the browser's and SHIFT's fills too. 2026-11-13, the
+                                                         # drawing back at -Os: OVERVIEW's model back in the slot)
 # (2026-11-10) units compiled at -Oz, not -Os, on the Bluetooth package: the screens' unit (ui_layer.o: the sound
 # editor, MIDI FX, the browser, the typewriter, the tools, Geek Out, OVERVIEW, the layer and SHIFT screens), main-loop
 # drawing logic only (never the audio interrupt, core 1 or under the audio lock; the raster, qd_gfx_fast.o, stays
@@ -236,29 +245,26 @@ BLE_X2_FN = {"build_units_c_view.o": ["qd_view_ov", "fill_fx"]}   # (2026-11-13:
 # 1,472 free before them): the idle screen's unit (ui_idle.o, 1,352 B) and the drawing's helpers (ui_kit.o, 1,636 B: the
 # rounded boxes, the text's width, the icons, the keybed; ui_itoa with them, a key's band and labels) at -Oz too; with
 # the value preview merged beside them (272 B over): the picker's, the octave map's and the mixer pages' units too
-BLE_OZ = {"build_units_c_ui_layer.o", "build_units_c_ui_held.o", "build_units_c_ui_turn.o",
-          "build_units_c_ui_idle.o", "build_units_c_ui_kit.o",
-          "build_units_c_ui_picker.o", "build_units_c_ui_octave.o", "build_units_c_ui_tracks.o",
-          "build_units_c_view.o",   # (2026-11-13, the step keyboard's second round: 1,040 B over; the views' models)
-          # (2026-11-13, round 3, the owner's OK: the controls' step and keys units: ~2 KB over)
-          "build_units_c_ctl_rec.o", "build_units_c_ctl_step.o", "build_units_c_ctl_latch.o",
-          *filter(None, os.environ.get("FZ_BLE_OZ", "").split(","))}
-USB_OZ = {"build_units_c_ui_layer.o",   # (2026-11-13: the held screens back at -Os: -Oz made the EDIT view ~15 ms a frame
-          # slower playing (87 vs 72 ms, unit); the cold units at -Oz in their place: the idle screen, the pickers, the
-          # octave map, the mix's pages, the keys' recording and latch code)
-          "build_units_c_ui_idle.o", "build_units_c_ui_picker.o", "build_units_c_ui_octave.o",
-          "build_units_c_ctl_rec.o", "build_units_c_ctl_latch.o"}   # (not ui_tracks.o: it draws the Home views' rows and
-          # the mix; at -Oz every Home view drew ~10 ms slower, drawbench on the unit)
-# (2026-11-12, the orange keys' modes: the single-core package's slot 2,476 B over, 1,508 free before: ui_idle.o and
-# ui_kit.o at -Oz there too, as on the Bluetooth package; the USB package keeps ~2.2 KB free without them)
-SINGLE_OZ = USB_OZ | {"build_units_c_ui_held.o", "build_units_c_ui_kit.o",   # (+ the value preview: 316 B over)
-                      "build_units_c_ui_picker.o", "build_units_c_ui_octave.o", "build_units_c_ui_tracks.o",
-                      "build_units_c_ctl_rec.o", "build_units_c_ctl_step.o", "build_units_c_ctl_latch.o"}   # (round 3)
+# 2026-11-13 (the UI clean-up, docs/UI-REFACTOR-REVIEW.md): the drawing back at -Os on every package (ui_layer.o,
+# ui_held.o, ui_turn.o, ui_idle.o, ui_kit.o, ui_octave.o, ui_tracks.o, ui_keys.o, view.o: what draws or fills a frame);
+# the screens drawn seldom are FZ_COLD in the source (ui.h: minsize, -Oz function by function). The clean-up made the
+# room: the drawing's small helpers out of line (qd_line for the nine line helpers, noinline where -Os had copied a
+# helper into every caller), the dead takeovers gone. Only the controls (no drawing, main loop only) stay at -Oz.
+# ui_picker.o has no caller (the linker drops it). FZ_BLE_OZ=a.o,b.o adds units for a measure (FZ_MEASURE=1)
+OZ_CTL = {"build_units_c_ctl.o", "build_units_c_ctl_rec.o", "build_units_c_ctl_step.o", "build_units_c_ctl_latch.o",
+          "build_units_c_ctl_preview.o", "build_units_c_clip.o", "build_units_c_chord.o"}
+BLE_OZ = OZ_CTL | {"build_units_c_ui_idle.o",   # (the idle screen: nothing played on it; at -Os the slot
+                   # had 192 B left)
+                   *filter(None, os.environ.get("FZ_BLE_OZ", "").split(","))}
+USB_OZ = set(OZ_CTL)
+SINGLE_OZ = set(OZ_CTL)
 # .. and its RAM: the radio's heap and statics land in RAM (its heap must stay low: fm1-base misc.c, the radio's DMA
 # does not reach the pool's top), so FIZZ units' zero-initialised data move from RAM to the pool, whole (no
 # -fdata-sections): app.o's 8 KB; and the 8-bit frame's rows but two (BLE_FB_LO: 86 rows, 20,640 B)
-BLE_TO_POOL = ["build_units_c_app.o"]
-BLE_TO_NI = ["build_units_c_ctl_latch.o"]       # (NOINIT's room the 8-bit frame's hashes left: FZ_FB_SEGS 1)
+# (EvilGenius: the sounds' and the player's few hundred bytes to the pool too, SAM's renderer's and reciter's tables to
+# NOINIT: the RAM region was 224 B over with SAM on board)
+BLE_TO_POOL = ["build_units_c_app.o", "build_units_c_sounds.o", "build_units_c_player.o"]
+BLE_TO_NI = ["build_units_c_ctl_latch.o", "build_units_c_render.o", "build_units_c_reciter.o"]       # (NOINIT's room the 8-bit frame's hashes left: FZ_FB_SEGS 1)
 
 
 def ble_ld(ld):

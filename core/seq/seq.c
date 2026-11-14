@@ -491,7 +491,7 @@ static void fill_rec(const qd_seq_t *s, qd_trec_t *r, int t, int step, const qd_
             r->patch[id] = lk[k].value;
             r->at.own[id >> 5] |= 1u << (id & 31);
         } else if (id < QD_LK_N) {
-            r->at.mixm |= (uint8_t)(1u << (id - QD_LK_PAN));
+            r->at.mixm |= (uint16_t)(1u << (id - QD_LK_PAN));
             r->at.mixv[id - QD_LK_PAN] = lk[k].value;
         }
     }

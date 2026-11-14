@@ -121,6 +121,9 @@ static const char *const VOX_WORD_PHON[VOX_NWORDS] = {
     "DIHLIY4TIHD",
 };
 static const uint8_t VOX_WORD_BANK[VOX_NWORDS] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5};
+/* (EvilGenius: SAM speaks the words on the unit from VOX_WORD_PHON; their samples as rendered offline are no longer
+ * built in: 89 KB of flash. -DEG_VOX_STORED keeps them for a comparison) */
+#ifdef EG_VOX_STORED
 static const uint32_t VOX_WORD_OFF[VOX_NWORDS] = {0, 2189, 3268, 5203, 7222, 9567, 11528, 12892, 14766, 16042, 17944, 20293, 21873, 22887, 24530, 26401, 28401, 30430, 32525, 34937, 36174, 38265, 39933, 41361, 44086, 46301, 47812, 50413, 53600, 55536, 56720, 58324, 59243, 60164, 61071, 62104, 63483, 64714, 66330, 67219, 68519, 69471, 70641, 72418, 74318, 75967, 77807, 79201, 80117, 81068, 82627, 84467, 86078, 87696};
 static const uint32_t VOX_WORD_LEN[VOX_NWORDS] = {4378, 2158, 3870, 4038, 4690, 3922, 2728, 3748, 2552, 3804, 4698, 3160, 2028, 3286, 3742, 4000, 4058, 4190, 4824, 2474, 4182, 3336, 2856, 5450, 4430, 3022, 5202, 6374, 3872, 2368, 3208, 1838, 1842, 1814, 2066, 2758, 2462, 3232, 1778, 2600, 1904, 2340, 3554, 3800, 3298, 3680, 2788, 1832, 1902, 3118, 3680, 3222, 3236, 3488};   /* samples */
 static const uint8_t VOX_DATA[89440] = {
@@ -3852,6 +3855,7 @@ static const uint8_t VOX_DATA[89440] = {
     0x77,0x88,0x88,0x98,0x88,0x88,0x89,0x88,0x99,0x88,0x98,0x88,0x88,0x88,0x88,0x88,0x88,0x88,0x88,0x88,0x88,0x88,0x88,0x88,
     0x88,0x88,0x88,0x88,0x88,0x88,0x88,0x88,0x88,0x88,0x88,0x88,0x88,0x88,0x88,0x88,
 };
+#endif
 #define VOX_W_INTRUDER 0u
 #define VOX_W_ALERT 1u
 #define VOX_W_WARNING 2u

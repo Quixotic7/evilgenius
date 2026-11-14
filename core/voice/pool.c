@@ -81,7 +81,7 @@ static void start(qd_pool_t *p, int i, int track, qd_quad_owner_t *o, int note, 
     v->u = *u;                                          /* (2026-10-26: its unison place) */
     v->q.udet = u->det;
     if (u->panon) {
-        v->at.mixm |= (uint8_t)(1u << QD_VMIX_PAN);
+        v->at.mixm |= (uint16_t)(1u << QD_VMIX_PAN);
         v->at.mixv[QD_VMIX_PAN] = u->pan;
     }
     if (v->pend_gfrom >= 0) {                           /* (E1: the glide settled while it waited) */
@@ -528,10 +528,10 @@ static void set_mix1(qd_pool_t *p, int i, int k, int value)
 {
     qd_pool_voice_t *v = &p->v[i];
     value = k == QD_VMIX_PAN ? (value < -64 ? -64 : value > 63 ? 63 : value) : (value < 0 ? 0 : value > 127 ? 127 : value);
-    v->at.mixm |= (uint8_t)(1u << k);
+    v->at.mixm |= (uint16_t)(1u << k);
     v->at.mixv[k] = (int16_t)value;
     if (v->pend) {
-        v->pend_at.mixm |= (uint8_t)(1u << k);
+        v->pend_at.mixm |= (uint16_t)(1u << k);
         v->pend_at.mixv[k] = (int16_t)value;
     }
 }

@@ -32,10 +32,19 @@ extern "C" {
 #define UI_G3 0x2e2c9bu
 extern const qd_rgb UI_K[4];
 
+/* (2026-11-13) a screen drawn seldom (menus, browser, TOOLS, ...): optimised for size, whatever its unit's flags
+ * (clang's minsize: what -Oz is, function by function), so its unit can stay at -Os for the screens drawn often */
+#if defined(__clang__)
+#define FZ_COLD __attribute__((minsize))
+#else
+#define FZ_COLD __attribute__((cold))
+#endif
+
 #define UI_TAU 6.28318530718f
 #define UI_PI 3.14159265359f
 float ui_ease(float x);                 /* smoothstep on 0..1, clamped (line.html's ease) */
 char *ui_itoa(char *out, int n);        /* n in decimal (out: 12 bytes) */
+char *ui_cat(char *d, const char *s);   /* s (0: nothing) after d's end; d */
 
 /* ---- the kit */
 float ui_T(const char *s, float x, float y, float size, int weight, float ls, qd_rgb col, int align);
@@ -60,6 +69,7 @@ void ui_idle_word(float t, float *solid, float *parts);
 
 /* ---- the kit's drawings shared by screens (line.html's box, head, keyboard) */
 void ui_box(float x, float y, int n, qd_rgb col);   /* the track's number in a little box */
+void ui_step_frame(void);               /* the magenta frame round the screen: a step selected (UI_STEP_FRAME) */
 /* the top line: [n] left .......... right (n 0: no box) */
 void ui_head(const char *left, const char *right, int n, qd_rgb lcol, qd_rgb rcol);
 float ui_head_x(int n);                 /* P1.6d: where ui_head's left text starts (the track's box, its kind's icon) */
@@ -108,6 +118,11 @@ typedef struct {
     uint8_t page_trig[16];              /* rec 1: the cursor's page: 1 a step with a trig (row: the page edited's) */
     int row;                            /* 2026-11-10: B11 held or steps selected (rec 0): the page edited's row */
     uint16_t sel;                       /* .. its selected steps, outlined */
+    int ksteps;                         /* 2026-11-13 (owner): a B11 click's W keys the steps (the row up top): the
+                                         * keybed gives way to the ten black keys that play, an orange grid (ui_rec_key) */
+    uint8_t bst[10];                    /* .. their states (ui_rec_key's: 1 in the scale, 2 a root, +4 sounding) */
+    int play;                           /* the playing step on the page (0..15), -1 none */
+    int framed;                         /* 2026-11-13: a step selected (any page): the held step's frame */
     int quantize;                       /* rec 2: quantize is on ("Q" by the badge) */
     int scale;                          /* P1.3b: the track's scale (not chromatic: its name by the octave) */
     const char *scale_name;
@@ -154,10 +169,11 @@ void ui_picker_draw(const ui_picker_t *v);
  *           CHORUS   three wavy lines at RATE, as deep as DEPTH, WIDTH their spread apart, SEND in
  *           MASTER   the master filter's response: LOW CUT, HIGH CUT, their SLOPE, ON / OFF */
 typedef struct {
-    int sel, page;                      /* the selected track; 0 the faders, 1 the sends */
+    int sel, page;                      /* the selected track; 0 the faders, 1 the sends, 2 FX MIX */
     struct {
         const char *name;
         int level, pan, chorus, delay, reverb;   /* 0..127, -64..63 */
+        int dry;                        /* EvilGenius: the track's DRY, 0..127 (SENDS' KNOB 4) */
         int mute;                       /* 1 not heard (muted, or another soloed), 2 soloed */
         float meter;                    /* its voices' level now, 0..1 */
     } tr[UI_NTRACK];
@@ -166,13 +182,19 @@ typedef struct {
     int nsel;                           /* P1.6h: .. how many (the head's magenta count; 0 none) */
     char ltxt[4][8];                    /* .. KNOB 1..4's values as chips in the head: */
     uint8_t locked[4], lockany[4];      /* .. locked on the step (filled), on some step of the track (outlined) */
+    /* EvilGenius, page 2, FX MIX: the five rooms on the whole mix (CRUSH ROBOT WARP GLITCH TV), each one's MIX 0..1
+     * and as words; KNOB 1..4 and PRESETS */
+    float room[5];
+    char room_txt[5][8];
+    uint8_t room_lk[5];                 /* .. 1: locked on the held step (a filled chip), 2: on some step (outlined) */
 } ui_mix_t;
 void ui_mix_draw(const ui_mix_t *v);
 enum { UI_FXD_DELAY, UI_FXD_DELAY2, UI_FXD_REVERB, UI_FXD_REVERB2, UI_FXD_CHORUS, UI_FXD_MASTER,
        UI_FXD_OVER,                     /* SENDS (2026-10-26; P1.5b's OVERVIEW): the current track's CHORUS, DELAY, REVERB
                                          * as three bars, the page's steps as a row at the foot (or the keyboard's keys) */
        UI_FXD_ROUTE,                    /* P1.5b: the chain (the bus, CHORUS, DELAY, REVERB, the filter, out), the feeds */
-       UI_FXD_CRUSH, UI_FXD_ROBOT, UI_FXD_WARP, UI_FXD_GLITCH, UI_FXD_TV };   /* EvilGenius's rooms on the mix */
+       UI_FXD_CRUSH, UI_FXD_ROBOT, UI_FXD_WARP, UI_FXD_GLITCH, UI_FXD_TV,
+       UI_FXD_MIXES };                  /* EvilGenius: FX MIX: the five rooms' wet levels (as the mix's third page) */   /* EvilGenius's rooms on the mix */
 typedef struct {
     const char *name;                   /* the page's */
     int draw, npg, ipg;                 /* UI_FXD_*, the effect's pages, this one's place */
@@ -192,7 +214,6 @@ typedef struct {
     int last;                           /* the knob turned last (0..3, -1) */
     const void *lane;                   /* SENDS (2026-10-26): the page's row at the foot (a ui_lane_t; 0: none) .. */
     int keys;                           /* .. the keyboard on (REC): the keys as plain cells instead .. */
-    uint16_t keys_down;                 /* .. the W keys down (bit w) .. */
     uint8_t kst[16];                    /* .. each W key as the sound editor's: 0 out, 1 in the scale, 2 a root; +4 sounding */
     float beat;                         /* .. seconds since the selected track's step was heard (-1: not following) .. */
     float flash;                        /* .. seconds since REVERB reached 100 % (-1: below it) */
@@ -204,6 +225,14 @@ typedef struct {
     int step;                           /* P1.6d: a step held (or the latch's selection): the sends lock (the frame) */
     int nsel;                           /* P1.6h: .. how many (the head's magenta count; 0 none) */
     uint8_t locked[4], lockany[4];      /* .. a cell locked on the step (a filled chip), on some step (outlined) */
+    /* EvilGenius, the FX tower's lift (the shaft at the left): the page's floor (0 the top: B1), the floors, which
+     * are heard (a send up, a room's MIX over 0), the ride from the floor left (-1 none; 0..1, 1 arrived) */
+    int floor, nfloor, ride_from;
+    float ride;
+    uint16_t floor_on;
+    float room[5];                      /* FX MIX: the rooms' MIX 0..1 (CRUSH ROBOT WARP GLITCH TV), as words */
+    char room_txt[5][8];
+    uint8_t room_lk[5];                 /* .. 1: locked on the held step, 2: on some step of the track */
 } ui_fx_t;
 void ui_fx_draw(const ui_fx_t *v);
 
@@ -292,6 +321,8 @@ typedef struct {
     int choice;                         /* .. P1.5v: 0 NEW, 1 REPLACE (the one SAVE does: bright, filled) */
     const char *newname;                /* .. NEW then saves as this (shown when it differs) */
     const char *sub;                    /* a project's number ("01") */
+    int step;                           /* 2026-11-13: SAVE PRESET, a step selected: its number (1..), 0 none .. */
+    int src;                            /* .. 1 the step's sound saved (KNOB 4: TRACK / STEP) */
     float t;
 } ui_type_t;
 void ui_type_draw(const ui_type_t *v);
@@ -412,6 +443,7 @@ typedef struct {
     char cond[6];                       /* "3:4", "FILL", "!1ST"; "" ALWAYS */
     uint8_t sound;                      /* the pool number of its sound lock, 0 none */
     uint8_t nlock;                      /* p-locks */
+    uint8_t nplock;                     /* EvilGenius: .. those on the sound (not the mix's): THE ROOM's robots */
     uint8_t strum;
     uint8_t func;                       /* P1.3w: the step function (QD_FN_*) */
     uint8_t port;                       /* 2026-10-26: its SLIDE: 0 none, 1 + QD_PORT_* (OFF / ON / LEGATO locked) */
@@ -453,6 +485,12 @@ typedef struct {
     float flash_age;                    /* .. seconds ago (it flashes white, fading over 0.25 s) */
     float grow[8];                      /* P1.3j: each page's row unfolded 0..1 (the page edited 1; a page change
                                          * unfolds the new one as the old one folds) */
+    /* EvilGenius, THE ROOM (ui_room.c): the tracks' lift at the left */
+    int playing;                        /* the sequencer runs */
+    uint8_t trk_mute;                   /* bit t: track t is not heard (muted, or another soloed) */
+    float trk_flash[UI_NTRACK];         /* seconds since each track's last trig (< 0: none) */
+    int ride_from;                      /* the track left (0..), -1 none: the lift rides from its floor .. */
+    float ride;                         /* .. 0..1 (1: arrived) */
 } ui_lane_t;
 enum { UI_C_ON = 1, UI_C_LOCK = 2, UI_C_TIE = 4, UI_C_OVR = 8, UI_C_RANGE = 16, UI_C_HELD = 32,
        UI_C_OWN = 64, UI_C_FUNC = 128 };   /* P1.3q: UI_C_OWN: the step has its own notes (the NOTE override);
@@ -465,6 +503,7 @@ qd_rgb ui_steps_fill(uint8_t cell);     /* a cell's fill: UI_STEP_OWN / UI_STEP_
 qd_rgb ui_steps_ink(uint8_t cell);      /* the notes' colour on that fill (a dark shade of it) */
 void ui_lane_draw(const ui_lane_t *v);
 void ui_steps_row(const ui_lane_t *v, float y, float open);   /* P1.3r: the page edited's row alone (EDIT) */
+void ui_room_draw(const ui_lane_t *v);  /* EvilGenius: THE ROOM (ui_room.c): the page as a room of platforms, y 0..88 */
 
 /* ---- a held step (line.html s4..s10, s19, s20; PLAN §9a rule 7, §8b): one layout, "STEP n · MODE" top left, the
  * track top right, the value big top left, the mode's drawing, the value strip at the foot. is_default: the same
@@ -540,6 +579,7 @@ typedef struct ui_held {
     char func_name[12];
     int jump_page, jump_step;
     uint8_t jump_trig[16];
+    uint8_t page_trig[16];              /* 2026-11-13: the held step's page, its trigs (FUNC's route row) */
     int bank;                           /* the bank of ten on the keys (0: 1..10) */
     /* TRIG (2026-10-26): the step's MIDI FX group under the trig picture: 1..5 (mfx_track: the track's), 0 OFF; its
      * slots' types (0 none) and which play (bit k of mfx_lit) */
@@ -555,6 +595,7 @@ typedef struct ui_held {
     int row;                            /* 2026-11-12 (owner, mockups/fizz-keys-modes.html): EDIT, a selection with the
                                          * orange keys: the page's step row in the head's place (no words), the value
                                          * under its right end, the frame round the whole screen */
+    int room;                           /* EvilGenius: EDIT with nothing held or turned: THE ROOM in the picture's place */
     const struct ui_held *head;         /* P1.5z (the owner: "lets not change the header during playback"): EDIT
                                          * following, the head (its words, colours, tag and value) is this model's (the
                                          * track's default), the picture the step playing's; 0: v's own */
@@ -585,13 +626,11 @@ typedef struct {
     uint8_t pstart[8], pend[8];
     int play_page;                      /* -1: stopped */
     uint8_t trig[8][16];                /* 1: a trig on that page's step */
-    int can_undo, step_clip;            /* undo held; a step copied */
-    int shift;                          /* (unused since P1.3c) */
+    int can_undo;                       /* undo held */
     int page_copied;                    /* F1: the page copied this hold (-1 none): B1..B8 paste it */
     int f1_copied;                      /* F1: a step copied this hold (the next W pastes it) */
     int f1_src;                         /* P1.6h: .. from this step (0..127, -1): ringed in its page's cell */
-    int clip_step;                      /* .. the step in the clipboard (1..128; 0 none) */
-    int clip_nnote;                     /* .. its notes (the card's little roll), its trig */
+    int clip_nnote;                     /* .. the step in the clipboard: its notes (the card's little roll), its trig */
     uint8_t clip_note[6];
     int clip_type;
     /* layer 4, SEL held (P1.3c): the eight tracks (B1..B8 select): selected, muted (W1..W8), soloed (W9..W16).
@@ -601,20 +640,14 @@ typedef struct {
     uint8_t mute, solo;
     const char *tname[UI_NTRACK];
     uint8_t flash[UI_NTRACK];                   /* a trig just now */
-    int held_track;                     /* (unused since P1.3c) */
-    int page_clip;                      /* a page in the clipboard */
     int hand;                           /* F2: holding a step (Form's "holding"), else empty-handed */
     int hand_loaded;                    /* F2: the hand has grabbed this hold (Form's "loaded") */
-    uint8_t page_on[16];                /* F2: the edited page's steps (1 a trig) */
     int last_w;                         /* F2: the last W pressed (-1), and what it did: 1 CUT, 2 PASTE */
     int last_act;
     /* F3: the page's range (W: its end; W a + W b: start..end) and the rate (B1..B9); SELECT: tempo, swing */
-    int rate;                           /* QD_RATE_* */
-    int rate_idx;                       /* its place on B1..B9 (-1: not a quick pick) */
     int rate_val, rate_type;            /* P1.3c: the rate as a note value (0 1/2 .. 4 1/32; KNOB 1) and its type (0
                                          * normal, 1 dotted, 2 triplet; KNOB 2); KNOB 3 / 4 the page's start / end */
     const char *rate_val_name;          /* "1/16" */
-    const char *rate_names[9];
     int bpm, swing;
     int anchor;                         /* F3: the W held first (-1 none) */
     int latched;                        /* P1.3d: F3 is a latched menu: "OCT\xe2\x88\x92 EXIT" on the map */
@@ -704,6 +737,8 @@ typedef struct {
     int engine;                         /* .. (e): ENGINE, 0 FM TONE, 1 FM+MIDI (2026-11-10), 2 MIDI */
     int clk_out, cc_out;                /* SETTINGS: FIZZ MIDI (c): CLOCK OUT, CC OUT */
     int set_page;                       /* SETTINGS: the page (2026-11-10: 1 HOME; the Bluetooth package: 2 BLUETOOTH) */
+    int voice, voice_lvl;               /* EvilGenius: .. HOME's KNOB 3: THE VOICE (0 only while stopped, 1 always,
+                                         * 2 off), KNOB 4 its level, 0..100 % */
     int home_view, home_lock;           /* .. HOME: the Home view (0 PIANO ROLL, 1 STEPS, 2 EDIT, 3 GEEK OUT, 4 OVERVIEW),
                                          * LOCK */
 #if QD_PKG_BLE
@@ -715,8 +750,8 @@ void ui_menu_draw(const ui_menu_t *v);
 
 /* ---- P1.4a: the sound editor (ui_snd.c, built through ui_layer.c): a page of FM TONE as one big drawing, KNOB 1..4's
  * values in cells along the foot (their colours; P1.5b: a lock a chip), ALGORITHM's value (where the page has one) at
- * the top right in its pink badge. The track's sound (nothing held): the TRACK colour in the head, P1.5d a dark orange
- * frame (UI_SND_FRAME_TRACK); a step held: "STEP n", a bright orange frame (UI_SND_FRAME_STEP), and under each locked
+ * the top right in its pink badge. The track's sound (nothing held): no frame; a step selected: "STEP n", the
+ * magenta step frame (ui_step_frame, as every screen), and under each locked
  * value the track's left behind (grey, dashed).
  *   ALGO      the four operators (C A B1 B2 in KNOB 1..4's colours, each with its wave at its ratio) wired by the
  *             algorithm: the modulators above what they modulate (arrows, dots running along), the feedback
@@ -758,8 +793,6 @@ typedef struct ui_snd {
     float ratio[4];                     /* .. the operators' ratios */
     int pv[3];                          /* LFO: its WAVE, TRIG, FADE (P1.5k); LFOSHAPE: its SPEED, DEPTH */
     uint8_t lockany[5];                 /* P1.5b: no step held: some step of the track locks it (an outlined chip) */
-    int keys;                           /* P1.5b: the keyboard on: 1 SCALE (16 keys: the scale), 2 FULL (27) */
-    uint8_t kst[27];                    /* .. each key: 0 out of the scale, 1 in it, 2 a root; +4 sounding */
     uint8_t pair[5];                    /* P1.5i: a ratio pair (RATIO B): txt the fast hand (B2) over den (B1) */
     char den[5][8];
     int has_mix, mix;                   /* P1.5i: RATIO's MIX (-64 X .. 63 Y): the outputs' balance in the drawing */
@@ -783,18 +816,39 @@ typedef struct ui_snd {
      * OUT channel (0 OFF), SHIFT held and the slot whose CC number it turned (-1) */
     int midi, mch, shift, shift_k;
     int cc[4];
+    /* 2026-11-13 (owner): the page's sixteen steps under the head, as the Home views' (ALGORITHM selects them): the
+     * trigs, the selected, the playing one (-1) */
+    uint16_t row_trig, row_sel;
+    int row_play;
+    /* EvilGenius: WORD / SAY: the word the voice will speak, as it is stored or as SAM rendered it (two 4-bit samples
+     * a byte, the high nibble first; 0: none, or not rendered yet); OSC: the chip's three oscillators (WAVE, sync /
+     * ring, PW) for the row under the wave */
+    const uint8_t *wave;
+    uint32_t wave_n;
+    uint8_t osc_w[3], osc_m[3], osc_pw[3];
 } ui_snd_t;
 void ui_snd_draw(const ui_snd_t *v);
 
 /* ---- a brief full-screen word (CLEARED; UNDONE; COPIED; NO ROOM FOR LOCKS) */
-void ui_confirm_draw(const char *big, const char *small, qd_rgb col);
+/* EvilGenius: a confirmation is a scene (ui_scene.c): what its words mean, drawn with the room's cast, the words
+ * under it; t the seconds since it came up */
+enum { UI_SC_WORD,                      /* the villain says it */
+       UI_SC_ZAP,                       /* something cleared: a robot's bolt, the agent to the bone, then ash */
+       UI_SC_ARM,                       /* armed ("CLEAR?"): the sentry takes aim */
+       UI_SC_DENIED,                    /* no room, full, nothing to undo: the sentry refuses */
+       UI_SC_STEAL,                     /* copied, stored: the agent searches a cabinet and takes the document */
+       UI_SC_DROP };                    /* pasted, recalled, doubled: he puts it down */
+int ui_scene_kind(const char *big, const char *small);
+void ui_confirm_draw(const char *big, const char *small, qd_rgb col, float t);
 /* P1.5c: SHIFT + F1 / F2: UNDO / REDO big, under it what it was as a glyph (undo.h QD_UK_*; -1: nothing there, dim) */
 void ui_undo_draw(int redo, int kind, float t);
 void ui_import_draw(const char *name, int pool, int slot, float t);   /* P1.5r (ui_lib.c): a sound imported */
 
 /* ---- a knob turned: the whole screen (line.html s21..s25, s16; PLAN §9a rule 5) */
 enum { UI_TK_FREQ, UI_TK_DECAY, UI_TK_HARM, UI_TK_FDBK, UI_TK_ALGO, UI_TK_TEMPO, UI_TK_SWING, UI_TK_LEN, UI_TK_RATE,
-       UI_TK_LIMIT, UI_TK_TSWING, UI_TK_PAGE, UI_TK_SCALE, UI_TK_ROOT, UI_TK_OCTAVE, UI_TK_TRACK,
+       UI_TK_LIMIT, UI_TK_TSWING,       /* (2026-11-13: LEN, RATE, LIMIT, TSWING and TRACK retired: no control shows
+                                         * them; their numbers kept) */
+       UI_TK_PAGE, UI_TK_SCALE, UI_TK_ROOT, UI_TK_OCTAVE, UI_TK_TRACK,
        UI_TK_TRACKBIG,                  /* P1.3y: FX held + ALGORITHM: the track big (number, name, its colour) */
        UI_TK_TAP,                       /* P1.5z: SHIFT + B6: the taps (the BPM big, the taps' dots, a pulse) */
        UI_TK_FOLLOW,                    /* P1.5z: SHIFT + B8: PAGE FOLLOW on / off (the pages, the playhead's arrow) */
@@ -818,14 +872,9 @@ typedef struct {
     int playing;
     /* TEMPO / SWING (s16): the BPM big, the swing in green, the metronome; swing > 50 swings unequal */
     int bpm, swing;
-    /* RATE (s25), SCALE, ROOT: a picker (the value big, its neighbours small) */
+    /* SCALE, ROOT: a picker (the value big, its neighbours small) */
     const char *prev, *next;            /* the neighbours' names (0: none) */
-    float rate;                         /* the track's speed against the pattern's (0.125 .. 2) */
-    float track_pos, pat_pos;           /* the two hands, steps 0..16 */
-    int track;                          /* 1..8 (the clock's label) */
-    /* LEN: the track's loop over the 8 pages; LIMIT: the 16-voice pool, the limit lit, the voices in use;
-     * TSWING: the track's swing on / off */
-    int voices;
+    int track;                          /* 1..8 */
     /* PAGE (SELECT): a page picker: the eight pages, the one edited big, the loop, each one's range and trigs */
     int page;                           /* 0..7 */
     uint8_t loop, pstart[8], pend[8];
@@ -837,11 +886,7 @@ typedef struct {
     /* P1.3d: the colour when it is not a knob's (has_col: col; the track chooser draws in P-LOCK's) */
     int has_col;
     qd_rgb col;
-    /* TRACK (P-LOCK + ALGORITHM): the eight tracks as rows: number, name, the loop's trigs (up to 32), muted grey */
-    const char *tname[UI_NTRACK];
-    uint8_t tmute;
-    uint8_t tlen[UI_NTRACK];
-    uint8_t ttrig[UI_NTRACK][32];
+    const char *tname[UI_NTRACK];       /* TRACKBIG: the tracks' names */
     /* P1.5z, TAP (SHIFT + B6): the taps' ages (s, the newest first; up to 8), the count, the clock external (dimmed) */
     int ntap;
     float tap_age[8];
@@ -929,7 +974,8 @@ typedef struct ui_mfx {
     uint8_t st_note[6];
     int steps_frame;                    /* .. STEPS: steps held (the step's frame) */
     int route_off;                      /* 2026-10-25: the track's routing bypassed (QD_TMFX_OFF): OFF in the head */
-    int roll;                           /* PRESETS turned: the rolodex up .. */
+    int roll;                           /* PRESETS turned: the rolodex up (2026-11-13: a slot held: KNOB 1's) .. */
+    int hold_list;                      /* .. 2026-11-13: a slot held: the list with the foot's EFFECT / MOVE */
     float roll_pos, roll_from;          /* .. at type pos (0 NONE .. 10), coming from */
     int gsel;                           /* ALGORITHM turned: the routing map up (2026-11-10) .. */
     float gsel_pos, gsel_from;          /* .. the selected track's wire at (0 OFF .. 5), the glide's start */

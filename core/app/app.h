@@ -44,6 +44,7 @@
  * fizzing over (ui_idle.c, drawn from the clock and the beats). */
 #pragma once
 #include <stdint.h>
+#include "../voice/sam/say.h"         /* (EvilGenius: THE VOICE's voices, QD_ANN_*) */
 
 #include "../seq/model.h"
 #include "../seq/pattern.h"
@@ -70,8 +71,8 @@ extern "C" {
 #define QD_METRO_LVL 60                /* P1.5c: the click's level, % (SHIFT + B7 held + a knob) */
 #define QD_BPM_DEFAULT 122             /* line.html's BPM */
 #define QD_BEAT_LED_MS 80              /* PLAY's green LED: lit this long from each beat */
-#define QD_OCT_MIN (-2)
-#define QD_OCT_MAX 2
+#define QD_OCT_MIN (-4)                /* 2026-11-13: one octave for the keyboard and NOTE's entry (0 .. 8) */
+#define QD_OCT_MAX 4
 #define QD_PICKER_MS 1000              /* the picker stays this long after the last detent .. */
 #define QD_PICKER_FADE_MS 120          /* .. then fades back over this long (PLAN.md §9a rule 5) */
 #ifndef QD_VOICES
@@ -130,6 +131,8 @@ typedef struct {
     const char *boot;                  /* the last boot's cause after a crash ("WATCHDOG", "HARD FAULT" ..); 0 clean */
     uint32_t reset;                    /* the core's: bumped at each reset of the counters */
 } qd_app_stats_t;
+/* EvilGenius: THE VOICE's sound effects (app.c block_out): the robots' bolt, the search's beeps, the refusal's buzz */
+enum { QD_SFX_NONE, QD_SFX_ZAP, QD_SFX_BEEPS, QD_SFX_BUZZ };
 #define QD_SCOPE_N 1024                /* P2.11: the scope's samples (the output at 22.05 kHz: 46 ms) */
 #define QD_TSC_N 80                    /* 2026-10-27: the TRACKS scopes' samples a track (5.5 kHz: 14.5 ms; with the
                                         * voices' blocks in SCOPE's room) */
@@ -235,6 +238,10 @@ typedef struct qd_app {
     uint32_t free_ms;                  /* P2.6c: qd_app_tick_free's ms so far */
     uint32_t snd_gen, snd_ms;          /* P2.6c: qd_app_sounds' last edit_gen and ms */
     uint32_t say_ms;                   /* EvilGenius: SAY's last look at the words SAM must have rendered */
+    const char *ann_text;              /* EvilGenius, THE VOICE: a line waiting for SAM (the app's free time), its voice .. */
+    uint8_t ann_voice, ann_greeted;    /* .. (say.h QD_ANN_*); the greeting said (once a power-on) */
+    uint8_t sfx;                       /* .. a sound effect under it (QD_SFX_*), its samples left, its place, its noise */
+    uint32_t sfx_left, sfx_ph, sfx_lfsr;
     uint32_t edit_gen;                 /* P2.6c: bumped by every input (and a take, the tracks' sounds into the pattern):
                                         * persist.c's looks hash a pattern again only after it moved */
     uint32_t frame_hash;               /* P2.4: qd_app_frame_changed's last frame .. */
@@ -382,6 +389,7 @@ void qd_app_audio(qd_app_t *a, int16_t *stereo, uint32_t frames);
  * fewer in use (pool.h halves) */
 typedef struct {
     int32_t l[QD_MIX_CTL], r[QD_MIX_CTL], sc[QD_MIX_CTL], sd[QD_MIX_CTL], sr[QD_MIX_CTL];   /* dry, chorus, delay, reverb */
+    int16_t rb[QD_NROOM][QD_MIX_CTL];       /* EvilGenius: the five rooms' buses (mix.h) */
     int n;                                  /* voices rendered into it */
 } qd_bus_t;
 void qd_app_block_begin(qd_app_t *a);
@@ -426,6 +434,10 @@ void qd_app_hold_release(qd_app_t *a);   /* 2026-10-26: the live keys' HOLD: the
 int qd_app_ble_on(const qd_app_t *a);
 void qd_app_ble_state(qd_app_t *a, int st);
 #endif
+
+/* EvilGenius, THE VOICE: the villain says text (upper case English; 0: nothing) in voice (say.h QD_ANN_*) over the
+ * mix, a sound effect (QD_SFX_*) under it; nothing when the VOICE setting is off */
+void qd_app_announce(qd_app_t *a, const char *text, int voice, int sfx);
 
 #ifdef __cplusplus
 }

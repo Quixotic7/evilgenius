@@ -52,6 +52,11 @@ int qd_fx_route_move(int block, int dir);
 int qd_fx_get(int id);
 void qd_fx_set(int id, int v);
 void qd_fx_range(int id, int *min, int *max, int *def);
+/* EvilGenius: the five rooms (CRUSH ROBOT WARP GLITCH TV) each work on their own bus now, the tracks' sends into
+ * it (mix.h room), not on the whole mix: a and b are the two halves' buses for the next qd_fx_block (five rows of
+ * QD_FX_CTL samples each, >> 4; 0: none). A room's output is added to the mix whole (its MIX value is no longer
+ * read: how much of a track goes through a room is that track's send) */
+void qd_fx_rooms(const int16_t (*a)[QD_FX_CTL], const int16_t (*b)[QD_FX_CTL]);
 const char *qd_fx_text(int id, int v, char *buf);   /* buf 16 bytes */
 const char *qd_fx_name(int id);         /* a value's label ("BITS", "FREQ") */
 int qd_fx_delay_ms(void);

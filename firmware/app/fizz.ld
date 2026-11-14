@@ -47,13 +47,16 @@ SECTIONS
     .data : { . = ALIGN(4); _data_start = .; *(.data*) *(.sdata*) *(.*_data) . = ALIGN(4); _data_end = .; } > RAM AT > XIP
     _data_load = LOADADDR(.data);
     .fz_rt (NOLOAD) : { . = ALIGN(4); _fz_rt_start = .; *(.fz_rtdata*) */o2/build_units_c_quad_voice.o(.bss* .sbss* COMMON)
+                       */o2/build_units_c_say.o(.bss* .sbss* COMMON)
                        . = ALIGN(4); _fz_rt_end = .; } > RAMTEXT
     .noinit (NOLOAD) : { *(.noinit*) } > NOINIT
     .fz_ni (NOLOAD) : { . = ALIGN(4); _fz_ni_start = .; *(.fz_nidata*) */o2/build_units_c_view.o(.bss* .sbss* COMMON)
                         */o2/build_units_c_ui_idle.o(.bss* .sbss* COMMON) */o2/build_units_c_ui_keys.o(.bss* .sbss* COMMON)
                         . = ALIGN(4); _fz_ni_end = .; } > NOINIT
     .pool (NOLOAD) : { _pool_start = .; *(.pool*) */o2/fz_port.o(.bss* .sbss* COMMON)
-                       */o2/build_units_c_qd_fx.o(.bss* .sbss* COMMON) . = ALIGN(4); _pool_end = .; } > POOL
+                       */o2/build_units_c_qd_fx.o(.bss* .sbss* COMMON)
+                       */o2/build_units_c_sam.o(.bss* .sbss* COMMON) */o2/build_units_c_render.o(.bss* .sbss* COMMON)
+                       */o2/build_units_c_reciter.o(.bss* .sbss* COMMON) . = ALIGN(4); _pool_end = .; } > POOL
     .bss (NOLOAD) : { _bss_start = .; *(.bss*) *(.sbss*) *(COMMON) *(.*_bss) *(.bd_base) . = ALIGN(4); _bss_end = .; } > RAM
     .qd_xdata : { _fz_xdata_start = .; *(.qd_xdata*) . = ALIGN(4); _fz_xdata_end = .; } > XDATA
     _guard0 = 0x01C74000; _ustack_lo = 0x01C74100; _ustack_top = 0x01C7A000;

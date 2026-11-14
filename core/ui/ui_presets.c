@@ -328,7 +328,7 @@ void ui_browse_draw(const ui_browse_t *v)
 }
 
 /* ---------------------------------------------------------------- LOADED, BACK, SAVED */
-void ui_pfx_draw(int kind, const ui_preset_t *s, const ui_preset_t *own, int track, float u, float t)
+FZ_COLD void ui_pfx_draw(int kind, const ui_preset_t *s, const ui_preset_t *own, int track, float u, float t)
 {
     const qd_rgb tc = UI_TRACK_PAL[(track - 1) & 7];
     px_rect(0, 0, 120, 120, UI_BG);

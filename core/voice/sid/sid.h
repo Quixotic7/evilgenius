@@ -85,6 +85,8 @@ typedef struct {
     int32_t a1, a2, a3, k;
     int32_t voice_zero;          /* waveform DAC zero level (12-bit): 0x380 6581, 0x800 8580 */
     int32_t mixer_dc;            /* 6581: the DC that the volume register scales */
+    int32_t ext;                 /* EvilGenius: EXT IN, the chip's audio input, in the voices' scale (0: none):
+                                  * into the filter when RES_FILT's bit 3 (FILT EX) is set, else straight to the mix */
     /* output DC blocker */
     int32_t hp_x1, hp_y1;
 } sid_t;

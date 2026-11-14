@@ -27,11 +27,21 @@ typedef struct {                        /* a track's mix (the model's; a voice c
                                          * the effects alone (PARALLEL: the returns; CHAIN: the chain's output), 64
                                          * (QD_MIX_DRY_DEFAULT) both full in PARALLEL (as every unit sounded) and half
                                          * and half in CHAIN (unity with the sends at 0) */
+    uint8_t room[5];                    /* EvilGenius: the track's sends into the five rooms (CRUSH ROBOT WARP GLITCH TV),
+                                         * 0..127. A room is the track put THROUGH it: as much of the track as goes in
+                                         * leaves the dry mix (the most of the five), so at 127 the track is heard only
+                                         * through its rooms; each room's own bus is mono (the track's pan stays the
+                                         * dry part's) */
+    int16_t g_room[5];                  /* .. as gains (Q12), made at the control rate with g_lvl */
+    int32_t g_lvl0;                     /* .. g_lvl before the rooms took their part of the dry (a voice whose rooms
+                                         * are locked takes its own part) */
+    uint8_t room_sh;                    /* .. the gains' shift (1: the 6 dB under, no BOOST) */
     int32_t g_lvl, g_send[3];           /* .. as gains (Q12) on the level and the chorus, delay, reverb sends, made at
                                          * the control rate (app.c mix_gains: the audio path's RAM code has no room):
                                          * PARALLEL the dry / wet law, CHAIN the serial shares; 4096: as before */
 } qd_mix_track_t;
 #define QD_MIX_DRY_DEFAULT 64
+#define QD_NROOM 5
 
 typedef struct {
     int32_t sg[QD_POOL_MAX][3];         /* each voice's chorus, delay, reverb gains as the last block left them */
@@ -56,7 +66,9 @@ int qd_mix_block(qd_mix_t *m, qd_pool_t *pool, qd_quad_owner_t *const *owners, c
  * qd_mix_block's */
 void qd_mix_begin(qd_mix_t *m, qd_pool_t *pool, qd_quad_owner_t *const *owners, int ntracks);
 int qd_mix_voices(qd_mix_t *m, qd_pool_t *pool, const qd_mix_track_t *tracks, int ntracks, int v0, int v1, int32_t *l,
-                  int32_t *r, int32_t *sc, int32_t *sd, int32_t *sr);
+                  int32_t *r, int32_t *sc, int32_t *sd, int32_t *sr, int16_t (*rb)[QD_MIX_CTL]);
+/* (EvilGenius: rb, or 0: the five rooms' buses, QD_NROOM of them, each voice's level-scaled signal >> 4 times its
+ * track's send, saturated; cleared here first) */
 void qd_mix_end(qd_mix_t *m, qd_quad_owner_t *const *owners, int ntracks, int rendered);
 
 #ifdef __cplusplus

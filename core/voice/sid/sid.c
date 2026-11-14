@@ -380,7 +380,8 @@ static void render(sid_t *s, int32_t *out, uint32_t n, int add)
     if (sid_log_render)
         sid_log_render(s, n);
 #endif
-    if (!filt)
+    const uint32_t fex = s->res_filt & 8u;                /* (EvilGenius: FILT EX, the EXT IN through the filter) */
+    if (!filt && !fex)
         s->ic1 = s->ic2 = 0;
     for (i = 0; i < n; i++) {
         uint32_t c;
@@ -406,7 +407,11 @@ static void render(sid_t *s, int32_t *out, uint32_t n, int add)
             else if (j < 2 || !mute3)
                 dry += vo[j];
         }
-        if (filt) {
+        if (fex)
+            fin += s->ext;
+        else
+            dry += s->ext;
+        if (filt || fex) {
             int32_t v1, v2, v3 = fin - s->ic2;
             v1 = (s->a1 * s->ic1 >> 12) + (s->a2 * v3 >> 12);
             v2 = s->ic2 + (s->a2 * s->ic1 >> 12) + (s->a3 * v3 >> 12);

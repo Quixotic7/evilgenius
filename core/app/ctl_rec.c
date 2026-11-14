@@ -51,6 +51,9 @@ static int loop_step(qd_app_t *a, int pos) { return qd_track_loop_step(&PAT(a)->
 int qd_rec_key_note(const qd_app_t *a, int key)
 {
     int sc, rt, n = QD_NOTE0 + key + 12 * a->oct;
+    if (a->ui.mode == QD_MODE_KEYS && a->ui.ksteps && qd_ctl_black(key) >= 0 && qd_ctl_black(key) < 10)
+        return qd_snd_scale_note(a, qd_ctl_black(key));   /* 2026-11-13 (owner): STEPS, B1..B10 the notes: the scale
+                                                         * from its root up (B1 the root; a 7-note scale: B8 the next) */
     qd_track_key(&a->proj, qd_ctl_cpat(a), a->sel, &sc, &rt);
     if (sc != QD_SCALE_CHROMATIC)
         n = qd_scale_snap(sc, rt, n);
@@ -451,7 +454,7 @@ int qd_auto_put(qd_app_t *a, int id, int value)
     qd_undo_hint(a, QD_UK_REC);                         /* (one undo level: the take's) */
     s = auto_step_now(a);
     if (qd_lock_set(p, t, s, id, value) == QD_EFULL) {
-        qd_ctl_confirm(a, "NO ROOM", "for locks: the pattern has 1024");
+        qd_ctl_no_room(a);
         return 1;
     }
     if (!qd_step_is_on(qd_step(p, t, s)))               /* an empty step: a ghost (a LOCK trig) holds it */

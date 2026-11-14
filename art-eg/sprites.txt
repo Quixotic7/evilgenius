@@ -268,3 +268,89 @@ CCCCCCCC
 bCbCbCbC
 kCkCkCkC
 kkkkkkkk
+
+# ---- the mission (the ROOM view, the FX lift, the cutscenes)
+# the sentry: a pepper-pot robot on a skirt of studs, one eye on a stalk, 11x14; two frames (the eye and the arm fire)
+= SENTRY1
+....kkk....
+...kLLLk...
+..kLLLLLk..
+kkCkLLLLk..
+..kkkkkkk..
+..kdgdgdk..
+.kkkkkkkkk.
+.kPPPPPPPk.
+kgkPPPPPPk.
+.kkkkkkkkk.
+.kPLPLPLPk.
+kPLPLPLPLPk
+kPPPPPPPPPk
+kkkkkkkkkkk
+= SENTRY2
+....kkk....
+...kLLLk...
+..kLLLLLk..
+kkWkLLLLk..
+..kkkkkkk..
+..kdRdRdk..
+.kkkkkkkkk.
+.kPPPPPPPk.
+kYkPPPPPPk.
+.kkkkkkkkk.
+.kPLPLPLPk.
+kPLPLPLPLPk
+kPPPPPPPPPk
+kkkkkkkkkkk
+# the agent zapped: his bones for a frame, 9x16
+= AGENT_ZAP
+...kkk...
+..kWWWk..
+..kWkWk..
+..kWWWk..
+...kWk...
+.kkkWkkk.
+kWWWWWWWk
+kWkkWkkWk
+kWkWWWkWk
+.kkkWkkk.
+..kWWWk..
+..kWkWk..
+..kWkWk..
+..kWkWk..
+.kWWkWWk.
+.kkk.kkk.
+# a secret document, 7x9; a filing cabinet to search, 10x14
+= DOC
+kkkkkk.
+kWWWWkk
+kWRRWWk
+kWWWWWk
+kWLLLWk
+kWWWWWk
+kWLLLWk
+kWWWWWk
+kkkkkkk
+= CABINET
+kkkkkkkkkk
+kggggggggk
+kgkkkkkkgk
+kgkkYYkkgk
+kgkkkkkkgk
+kggggggggk
+kgkkkkkkgk
+kgkkYYkkgk
+kgkkkkkkgk
+kggggggggk
+kgkkkkkkgk
+kgkkYYkkgk
+kgkkkkkkgk
+kkkkkkkkkk
+# the bouncing orb (ECHO's ball), 7x7
+= ORB
+..kkk..
+.kbbbk.
+kbWbbBk
+kbbbbBk
+kbbbBBk
+.kBBBk.
+..kkk..

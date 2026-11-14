@@ -13,7 +13,8 @@
  *     key KEY down [VEL] | key KEY up | tapkey KEY     KEY: W1..W16, B1..B11 (or 0..26, F3 up)
  *     knob KNOB N                  KNOB: SELECT ALGO PRESETS K1 K2 K3 K4; N detents (+ clockwise), 30 ms apart
  *     shot NAME [caption..]        OUT_DIR/NAME.png (and a line in OUT_DIR/index.tsv)
- *     reset                        the app again from power-on */
+ *     reset                        the app again from power-on
+ *     wav PATH                     the audio from here on into PATH (16-bit stereo; closed at the script's end) */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -27,6 +28,8 @@ static qd_app_t A;
 static uint32_t now;
 static uint64_t frames_done;
 static uint16_t lcd[QD_W * QD_H];
+static FILE *wavf;
+static uint32_t wavn;
 
 static void run(uint32_t n)
 {
@@ -38,6 +41,8 @@ static void run(uint32_t n)
         while (frames_done + 128u <= (uint64_t)now * QD_FS / 1000u) {
             int16_t blk[256];
             qd_app_audio(&A, blk, 128);
+            if (wavf)
+                wavn += (uint32_t)fwrite(blk, 2, 256, wavf) * 2u;
             frames_done += 128u;
         }
     }
@@ -133,6 +138,13 @@ int main(int argc, char **argv)
             run((uint32_t)atoi(a));
         else if (!strcmp(cmd, "reset"))
             reset();
+        else if (!strcmp(cmd, "wav")) {
+            static const unsigned char H[44] = {'R', 'I', 'F', 'F', 0, 0, 0, 0, 'W', 'A', 'V', 'E', 'f', 'm', 't', ' ',
+                                                16, 0, 0, 0, 1, 0, 2, 0, 0x44, 0xAC, 0, 0, 0x10, 0xB1, 2, 0, 4, 0, 16, 0,
+                                                'd', 'a', 't', 'a', 0, 0, 0, 0};
+            if ((wavf = fopen(a, "wb")))
+                fwrite(H, 1, 44, wavf);
+        }
         else if (!strcmp(cmd, "play"))
             qd_app_play(&A);
         else if (!strcmp(cmd, "tap") || !strcmp(cmd, "down") || !strcmp(cmd, "up")) {
@@ -192,5 +204,11 @@ int main(int argc, char **argv)
     }
     fclose(f);
     fclose(idx);
+    if (wavf) {                                         /* the WAV's sizes */
+        const uint32_t riff = 36u + wavn;
+        fseek(wavf, 4, SEEK_SET), fwrite(&riff, 4, 1, wavf);
+        fseek(wavf, 40, SEEK_SET), fwrite(&wavn, 4, 1, wavf);
+        fclose(wavf);
+    }
     return fails ? 1 : 0;
 }

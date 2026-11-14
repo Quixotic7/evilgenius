@@ -9,6 +9,32 @@ its text becomes the release's notes on the install page and on GitHub.
 
 <!-- The next release's notes, for testers, in plain language. firmware/release.py moves them. -->
 
+EvilGenius, the mission: the screens stop being FIZZ's with new colours. The controls are unchanged.
+
+- **The room.** The Home view at rest is a room of the villain's tower over the page's steps: a note is a platform (its pitch its height, its gate its length), the agent is the playhead (he lands on each note, somersaults the gaps), a step with locks on the sound has a robot under it that fires when the step plays, and the lift at the left is the six tracks. Hold a step, turn a default or hold a mode key and the mode's picture is back as before.
+- **The FX tower.** The effects are floors with the lift's shaft at the left (a lit window: that effect is heard). A black key, FX or SELECT rides the lift to the next room. New rooms: the agent's doubles (CHORUS), the bouncing orb (ECHO), the press (CRUSH), the sentry (ROBOT), the teleporter (WARP), the broken picture (GLITCH).
+- **The scenes.** A confirmation plays what it means: a robot's bolt for anything cleared, the sentry taking aim for CLEAR?, the cabinet search for a copy, the villain at his desk for the rest.
+- **The voice.** The villain speaks with SAM: a welcome, a remark at each scene, the lift's floors; a bolt, beeps and a buzz under them. HOME held, page 2, KNOB 3 VOICE turns it off.
+- **FIZZ 0.12.0-beta.18's controls** are in: ALGORITHM is the step cursor in the sound editor, the effects, MIDI FX and TOOLS; a page's fifth value is on PRESETS (the pink P in the head, now with its name); LFO brings the last selection back on every page; the selection is kept across the hold modes; one key-light rule and one step-row rule for the LEDs; FUNC is drawn as the playhead's route over the page's steps; a selected step frames the sound editor and the keyboard page and shows the page's steps under the head.
+- **The effects' second page is FX MIX too** (FX twice, or B1 twice): SENDS has the track's ROOM, CHORUS, ECHO and DRY, FX MIX the five rooms' wet levels (KNOB 1..4 CRUSH ROBOT WARP GLITCH, PRESETS TV), so every dry / wet is on the first two pages.
+- **The mix has a third page, FX MIX**: the five rooms on the whole mix (CRUSH, ROBOT, WARP, GLITCH, TV) as five lifts, each one's wet level on KNOB 1..4 and PRESETS. **SENDS' KNOB 4 is the track's DRY.** The FADERS page names its four knobs.
+- **The word can go through the filter.** FILTER's ROUTE has a fourth input, V: with it (the default now) and a filter mode on, VOX's speech goes into the SID's filter (the chip's EXT IN) instead of the volume register. Without V it is the volume-register digi as before. Sounds saved before keep their route, so their speech stays unfiltered until V is added.
+- **Fixed: the filter could not be turned off, and a sound with the filter off was named LOWPASS.** The mode list had six of the SID's eight modes; OFF and BP+HP are back (B4 held: B1..B8).
+- **Fixed: WORD's picture was the same for every word.** WORD and SAY now draw the samples the voice will play (the stored word, or SAM's render).
+- **The sound editor reviewed**: OSC shows the chip's three oscillators under the wave with who syncs or rings whom; ENV 2 / 3 say LINKED: ENV 1; a long value no longer runs into the next column; DIGI is a staircase; PORT names what it does.
+- **It runs on the FM-1.** One package, with Bluetooth (`firmware/devbuild.sh`; there is no USB-only or single-core package). To fit it:
+  - **SAM speaks every word on the unit.** The 54 words are no longer stored as samples (89 KB of flash): SAM renders each from its phonetic spelling when a sound or a step first needs it, while the unit is idle, and keeps about seven rendered at once (12 KB). A pattern that needs more words than fit plays the ones that fit; the rest are silent until others leave. A word is silent for a moment the first time it is chosen.
+  - **SAM renders at 6 kHz directly** (it was 22 kHz, then reduced): close to the C64 original's rate; the voice is a little rougher.
+  - **ECHO's longest time is 0.6 s** (it was 1 s), and its repeats are stored 8-bit, companded: quiet tails keep their detail, loud repeats are a little grainier. **GLITCH's caught slice comes back mono.** ROOM's longest pre-delay is 46 ms (it was 115).
+  - The unit after the cuts: 15 KB of flash free, 368 bytes of RAM, 0.5 KB of pool over fm1-base's 8 KB reserve.
+- **The screen is fast on the unit now.** The step view draws in 28 ms a frame with a pattern playing (it was 96 ms; painting 9.5 ms, was 124 ms), so the keys and knobs answer at once. The pixel screens are thousands of small rectangles, and the frame's display list kept them as 24 bytes each: most frames outgrew it and were then redrawn whole for every 16-row band. A rectangle is 8 bytes there now, and a band skips the ones that are not in it.
+- **Each track has its own sends into CRUSH, ROBOT, WARP, GLITCH and TV.** FX MIX (FX twice, or ENV three times) is the selected track's five sends, KNOB 1..4 and PRESETS; KNOB 4 on each room's own page is the same send. A room is the track put through it: what goes into a room leaves the dry mix, so at 100 % the track is heard only through its rooms. The rooms' buses are mono. The rooms' old MIX values (the whole mix through a room) are gone. Saved with the project.
+- **The five sends lock on a step.** Hold a step (or select steps) on FX MIX or a room's page and turn the send: that step's note goes through the room by that much, whatever the track's own send is. One snare through GLITCH, one hat through CRUSH. A lock is a filled chip under the lift; a send that some step of the track locks is outlined. In the room view a step that sends to a room has a robot under it. They record as automation too.
+- **VOICE has three settings and a level** (HOME held, page 2): KNOB 3 **STOPPED** (the default: the villain and the lift speak only while nothing plays; pressing PLAY cuts him off), **ALWAYS**, or **OFF**; KNOB 4 **VOICE LEVEL**, 0 to 100 % in steps of 5.
+- ROOM's longest pre-delay is 23 ms (to pay for the sends' buses).
+- ECHO's longest time is 0.575 s (to pay for the locks).
+- The screen tour's MIDI FX and TOOLS sections still use the gestures from before beta.18.
+
 ## 0.12.0-beta.17 (2026-11-13)
 
 A speed fix for beta.16 on the USB package.

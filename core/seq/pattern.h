@@ -156,7 +156,12 @@ const char *qd_cond_name(int cond, char *buf);   /* "ALWAYS" .. "3:4" (buf: 8 by
 
 /* ---- a lock (PLAN §5: 4 bytes) */
 typedef struct { uint8_t step, id; int16_t value; } qd_lock_t;
-enum { QD_LK_PAN = QD_QUAD_NP, QD_LK_DELAY, QD_LK_REVERB, QD_LK_CHORUS, QD_LK_LEVEL, QD_LK_N };   /* (P1.4a: DRIVE
+enum { QD_LK_PAN = QD_QUAD_NP, QD_LK_DELAY, QD_LK_REVERB, QD_LK_CHORUS, QD_LK_LEVEL,
+       QD_LK_CRUSH, QD_LK_ROBOT, QD_LK_WARP, QD_LK_GLITCH, QD_LK_TV,   /* EvilGenius: the track's sends into the five
+                                                         * rooms (mix.h room; 0..127): after LEVEL, so every id a
+                                                         * stored pattern holds keeps its meaning */
+       QD_LK_N };
+typedef char qd_lk_fits_a_byte[QD_LK_N <= 256 ? 1 : -1];   /* (qd_lock_t.id) */   /* (P1.4a: DRIVE
                                                          * moved into the sound, id 73) */
 int qd_lock_range(int id, int16_t *min, int16_t *max);   /* 0: no such id */
 

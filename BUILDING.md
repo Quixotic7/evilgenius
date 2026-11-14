@@ -136,3 +136,13 @@ USB package's store. Back up first.
 The separate `.bin` files stay on the release and the site, for `firmware/tools/fizz_xdata.py push` and the
 Manager. FIZZ's install page still pushes them after the install; the unit answers that it has them already.
 Releases before 0.12.0-beta.13 need that push after an install from the hub.
+
+## EvilGenius: the unit's package
+
+EvilGenius has one package for the FM-1, the Bluetooth one. Build it with `firmware/devbuild.sh`, not
+`firmware/build.py` directly: the script's head says why (FIZZ's build needs fm1-base at FIZZ's pin, this checkout's
+is newer for the RemoteFM1 package) and how to set its copy up once. The package is
+`evilgenius-ble.fwsc`; `fizz-ble-size.txt` beside it is the size report. Install it with
+`python3 firmware/fm1-base/tools/fm1_install.py PACKAGE.fwsc --yes`; `python3 firmware/tools/fizz_xdata.py stats`
+reads the running unit's counters. The RemoteFM1 package is still
+`python3 firmware/fm1-base/tools/build.py firmware/app --rfm1`.

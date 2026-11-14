@@ -188,25 +188,6 @@ static void pages(const ui_turn_t *v, qd_rgb c, int y0)
     }
 }
 
-static void d_tracks(const ui_turn_t *v, qd_rgb c)
-{
-    int t, s;
-    for (t = 0; t < UI_NTRACK; t++) {
-        const int y = 16 + t * 12, mute = (v->tmute >> t) & 1, sel = t + 1 == v->track;
-        char n[2] = {(char)('1' + t), 0};
-        px_rect(4, y, 8, 8, sel ? c : UI_G2);
-        px_ctext(8, y + 1, n, UI_BG, PX_FS, 1);
-        px_text(15, y + 2, v->tname[t] ? v->tname[t] : "", mute ? UI_G2 : sel ? UI_K3 : UI_G1, PX_FS, 1);
-        for (s = 0; s < 16 && s < v->tlen[t]; s++)
-            if (v->ttrig[t][s])
-                px_rect(56 + s * 4, y + 2, 3, 4, mute ? UI_G2 : UI_TRACK_PAL[t & 7]);
-            else
-                px_pset(57 + s * 4, y + 4, UI_G3);
-        if (mute)
-            px_text(112, y + 2, "M", UI_G1, PX_FS, 1);
-    }
-}
-
 static void d_trackbig(const ui_turn_t *v)
 {
     const int t = v->track < 1 ? 1 : v->track > UI_NTRACK ? UI_NTRACK : v->track;
@@ -227,27 +208,6 @@ static void d_trackbig(const ui_turn_t *v)
         else
             px_box(x, 100, 11, 11, UI_TRACK_PAL[k & 7]);
         px_ctext(x + 6, 103, d, k + 1 == t ? UI_BG : UI_TRACK_PAL[k & 7], PX_FS, 1);
-    }
-}
-
-static void d_limit(const ui_turn_t *v, qd_rgb c)
-{
-    int k;
-    for (k = 0; k < 8; k++) {                           /* the pool's voices as robots, the limit's lit */
-        const int x = 6 + (k % 4) * 28, y = 20 + (k / 4) * 32, in = k < v->value, busy = k < v->voices;
-        px_sprite_sc(x, y, busy ? PXS_ROBOT2 : PXS_ROBOT1, 0, 2, in ? (busy ? QD_NONE : c) : UI_G3);
-    }
-}
-
-static void d_len(const ui_turn_t *v, qd_rgb c)
-{
-    const int steps = v->value < 1 ? 1 : v->value > 128 ? 128 : v->value;
-    int p;
-    for (p = 0; p < 8; p++) {                           /* the loop over the eight pages: a bar a page */
-        const int y = 18 + p * 8, n = steps - p * 16;
-        px_box(8, y, 98, 6, UI_G3);
-        if (n > 0)
-            px_rect(9, y + 1, (n > 16 ? 16 : n) * 6, 4, c);
     }
 }
 
@@ -295,8 +255,6 @@ void ui_turn_draw(const ui_turn_t *v)
     case UI_TK_TEMPO:
     case UI_TK_SWING: ui_ape_tempo(v, col); val = 0; break;
     case UI_TK_RATE: picker(v, col); val = 0; break;
-    case UI_TK_LEN: d_len(v, col); break;
-    case UI_TK_LIMIT: d_limit(v, col); break;
     case UI_TK_PAGE:
         pages(v, col, 16);
         if (!val[0]) {
@@ -306,7 +264,6 @@ void ui_turn_draw(const ui_turn_t *v)
         break;
     case UI_TK_SCALE:
     case UI_TK_ROOT: d_scale(v, col); val = 0; break;
-    case UI_TK_TRACK: d_tracks(v, col); val = 0; break;
     case UI_TK_TRACKBIG: d_trackbig(v); val = 0; break;
     case UI_TK_FOLLOW: d_follow(v, col); break;
     case UI_TK_TSWING:
@@ -400,16 +357,8 @@ void ui_word_band(const char *s)
     px_ctext(60, 14, s, UI_BG, PX_FS, 1);
 }
 
-/* ---------------------------------------------------------------- the confirmation word, UNDO / REDO */
-void ui_confirm_draw(const char *big, const char *small, qd_rgb col)
-{
-    if (big) {
-        const int sc = px_text_w(big, PX_FB, 3) <= 116 ? 3 : px_text_w(big, PX_FB, 2) <= 116 ? 2 : 1;
-        px_text_sh(60 - (px_text_w(big, PX_FB, sc) + 1) / 2, 60 - 7 * sc / 2 - 4, big, col, UI_G3, PX_FB, sc);
-    }
-    if (small && small[0] && !strchr(small, ' '))
-        px_ctext(60, 76, small, col, PX_FS, 1);
-}
+/* ---------------------------------------------------------------- the confirmation's scene, UNDO / REDO */
+#include "ui_scene.c"                   /* EvilGenius: the scenes (built here: the source lists stay) */
 
 void ui_undo_draw(int redo, int kind, float t)
 {

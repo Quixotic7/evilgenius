@@ -171,6 +171,7 @@ struct qd_app;
 #define QD_TAP_MS 250u                 /* a white key held this long is held, not tapped */
 #define QD_SEL_TAP_MS 500u             /* 2026-11-11 (owner): SEL let go within this, nothing else pressed: OVERVIEW
                                          * (the track map still shows from QD_TAP_MS) */
+#define QD_DBL_MS 300u                 /* 2026-11-13: TOOLS, a W tapped twice within this: that step alone */
 #define QD_CLICK_MS 200u               /* Form's tap (a page key) and its double tap */
 #define QD_ARM_MS 2000u                /* SHIFT + B11's (CLEAR's) second press within this */
 #define QD_CHORD_MS 60u                /* F1 / F2 alone this long before its map shows (both within: F3) */
@@ -182,13 +183,16 @@ struct qd_app;
 #define QD_CONFIRM_MS 1100u            /* a confirmation word stays this long (its last 120 ms a fade) */
 #define QD_BLINK_MS 250u               /* a blink's half period (the playing page, the queued pattern, solo) */
 #define QD_FAST_MS 90u                 /* a fast blink's half period (the held step) */
+enum { QD_VOICE_STOPPED, QD_VOICE_ALWAYS, QD_VOICE_OFF };   /* EvilGenius: THE VOICE's setting (STOPPED: never over a
+                                                             * pattern playing) */
+#define QD_VOICE_LVL_MAX 20            /* .. its level's steps (5 % each); the default: full */
+#define QD_RIDE_MS 420u                /* EvilGenius: a lift's ride (the track's, the FX tower's) */
 #define QD_SLIDE_MS 160u               /* a page change slides the lane in */
 #define QD_UNFOLD_MS 240u              /* P1.3j: STEPS, a page change: the new page's row unfolds, the old one folds */
 #define QD_ENTRY_OCT 4                 /* NOTE's entry octave at power-on (the root at C4 = MIDI 60) */
 #define QD_PAGE_HOLD_MS 400u           /* F1 + a page key held this long: the page in / out of the loop */
 #define QD_SEL_HOLD_MS 400u            /* SEL + W1..W8 held this long: solo (a tap: mute) */
 #define QD_SEQ_HOLD_MS 400u            /* SEQ + W held this long: the pattern at once (a tap: queued) */
-#define QD_CLEAR_HOLD_MS 600u          /* F1 + B9 held this long: the track cleared (a tap: the page) */
 #define QD_PLAY_HOLD_MS 400u           /* P1.3x: PLAY held this long: F3 (a tap plays / stops on its release) */
 #define QD_HOME_HOLD_MS 500u           /* 2026-11-10 (owner): HOME held this long: the global settings (a click: the
                                         * Home view, the next one) */
@@ -228,7 +232,6 @@ enum { QD_LAYER_NONE, QD_LAYER_F1, QD_LAYER_F2, QD_LAYER_F3 };
 #define QD_TK_LOADED 106               /* P1.5t: the browser's F2: the preset onto the track, "LOADED" */
 #define QD_TK_BACK 107                 /* .. its F1 / HOME: the track's own sound back, "BACK" */
 #define QD_TK_SAVED 108                /* .. SAVE PRESET done: into MY presets, "SAVED" */
-#define QD_TK_LMODE 103                /* P1.5b: the latch mode's screen (P1.5h: only while LFO is held: lmode_open) */
 #define QD_ARP_HOLD_MS 400u            /* P1.6d: ARP held this long (T1b: the arp on / off; a tap: the MIDI FX screen) */
 #define QD_TOOL_POP_MS 800u            /* T1: a tool's name pops up this long (its last 300 ms a fade) */
 #define QD_TK_MFX_STEP 110             /* P1.6c: a held step's MIDI FX (TRIG's KNOB 2, B4..B10) */
@@ -387,6 +390,10 @@ typedef struct {
     int choice;                        /* P1.5v: 0 NEW, 1 REPLACE (F2 switches it; SAVE does it) */
     char newname[QD_SOUND_NAME];       /* .. NEW then saves under this ("DARK BASS 2") */
     int ret_mode;
+    int16_t step;                      /* 2026-11-13 (owner): opened from the sound editor with a step selected: that
+                                        * step (-1 none) .. */
+    uint8_t src;                       /* .. 1: the step's sound is saved (its sound lock or the track's, its locks
+                                        * over it; the track kept), 0 the track's (KNOB 4 switches) */
 } qd_saveui_t;
 typedef struct {
     int target, proj;                  /* 2: project proj (P1.5t: the only one; SAVE PRESET names its own) */
@@ -423,6 +430,10 @@ typedef struct {
         struct { uint8_t fit; int8_t rung; } st;   /* STRETCH: onto this many pages (0: by the ladder's rung, -6..6) */
         struct { uint8_t act; } cl;    /* CLIP: the action OCT+ does (QD_CL_*) */
     } v;
+    uint8_t wlast, npaste;             /* 2026-11-13 (owner): the W tapped last (step + 1; a double click: that step
+                                        * alone), the steps F1 / F2 pasted this hold (the selection on its release) */
+    uint8_t paste[16];
+    uint32_t wms;
 } qd_tools_t;
 
 typedef struct {
@@ -515,8 +526,7 @@ typedef struct {
     int pg_taps[8];                    /* .. it was a tap (2: and this press came within QD_CLICK_MS: a double) */
     int pg_range;                      /* F1: a range was made: no taps until the page keys are up */
     int pg_copied;                     /* F1: the page copied this hold (-1 none): B1..B8 paste it */
-    uint32_t b9_t0;                    /* F1: B9's press .. */
-    int b9_down, b9_done;              /* .. down; held long enough: the track cleared */
+    int b9_down;                       /* F1: B9 down (its release clears the page) */
     int f1_copied;                     /* F1: a step copied this hold: the next W pastes it */
     int f2_loaded, f2_holding;         /* F2: Form's seqF2Loaded_ / seqF2Holding_ (the hand) */
     int f2_last_w, f2_last_act;        /* F2: the last W and what it did (1 CUT, 2 PASTE): the map shows it */
@@ -570,6 +580,8 @@ typedef struct {
     int undo_dir, undo_kind;           /* P1.5c: the last undo (-1) / redo (+1), its level's kind (QD_UK_*; -1 none) */
     int clr_armed;                     /* P1.5c: SHIFT + B11 pressed once (the track cleared on the second) .. */
     uint32_t clr_ms;
+    uint32_t arm_ms;                   /* 2026-11-13 (owner): MIDI FX's remove / the project copy armed (QD_ARM_MS, then
+                                        * disarmed, as every press-twice arm; the browser's DELETE? / OUT?: br.arm_ms) */
     uint32_t tap_ms[8];                /* .. SHIFT + B6: the last taps (P1.5z: eight, the takeover's dots) */
     int tap_cont;                      /* the TAP ape: this count began while the TAP screen was still up */
     int ntap;
@@ -617,6 +629,8 @@ typedef struct {
     int mfx_f1_src;                    /* P1.6e: F1's copy came from this slot (-1); F1 went down (its COPY picture once
                                          * held a moment) */
     uint32_t mfx_f1_ms;
+    uint8_t mfx_from_keys;             /* 2026-11-13: opened over the keyboard page (KEYS), else a step view: back there */
+    uint32_t mfx_wms;                  /* 2026-11-13: the W keys' hold began (the step popup after QD_TAP_MS; 0 shown) */
     uint16_t mfx_wheld;                /* P1.6e: STEPS (the mode STEP there; KEYS the keyboard's: P1.6f, one state): the
                                         * steps held (the page's W keys), their MIDI FX locked by ALGORITHM */
     qd_mfx_slot_t mfx_clip;            /* P1.6d: F1's copy, F2's hand .. */
@@ -650,6 +664,12 @@ typedef struct {
     uint8_t msnd_page;                 /* FIZZ MIDI (e): the MIDI track editor's page (0..6) .. */
     int8_t msnd_cck;                   /* .. the slot (0..3) whose CC number SHIFT + its knob turned last (-1 none) */
     uint32_t snd_ms;                   /* .. and when */
+    uint8_t voice_mode;                /* EvilGenius: the global settings' VOICE (QD_VOICE_*): the villain's lines and
+                                        * the effects under them: only while stopped (the default), always, or off .. */
+    uint8_t voice_lvl;                 /* .. and their level, 0..QD_VOICE_LVL_MAX (steps of 5 %) */
+    int8_t ride_from, fxr_from;        /* EvilGenius: the lifts: the track left (THE ROOM's shaft), the effects' page
+                                        * left (the FX tower's); -1 none .. */
+    uint32_t ride_ms, fxr_ms;          /* .. and when */
     int trk_page, mix_page, fx_page;   /* P1.4b: the track settings' page (0, 1), the mix's (0 faders, 1 sends), the
                                         * effects' (QD_FX_PAGES) */
     int menu_knob;                     /* .. the knob turned last there (0..3, -1) */
@@ -692,6 +712,8 @@ typedef struct {
     uint8_t shift_stick;               /* 2026-11-13 (owner): SHIFT clicked: it stays on (a click again, or any button's
                                         * press and release, ends it; a hold never sticks) .. */
     uint8_t shift_unstick;             /* .. this press began stuck: its release ends it */
+    uint16_t shift_eat;                /* .. 2026-11-13 (owner): stuck, a menu button already shown: its press and
+                                        * release only end SHIFT (bit: the button) */
     uint32_t shift_ms;                 /* .. the press's time */
     /* the keyboard (ctl_rec.c) */
     int rec;                           /* recording armed in the keyboard (step recording stopped, live playing) */
@@ -798,8 +820,9 @@ int qd_snd_machine(int ftype);                      /* E2: the filter machine (0
 void qd_snd_mod_key(struct qd_app *a, int down);    /* E4: B1 in the editor: a tap its group, held: hold-to-map (slots) */
 void qd_snd_mod_src(struct qd_app *a, int w);       /* E4: .. B1 held, W1..W8: the source (VEL .. F ENV) */
 int qd_snd_mod_slot_of(const struct qd_app *a, int src, int dest);   /* E4: the slot with src -> dest, -1 none */
-extern const char *const QD_SND_MACHINE[6];
-extern const int8_t QD_SND_MENU[6];                 /* E4.1: the machines' menu order (indices of QD_SND_MACHINE) */
+#define QD_SND_NMACH 8                 /* EvilGenius: the SID filter's modes, OFF first */
+extern const char *const QD_SND_MACHINE[QD_SND_NMACH];
+extern const int8_t QD_SND_MENU[QD_SND_NMACH];                 /* E4.1: the machines' menu order (indices of QD_SND_MACHINE) */
 int qd_snd_machine_pos(const struct qd_app *a);     /* .. the machine's place in it */
 #define QD_FPOP_MS 400u
 #define QD_FPOP_SHOW_MS 1000u          /* P1.6g: ALGORITHM on the FILTER page: the machines' popup this long after */                             /* P1.6d: the FILTER key held this long: the machines' popup */
@@ -826,6 +849,7 @@ void qd_trk_engine_set(struct qd_app *a, int t, int e);   /* .. set (KNOB 3) */
 void qd_msnd_put(struct qd_app *a, int t, qd_tsound_t *s);   /* a load's sound s over track t's (the side) */
 int qd_msnd_take(struct qd_app *a, int t);                /* .. the model's into the pattern's (the 1 ms sync) */
 void qd_side_clear(struct qd_app *a);                     /* ENGINE's sides forgotten */
+int qd_snd_fifth(const struct qd_app *a, int page);   /* 2026-11-13: the editor page's fifth value (on PRESETS) */
 int qd_snd_keys(const struct qd_app *a);        /* P1.5b: the editor open with the keyboard on (2026-10-26: or the
                                                  * effects' SENDS page: REC turns it on there too) */
 int qd_snd_scale_note(const struct qd_app *a, int w);   /* .. SCALE: W w's note (the scale's degree w from the root) */
@@ -868,6 +892,8 @@ const qd_lockscreen_t *qd_snd_lock_screen(const struct qd_app *a, int page);
  * white keys play the track through the group (the arp's lanes: the steps; SHIFT + W a random value); F1 tapped or
  * HOME close it. (T1b: ARP held: the arp bypassed / playing, TOOLS is SEQ tapped; the arp on / off is its slot here: added / removed, B10 bypass) */
 int qd_mfx_open(const struct qd_app *a);
+void qd_mfx_close(struct qd_app *a);             /* 2026-11-13: ARP tapped: closed, back to the page under it */
+int qd_mfx_vgroup(const struct qd_app *a);   /* 2026-11-13: the group the MIDI FX screen shows (a step's) */
 int qd_mfx_tgroup(const struct qd_app *a);        /* the selected track's group (0 OFF, 1..5) */
 void qd_mfx_track_changed(struct qd_app *a, int t);   /* 2026-10-26: track t's group changed: its notes leave the old
                                                  * group now (a HOLD arp there kept playing until stop / start) */
@@ -902,6 +928,11 @@ void qd_tools_sel_changed(struct qd_app *a);    /* 2026-11-10: the selection cha
 int qd_tools_key_tool(int b);                   /* .. the tool on black key b (-1 B6's two, -2 the scope, -3 none) */
 int qd_tools_tool_key(int t);                   /* .. the black key of tool t */
 int qd_tools_knob(struct qd_app *a, int knob, int d);
+void qd_tools_keep(struct qd_app *a);
+void qd_tools_clear_sel(struct qd_app *a);
+void qd_tools_pasted(struct qd_app *a, int s);
+void qd_tools_paste_done(struct qd_app *a);
+void qd_tools_oct_click(struct qd_app *a, int d);
 void qd_tools_ms(struct qd_app *a);
 void qd_tools_leds(const struct qd_app *a, uint8_t *key);
 int qd_tools_pending(struct qd_app *a);         /* a change pending (live or drawn only) */
@@ -925,9 +956,10 @@ int qd_tools_clip_ok(const struct qd_app *a, int act);   /* CLIP: the action can
  * QD_FXC_SPREAD (the free or the synced one by SYNC), or none */
 enum { QD_FXC_NONE = -1, QD_FXC_SEND = -2, QD_FXC_TIME = -3, QD_FXC_SPREAD = -4 };
 #define QD_FXC_SENDX(fx) (-10 - (fx))  /* P1.5b, the overview: the selected track's send into effect fx (0..2) */
+#define QD_FXC_ROOMX(k) (-30 - (k))     /* EvilGenius: the selected track's send into room k (0..4: CRUSH .. TV) */
 #define QD_FXC_DRY (-20)                /* 2026-10-26: the selected track's DRY / WET (mix.h dry; SENDS' KNOB 4, ROUTING's
                                          * KNOB 2 and ALGORITHM) */
-#define QD_FX_NPAGE 11
+#define QD_FX_NPAGE 12                 /* (EvilGenius: FX MIX, the second page) */
 /* P1.5b: the effects (the page's group): 0 DELAY 1 REVERB 2 CHORUS 3 MASTER, 4 the OVERVIEW (the sends), 5 ROUTING;
  * the black keys B1..B6: OVERVIEW, DELAY, REVERB, CHORUS, MASTER, ROUTING (QD_FX_KEY) */
 enum { QD_FXG_DELAY, QD_FXG_REVERB, QD_FXG_CHORUS, QD_FXG_MASTER, QD_FXG_OVER, QD_FXG_ROUTE,
@@ -941,6 +973,9 @@ typedef struct {
     int8_t c[4];
 } qd_fxpage_t;
 extern const qd_fxpage_t QD_FX_PAGES[QD_FX_NPAGE];
+#define QD_MIX_NPAGE 3                 /* EvilGenius: the mix's pages: FADERS, SENDS, FX MIX */
+void qd_room_turn(struct qd_app *a, int k, int d);   /* .. FX MIX: the selected track's send into room k, d detents */
+int qd_fx_floor(int page);            /* EvilGenius: the page's floor of the FX tower (its black key, 0 the top) */
 extern const char *const QD_FX_NAME[QD_NFXG];
 int qd_fx_send(const struct qd_app *a, int t, int fx);   /* track t's send into effect fx (0 DELAY 1 REVERB 2 CHORUS) */
 int qd_fx_cell_id(int c);               /* a cell's parameter now (TIME, SPREAD: by SYNC) */
@@ -978,7 +1013,6 @@ void qd_name_open(struct qd_app *a, int target, int proj);
 void qd_lib_key(struct qd_app *a, int key, int w, int b, int down, int vel);
 int qd_lib_knob(struct qd_app *a, int knob, int d);
 int qd_lib_oct(struct qd_app *a, int d, int down);   /* 1 taken */
-void qd_lib_ms(struct qd_app *a);
 /* ---- ctl_presets.c (P1.5t): the library browser, SAVE PRESET */
 void qd_br_turn(struct qd_app *a, int d);        /* PRESETS, nothing held: the browser opened / moved */
 void qd_br_track(struct qd_app *a, int t);   /* P1.5z: SHIFT + SELECT: the preview put back, track t browsed */
@@ -994,6 +1028,7 @@ void qd_br_key(struct qd_app *a, int key, int w, int b, int down, int vel);
 int qd_br_knob(struct qd_app *a, int knob, int d);
 void qd_br_leds(const struct qd_app *a, uint8_t *key);
 int qd_br_pool_k(const struct qd_app *a);        /* P1.5v: the pool number the chosen is (or its copy's), 0 none */
+void qd_sv_start(struct qd_app *a);   /* 2026-11-13: SAVE PRESET's name and REPLACE for the sound chosen */
 void qd_sv_open(struct qd_app *a);               /* SAVE: SAVE PRESET (again: saved as NEW) */
 void qd_sv_new(struct qd_app *a);
 void qd_sv_replace(struct qd_app *a);
@@ -1028,7 +1063,8 @@ int qd_ctl_mkey(const struct qd_app *a);
 int qd_ctl_mkey_shown(const struct qd_app *a);   /* P1.3d: QD_KJ_* of a knob (QD_K_SELECT, QD_K_1..4) in a hold mode */
 /* 2026-11-10 (owner): the mode keys B1..B7 NOTE..COND, B8 FUNC, B9 TRIG / SLIDE, B10 SOUND; B11 the hold key */
 int qd_ctl_key_mode(const struct qd_app *a, int b);   /* the mode black key b shows (B9: the one in use or last), -1 */
-int qd_ctl_mode_key(int m);                           /* .. the key of mode m */
+int qd_ctl_mode_key(int m);
+void qd_ctl_set_oct(struct qd_app *a, int oct);       /* 2026-11-13: the one octave (the keyboard's, NOTE's entry) */                           /* .. the key of mode m */
 int qd_ctl_b11(const struct qd_app *a);               /* B11 held as the hold key (the step view, no menu) */
 int qd_ctl_b11_free(const struct qd_app *a);          /* .. B11 pressed now would be the hold key (no other job) */
 void qd_ctl_select_track(struct qd_app *a, int t);
@@ -1036,6 +1072,11 @@ void qd_ctl_select_track(struct qd_app *a, int t);
 /* ---- ctl_latch.c (P1.3d) */
 void qd_latch_open(struct qd_app *a, int kind);
 void qd_latch_close(struct qd_app *a);
+/* 2026-11-13 (owner): a page opened: the step lock and its selection kept on every page, any popup (takeover) gone.
+ * QD_PO_STEP: the step view under it, steps held by a finger let go; QD_PO_KEYS: the same, the keyboard page kept
+ * (MIDI FX); QD_PO_OVER: the mode as it is (EDIT, the panels) */
+enum { QD_PO_STEP, QD_PO_KEYS, QD_PO_OVER };
+void qd_page_open(struct qd_app *a, int kind, int how);
 int qd_latch_oct(struct qd_app *a, int d);   /* an OCT press (d -1 / +1) with a latch open: 1 taken */
 const qd_latch_t *qd_latch_cur(const struct qd_app *a);   /* the latch open, 0 none */
 
@@ -1073,6 +1114,7 @@ void qd_step_default_reset(struct qd_app *a, int m);
 int qd_step_default_initial(const struct qd_app *a, int m);
 void qd_step_latch_restore(struct qd_app *a);   /* 2026-11-13: LFO's lock on: the last selection back (else step 1) */
 void qd_step_latch(struct qd_app *a, int on);   /* P1.3d: the step latch (LFO) on / off */
+uint16_t qd_sel_mask(const qd_ui_t *u, int page);   /* 2026-11-13: the selected (held) steps on page (bit s) */
 void qd_step_latch_seed(struct qd_app *a);      /* .. its selection started (the last step edited, else the page's first) */
 void qd_step_cursor(struct qd_app *a, int d);   /* ALGORITHM: the latch's one selection on the page shown (2026-11-10) */
 void qd_step_b11_select(struct qd_app *a, int w);   /* 2026-11-10: B11 held + W: the latch's selection */
@@ -1118,7 +1160,15 @@ int qd_rec_key_note(const struct qd_app *a, int key);   /* the keyboard's note o
 /* ---- ctl_leds.c */
 struct qd_leds;
 void qd_ctl_leds(const struct qd_app *a, struct qd_leds *out);
+void qd_ctl_no_room(struct qd_app *a);   /* the locks' NO ROOM confirm */
 void qd_ctl_sounding(const struct qd_app *a, uint8_t *notes);   /* the selected track's notes sounding (128) */
+/* 2026-11-13 (owner): one key-light rule on every page: key held or its note n sounding (notes[n] & 1): lit; else the
+ * scale's root, a note of the scale, out of it */
+int qd_key_led(const struct qd_app *a, int key, int n, const uint8_t *notes, int sc, int rt);
+/* 2026-11-13 (owner): a step row's W LEDs on every page: the playhead's key inverted, the selected steps (sel, the page
+ * shown's) blinking at one rate (QD_FAST_MS) */
+void qd_leds_row(const struct qd_app *a, uint8_t *key, uint16_t sel);
+void qd_leds_steps(const struct qd_app *a, uint8_t *key, uint16_t sel);   /* .. the page's steps first (as the step view) */
 int qd_ctl_trig_flash(const struct qd_app *a, int t);          /* track t's trig flash (80 ms) */
 #define QD_LED_BREATH_MS 1500u
 uint8_t qd_led_breath(uint32_t ms);

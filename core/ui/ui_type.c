@@ -160,11 +160,17 @@ static void ty_ideas(const ui_type_t *v)
     }
 }
 
-void ui_type_draw(const ui_type_t *v)
+FZ_COLD void ui_type_draw(const ui_type_t *v)
 {
     px_text(4, 3, v->title, UI_LIB_COL, PX_FS, 1);
     if (v->track)
         ui_box(216.f, 4.f, v->track, UI_TRACK_PAL[(v->track - 1) & 7]);
+    if (v->step) {                                      /* FIZZ beta.18: a step selected: the sound saved, the STEP's
+                                                         * (filled) or the TRACK's (KNOB 4) */
+        char lab[20] = "STEP ";
+        ui_itoa(lab + 5, v->step);
+        ui_chip(v->src ? lab : "TRACK", 172.f, 18.f, 12.f, 60.f, v->src ? UI_STEP_FRAME : UI_G1, v->src);
+    }
     px_dots(0, 11, 120, UI_G3, 2);
     if (v->ideas_on) {
         ty_ideas(v);

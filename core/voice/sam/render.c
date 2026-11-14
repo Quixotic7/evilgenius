@@ -70,9 +70,9 @@ void Output8BitAry(int index, unsigned char ary[5])
     bufferpos += timetable[oldtimetableindex][index];
     oldtimetableindex = index;
     // write a little bit in advance
-    for(k=0; k<5; k++)
-        if ((unsigned)(bufferpos/50 + k) < SAM_BUF_LEN)   /* (EvilGenius: bounded) */
-            buffer[bufferpos/50 + k] = ary[k];
+    for(k=0; k<SAM_AHEAD; k++)
+        if ((unsigned)(bufferpos/SAM_DIV + k) < SAM_BUF_LEN)   /* (EvilGenius: bounded; at the words' rate) */
+            buffer[bufferpos/SAM_DIV + k] = ary[k];
 }
 void Output8Bit(int index, unsigned char A)
 {
@@ -918,13 +918,13 @@ pos48159:
                 X = 26;
                 // mem[54296] = X;
                 bufferpos += 150;
-                if ((unsigned)(bufferpos/50) < SAM_BUF_LEN) buffer[bufferpos/50] = (X & 15)*16;   /* (EvilGenius: bounded) */
+                if ((unsigned)(bufferpos/SAM_DIV) < SAM_BUF_LEN) buffer[bufferpos/SAM_DIV] = (X & 15)*16;   /* (EvilGenius: bounded) */
             } else
             {
                 //mem[54296] = 6;
                 X=6;
                 bufferpos += 150;
-                if ((unsigned)(bufferpos/50) < SAM_BUF_LEN) buffer[bufferpos/50] = (X & 15)*16;   /* (EvilGenius: bounded) */
+                if ((unsigned)(bufferpos/SAM_DIV) < SAM_BUF_LEN) buffer[bufferpos/SAM_DIV] = (X & 15)*16;   /* (EvilGenius: bounded) */
             }
 
             for(X = wait2; X>0; X--); //wait

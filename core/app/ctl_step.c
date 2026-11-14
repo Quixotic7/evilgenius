@@ -134,14 +134,12 @@ static void held_add(qd_app_t *a, int s, int key)
     qd_ui_t *u = &a->ui;
     if (u->nheld >= 16)
         return;
-    if (!u->nheld) {                                    /* a new hold */
-        qd_rstep_t r;
-        resolve(a, s, &r);
+    if (!u->nheld) {                                    /* a new hold (2026-11-13, owner: SOUND's bank and the octave
+                                                         * are global: a selection never moves them) */
         u->chord_ms = a->ms - 10000u;
         u->held_played = 0;
         u->note_keys = 0;
         u->entry_n = 0;
-        u->sound_bank = r.sound > 0 ? (r.sound - 1) / 10 : 0;   /* SOUND: the bank holding the step's sound */
         u->sel_panel = u->latch == QD_LATCH_MIX || u->latch == QD_LATCH_FX;   /* (P1.6h: made there or not) */
     }
     u->held[u->nheld] = s;
@@ -171,6 +169,13 @@ void qd_step_select_toggle(qd_app_t *a, int s)
         held_add(a, s, -1);
 }
 
+/* the band of a step no longer held (the knob's, MIDI FX STEPS') closed */
+static void step_tk_close(qd_ui_t *u)
+{
+    if (u->tk == QD_TK_HELDKNOB || u->tk == QD_TK_MFX_STEP)
+        u->tk = QD_TK_NONE;
+}
+
 void qd_step_release_all(qd_app_t *a)
 {
     qd_ui_t *u = &a->ui;
@@ -178,8 +183,7 @@ void qd_step_release_all(qd_app_t *a)
     u->wk_down = u->wk_pending = u->wk_target = 0;
     u->note_keys = 0;
     u->scursor = 0;
-    if (u->tk == QD_TK_HELDKNOB || u->tk == QD_TK_MFX_STEP)                        /* (the band of a step no longer held) */
-        u->tk = QD_TK_NONE;
+    step_tk_close(u);
 }
 
 /* P1.3d (§8b 2.2): the step latch (LFO). On, it is as if a step is always held: the held steps are a selection that
@@ -219,8 +223,7 @@ void qd_step_cursor(qd_app_t *a, int d)
     if (!u->slatch)
         qd_step_latch(a, 1);
     u->nheld = 0;
-    if (u->tk == QD_TK_HELDKNOB || u->tk == QD_TK_MFX_STEP)
-        u->tk = QD_TK_NONE;
+    step_tk_close(u);
     held_add(a, s, -1);
     u->scursor = 1;
     u->wflash = (uint8_t)(s % QD_PAGE + 1);             /* (2026-11-13: the step keyboard: its W key flashes) */
@@ -252,22 +255,27 @@ void qd_step_cursor_page(qd_app_t *a)
     if (!u->slatch || !u->nheld || u->wk_down)
         return;
     u->nheld = 0;
-    if (u->tk == QD_TK_HELDKNOB || u->tk == QD_TK_MFX_STEP)
-        u->tk = QD_TK_NONE;
+    step_tk_close(u);
     held_add(a, pg * QD_PAGE + (ts->pstart[pg] < QD_PAGE ? ts->pstart[pg] : 0), -1);
+}
+
+uint16_t qd_sel_mask(const qd_ui_t *u, int page)
+{
+    uint16_t m = 0;
+    int i;
+    for (i = 0; i < u->nheld; i++)
+        if (u->held[i] / QD_PAGE == page)
+            m |= (uint16_t)(1u << (u->held[i] % QD_PAGE));
+    return m;
 }
 
 void qd_step_latch(qd_app_t *a, int on)                 /* (2026-10-26, the owner: it starts EMPTY; the cursor seeds it) */
 {
     qd_ui_t *u = &a->ui;
-    int i;
     if (u->slatch && u->nheld) {                        /* 2026-11-13 (owner): the selection let go is kept (its first
                                                          * step's page) for LFO to bring back */
         u->lsel_pg = (uint8_t)(u->held[0] / QD_PAGE);
-        u->lsel_mask = 0;
-        for (i = 0; i < u->nheld; i++)
-            if (u->held[i] / QD_PAGE == u->lsel_pg)
-                u->lsel_mask |= (uint16_t)(1u << (u->held[i] % QD_PAGE));
+        u->lsel_mask = qd_sel_mask(u, u->lsel_pg);
     }
     qd_step_release_all(a);
     a->ui.slatch = on != 0;
@@ -288,8 +296,7 @@ void qd_step_b11_select(qd_app_t *a, int w)
         u->nheld = 0;
     u->b11_w |= (uint16_t)(1u << w);
     u->scursor = 0;
-    if (u->tk == QD_TK_HELDKNOB || u->tk == QD_TK_MFX_STEP)
-        u->tk = QD_TK_NONE;
+    step_tk_close(u);
     if (held_find(u, s) < 0)
         held_add(a, s, -1);
     qd_ctl_preview_once(a, s);
@@ -457,8 +464,7 @@ void qd_step_white_up(qd_app_t *a, int w)
             a->ms - u->wk_t0[w] < QD_TAP_MS) {
             u->nheld = 0;
             u->note_keys = 0;
-            if (u->tk == QD_TK_HELDKNOB || u->tk == QD_TK_MFX_STEP)
-                u->tk = QD_TK_NONE;
+            step_tk_close(u);
         }
         return;
     }
@@ -475,8 +481,7 @@ void qd_step_white_up(qd_app_t *a, int w)
         }
     if (!u->nheld) {
         u->note_keys = 0;
-        if (u->tk == QD_TK_HELDKNOB || u->tk == QD_TK_MFX_STEP)
-            u->tk = QD_TK_NONE;
+        step_tk_close(u);
     }
 }
 
@@ -774,6 +779,8 @@ int qd_step_base(qd_app_t *a, int t, int s, int id)
     qd_rstep_t r;
     if (id >= QD_QUAD_NP) {
         const qd_mix_track_t *m = &a->model.t[t].mix;
+        if (id >= QD_LK_CRUSH && id < QD_LK_N)          /* (EvilGenius: a room's send) */
+            return m->room[id - QD_LK_CRUSH];
         return id == QD_LK_PAN ? m->pan : id == QD_LK_DELAY ? m->delay : id == QD_LK_REVERB ? m->reverb
              : id == QD_LK_CHORUS ? m->chorus : id == QD_LK_LEVEL ? m->level : 0;
     }
@@ -797,7 +804,7 @@ static int lock_all(qd_app_t *a, int id, int d)
             ok = 0;
     }
     if (!ok)
-        qd_ctl_confirm(a, "NO ROOM", "for locks: the pattern has 1024");
+        qd_ctl_no_room(a);
     return ok;
 }
 
@@ -810,7 +817,7 @@ void qd_step_lock_fine(qd_app_t *a, int id, int d)
         const int s = u->held[i];
         const int base = qd_lock_get(CPAT(a), a->sel, s, id, &v) ? v : qd_step_base(a, a->sel, s, id);
         if (qd_lock_set(PAT(a), a->sel, s, id, base + d) == QD_EFULL) {
-            qd_ctl_confirm(a, "NO ROOM", "for locks: the pattern has 1024");
+            qd_ctl_no_room(a);
             return;
         }
     }
@@ -1319,9 +1326,9 @@ int qd_step_knob(qd_app_t *a, int knob, int d)
 void qd_step_oct(qd_app_t *a, int d)                    /* (2026-10-26: nothing held too: the track's black keys) */
 {
     qd_ui_t *u = &a->ui;
-    if (u->hmode == UI_F_NOTE) {
+    if (u->hmode == UI_F_NOTE) {                        /* (2026-11-13, owner: one octave, the keyboard's too) */
         const int from = u->entry_oct;
-        u->entry_oct = clampi(u->entry_oct + d, -1, 8);
+        qd_ctl_set_oct(a, a->oct + d);
         qd_ctl_octave(a, UI_OCT_NOTE, from, u->entry_oct);
     } else if (u->hmode == UI_F_SOUND) {
         const int last = (a->proj.nsound - 1) / 10, from = u->sound_bank;

@@ -434,6 +434,19 @@ static void turn(int knob, int d)
     run(5);
 }
 static qd_pattern_t *PAT(void) { return qd_ctl_pat(&A); }
+static void page(int d)                                 /* 2026-11-13: the page shown d pages on (round), B11 + B1..B8
+                                                         * (SELECT is TOOLS' tool now) */
+{
+    const int pg = ((qd_ctl_cpat(&A) ? A.ui.page[A.sel] : 0) + d % QD_NPAGE + QD_NPAGE) % QD_NPAGE;
+    qd_app_key(&A, BK(10), 1, 100);
+    run(20);
+    qd_app_key(&A, BK(pg), 1, 100);
+    run(20);
+    qd_app_key(&A, BK(pg), 0, 0);
+    run(20);
+    qd_app_key(&A, BK(10), 0, 0);
+    run(QD_TAP_MS + 20);
+}
 static qd_leds_t leds(void)
 {
     qd_leds_t l;
@@ -539,7 +552,7 @@ static void t_arp(void)
     bup(QD_B_KEYS);
     run(10);
     btap(QD_B_KEYS);
-    turn(QD_K_ALGO, 1);
+    turn(QD_K_PRESETS, 1);
     CHECK(qd_mfx_open(&A) && PAT()->trk[0].mfx == (2 | QD_TMFX_OFF) && qd_mfx_tgroup(&A) == 2,
           "bypassed: the page edits the group (ALGORITHM 2), still bypassed");
     {
@@ -547,7 +560,7 @@ static void t_arp(void)
         qd_view_mfx(&A, &v);
         CHECK(v.route_off && v.g == 2, "the page: OFF by the group 2 hexagon");
     }
-    turn(QD_K_ALGO, -1);
+    turn(QD_K_PRESETS, -1);
     btap(QD_B_HOME);
     bdown(QD_B_FUNC);
     btap(QD_B_KEYS);
@@ -572,7 +585,7 @@ static void t_rotate_live(void)
 {
     qd_pattern_t *before = malloc(sizeof *before);
     qd_leds_t l;
-    int n0, m, w, ok = 1;
+    int n0, w, ok = 1;
     start();
     bass(0);
     run(600);                                           /* (the edits' gesture closed) */
@@ -604,23 +617,16 @@ static void t_rotate_live(void)
     CHECK(!qd_tools_pending(&A) && !A.undo.hold && qd_undo_count(&A, -1) == n0 + 1 && A.ui.tl.rot == 0 &&
               qd_tools_open(&A) && A.ui.tk == UI_TK_TOOL && A.ui.tk_knob == 2 && A.ui.tk_step == 0,
           "OCT+: kept, one undo level, KEPT popped; the offset 0 again; TOOLS stays");
-    m = ons(0, 0, 16);
-    btap(F1);
-    CHECK(qd_tools_open(&A) && ons(0, 0, 16) == m, "OCT- with nothing pending: nothing (TOOLS stays: HOME leaves)");
-    bdown(QD_B_FUNC);
-    btap(F1);
-    bup(QD_B_FUNC);
-    run(10);
-    CHECK(!memcmp(PAT()->step, before->step, sizeof before->step) && !memcmp(PAT()->lock, before->lock, sizeof before->lock) &&
-              PAT()->nlock == before->nlock, "SHIFT + F1: undone, the original byte for byte");
+    btap(F1);                                           /* (2026-11-13, owner: a click with nothing pending: undo) */
+    CHECK(qd_tools_open(&A) && !memcmp(PAT()->step, before->step, sizeof before->step) &&
+              !memcmp(PAT()->lock, before->lock, sizeof before->lock) && PAT()->nlock == before->nlock,
+          "OCT- with nothing pending: undone, the original byte for byte (TOOLS stays: HOME leaves)");
     turn(QD_K_1, 5);
     n0 = qd_undo_count(&A, -1);
     btap(F1);
     CHECK(!memcmp(PAT()->step, before->step, sizeof before->step) && !qd_tools_pending(&A) && qd_tools_open(&A) &&
               qd_undo_count(&A, -1) == n0 && A.ui.tl.rot == 0 && A.ui.tk_knob == 2 && A.ui.tk_step == 1,
           "OCT-: reverted byte for byte, no level, REVERTED popped, TOOLS open");
-    btap(F1);
-    CHECK(qd_tools_open(&A), "OCT- again: still open");
     turn(QD_K_1, 3);
     black(0);
     CHECK(A.ui.tl.rot == 0 && !memcmp(PAT()->step, before->step, sizeof before->step) && qd_tools_pending(&A),
@@ -638,22 +644,22 @@ static void t_knobs(void)                               /* SELECT the page, PRES
     bass(0);
     run(600);
     tools_open();
-    turn(QD_K_SELECT, 1);
+    page(1);
     CHECK(A.ui.page[0] == 1 && qd_tools_open(&A), "SELECT: page 2 shown");
-    turn(QD_K_SELECT, -2);
+    page(-2);
     CHECK(A.ui.page[0] == 7, "SELECT -2: round to page 8");
+    page(1);
     turn(QD_K_SELECT, 1);
-    turn(QD_K_PRESETS, 1);
     CHECK(A.ui.tl.tool == QD_TL_REVERSE && A.ui.tk == UI_TK_TOOL && !A.ui.tk_knob, "PRESETS: the next tool, its name");
-    turn(QD_K_PRESETS, 2);
+    turn(QD_K_SELECT, 2);
     CHECK(A.ui.tl.tool == QD_TL_EUCLID, "PRESETS +2: RANDOM, EUCLID");
-    turn(QD_K_PRESETS, -4);
+    turn(QD_K_SELECT, -4);
     CHECK(A.ui.tl.tool == QD_TL_CLIP, "PRESETS back: round to CLIP (the tenth, after STRETCH)");
-    turn(QD_K_PRESETS, -1);
+    turn(QD_K_SELECT, -1);
     CHECK(A.ui.tl.tool == QD_TL_STRETCH, "PRESETS -1: STRETCH");
-    turn(QD_K_ALGO, -1);
+    turn(QD_K_PRESETS, -1);
     CHECK(A.ui.tl.scope == QD_TS_PAGE && A.ui.tk_knob == 1, "ALGORITHM: the scope (PAGE), its takeover");
-    turn(QD_K_ALGO, -5);
+    turn(QD_K_PRESETS, -5);
     CHECK(A.ui.tl.scope == QD_TS_SEL, "ALGORITHM down: SELECTED (the end)");
     black(6);
     CHECK(A.ui.tl.scope == QD_TS_PAGE, "B7: PAGE");
@@ -663,7 +669,7 @@ static void t_knobs(void)                               /* SELECT the page, PRES
     black(6);                                          /* PAGE */
     turn(QD_K_1, 1);
     m = ons(0, 0, 16);
-    turn(QD_K_SELECT, 1);
+    page(1);
     CHECK(!qd_tools_pending(&A) && ons(0, 0, 16) == m && A.ui.page[0] == 1,
           "PAGE scope, a page change: the pending change kept first");
     btap(QD_B_HOME);
@@ -687,8 +693,10 @@ static void t_selected(void)                            /* the step lock: SELECT
         qd_step_select_toggle(&A, A.ui.held[0]);
     white(0), white(3), white(5);                       /* steps 1 (on), 4 (on), 6 (off) */
     CHECK(A.ui.nheld == 3 && qd_tools_sel_mask(&A) == 0x29, "W1, W4, W6: selected (the mask 1, 4, 6)");
+    run(QD_DBL_MS);                                     /* (2026-11-13: not a double click) */
     white(5);
     CHECK(A.ui.nheld == 2, "W6 again: out");
+    run(QD_DBL_MS);
     white(5);
     black(1);                                           /* REVERSE */
     black(1);                                           /* flip */
@@ -706,7 +714,7 @@ static void t_selected(void)                            /* the step lock: SELECT
     CHECK(!memcmp(PAT()->step, before->step, sizeof before->step), "OCT-: back");
     black(6);
     white(2);
-    CHECK(A.ui.tl.scope == QD_TS_SEL && A.ui.tk_knob == 1, "PAGE scope, a W: SELECTED again");
+    CHECK(A.ui.tl.scope == QD_TS_PAGE, "PAGE scope, a W: PAGE stays (2026-11-13, owner: the scope the user's)");
     btap(QD_B_HOME);
     free(before);
 }
@@ -779,7 +787,7 @@ static void t_t2_live(void)                             /* RANDOM, HUMANIZE, GRI
     CHECK(qd_undo_count(&A, -1) == n0 + 1, "OCT+: a level");
     btap(F1);
     black(4);
-    turn(QD_K_ALGO, 1);                                    /* PATTERN */
+    turn(QD_K_PRESETS, 1);                                    /* PATTERN */
     turn(QD_K_3, 20);
     qd_tools_grids_tracks(&A, tr);
     CHECK(A.ui.tl.tool == QD_TL_GRIDS && A.ui.tl.scope == QD_TS_PATTERN && tr[0] == 0 && tr[1] == 1 && tr[2] == 2,
@@ -828,15 +836,15 @@ static void t_clip(void)
               leds().key[BK(8)] == QD_LED_DIM && A.ui.tl.scope != n0, "B9: STRETCH, B10: CLIP (lit), B7 the scope");
     black(6), black(6), black(6);                   /* the scope round, back */
     black(0);
-    turn(QD_K_PRESETS, -1);
-    turn(QD_K_ALGO, -1);                                /* PAGE */
+    turn(QD_K_SELECT, -1);
+    turn(QD_K_PRESETS, -1);                                /* PAGE */
     CHECK(A.ui.tl.tool == QD_TL_CLIP && A.ui.tl.scope == QD_TS_PAGE && A.ui.tl.v.cl.act == QD_CL_COPY &&
               leds().button[F2] == QD_LED_LIT, "PRESETS -1: CLIP, on COPY (OCT+ lit)");
     turn(QD_K_1, 1);
     CHECK(A.ui.tl.v.cl.act == QD_CL_PASTE && leds().button[F2] == QD_LED_OFF, "KNOB 1: PASTE, nothing copied (OCT+ dark)");
     clip_do(QD_CL_COPY);
     CHECK(A.ui.clip.pg.valid && A.ui.tk_knob == 2 && A.ui.tk_step == 3, "COPY, OCT+: the page copied (COPIED)");
-    turn(QD_K_SELECT, 2);                               /* page 3 */
+    page(2);                               /* page 3 */
     n0 = qd_undo_count(&A, -1);
     clip_do(QD_CL_PASTE);
     run(QD_UNDO_QUIET_MS + 50);
@@ -847,7 +855,7 @@ static void t_clip(void)
     clip_do(QD_CL_CLEAR);
     run(QD_UNDO_QUIET_MS + 50);
     CHECK(ons(0, 32, 16) == 0 && qd_undo_count(&A, -1) == n0 + 2, "CLEAR on PAGE: cleared at once, a level");
-    turn(QD_K_ALGO, 1);                                 /* TRACK */
+    turn(QD_K_PRESETS, 1);                                 /* TRACK */
     CHECK(leds().button[F2] == QD_LED_LIT, "TRACK: CLEAR can (OCT+ lit)");
     qd_ctl_set_page(&A, 3);                             /* (page 4: track 1's bass is on 1 and 2; 4 empty) */
     clip_do(QD_CL_PASTE);
@@ -868,7 +876,7 @@ static void t_clip(void)
     btap(F1);                                           /* (SHIFT + F1: the paste on page 4 undone too, below) */
     bup(QD_B_FUNC);
     run(10);
-    turn(QD_K_ALGO, 1);                                 /* PATTERN */
+    turn(QD_K_PRESETS, 1);                                 /* PATTERN */
     bdown(QD_B_FUNC);
     btap(F1), btap(F1);                                 /* (SHIFT + F1 twice more: the paste, the page's clear) */
     bup(QD_B_FUNC);
@@ -931,7 +939,7 @@ static void t_noroom(void)
     n0 = qd_undo_count(&A, -1);
     tools_open();
     black(3);
-    turn(QD_K_ALGO, 1);                                    /* PATTERN */
+    turn(QD_K_PRESETS, 1);                                    /* PATTERN */
     turn(QD_K_1, -4);                                   /* 0 hits: every trig goes */
     CHECK(qd_tools_pending(&A) && !(A.ui.tl.flags & QD_TLF_NOLIVE) && (A.ui.tl.flags & QD_TLF_NOROOM) && !ons(0, 0, 16),
           "a change too big for an undo level: live, marked (the crossed-out arrow)");
@@ -1073,8 +1081,8 @@ static void t_owner(void)
     run(300);
     tools_open();
     qd_ctl_set_page(&A, 0);
-    turn(QD_K_SELECT, 2);
-    CHECK(A.ui.page[0] == 2 && A.ui.tk == UI_TK_PAGE, "SELECT: page 3 shown, the pages' takeover (PAGE 3)");
+    page(2);
+    CHECK(A.ui.page[0] == 2, "B11 + B3: page 3 shown (2026-11-13: SELECT the tool)");
     for (i = 0; i < 200; i++) {                         /* (the playhead crosses every page) */
         run(50);
         ok &= A.ui.page[0] == 2;
@@ -1124,7 +1132,8 @@ static void t_sel_rotate(void)                          /* one step selected and
     run(600);
     n0 = qd_undo_count(&A, -1);
     tools_open();
-    white(3);                                           /* step 4 (on) selected: SELECTED */
+    turn(QD_K_PRESETS, -3);                             /* (2026-11-13: SELECTED by the user) */
+    white(3);                                           /* step 4 (on) selected */
     CHECK(A.ui.tl.scope == QD_TS_SEL && A.ui.nheld == 1 && A.ui.held[0] == 3, "W4: SELECTED, step 4");
     turn(QD_K_1, 1);
     CHECK(qd_tools_pending(&A) && qd_step_is_on(&PAT()->step[0][4]) && !qd_step_is_on(&PAT()->step[0][3]) &&
@@ -1286,13 +1295,13 @@ static void t_quant_live(void)
     bup(QD_B_FUNC);
     run(10);
     CHECK(same_pat(before), "SHIFT + F1: undone byte for byte");
-    turn(QD_K_ALGO, -1);                                /* PAGE */
+    turn(QD_K_PRESETS, -1);                                /* PAGE */
     turn(QD_K_1, -1);                                   /* (100 % kept from before: a change again) */
     turn(QD_K_1, 20);
     CHECK(A.ui.tl.scope == QD_TS_PAGE && micro_of(0, 0) == 0 && micro_of(0, 18) == 7, "PAGE: page 1 only");
     btap(F1);
     CHECK(same_pat(before), "OCT-: byte for byte");
-    turn(QD_K_ALGO, 2);                                 /* PATTERN */
+    turn(QD_K_PRESETS, 2);                                 /* PATTERN */
     turn(QD_K_1, -1);                                   /* (100 % kept from before: a change again) */
     turn(QD_K_1, 20);
     CHECK(A.ui.tl.scope == QD_TS_PATTERN && micro_of(0, 3) == 0 && micro_of(1, 3) == 0 && micro_of(1, 18) == 0,
@@ -1301,6 +1310,7 @@ static void t_quant_live(void)
     CHECK(same_pat(before), "OCT-: byte for byte");
     while (A.ui.nheld)                                  /* (W1 and W4 selected) */
         qd_step_select_toggle(&A, A.ui.held[0]);
+    turn(QD_K_PRESETS, -3);                             /* (2026-11-13: SELECTED by the user) */
     white(0), white(3);
     turn(QD_K_1, -1);                                   /* (100 % kept from before: a change again) */
     turn(QD_K_1, 20);
@@ -1331,7 +1341,7 @@ static void t_stretch_live(void)
     *before = *PAT();
     n0 = qd_undo_count(&A, -1);
     tools_open();
-    turn(QD_K_PRESETS, -2);
+    turn(QD_K_SELECT, -2);
     CHECK(A.ui.tl.tool == QD_TL_STRETCH && A.ui.tl.scope == QD_TS_TRACK && !qd_tools_pending(&A), "PRESETS -2: STRETCH");
     for (i = 0; i < 4; i++)                             /* (four rungs: x1.25 x1.33 x1.5 x2) */
         turn(QD_K_1, 1);
@@ -1376,6 +1386,102 @@ static void t_stretch_live(void)
     A.ui.tl.flags = 0, A.ui.tl.v.st.rung = 0;
     btap(QD_B_HOME);
     free(before);
+}
+
+/* 2026-11-13 (owner): TOOLS in the other pages' language: SELECT the tool, ALGORITHM the step cursor, PRESETS the scope;
+ * W toggles the selection; B11 never the keys; OCT held the step view's F1 / F2, a quick click OCT+ keeps, OCT- reverts */
+static void t_owner_1113(void)
+{
+    int ok, m, n0;
+    start();
+    bass(0);
+    tools_open();
+    m = A.ui.tl.tool;
+    turn(QD_K_SELECT, 1);
+    ok = A.ui.tl.tool == (m + 1) % QD_TL_N;
+    turn(QD_K_PRESETS, -3);
+    turn(QD_K_PRESETS, 1);
+    ok &= A.ui.tl.scope == QD_TS_PAGE;
+    CHECK(ok, "SELECT: the next tool; PRESETS: the scope (PAGE)");
+    white(2), white(5);
+    ok = A.ui.slatch && A.ui.nheld == 2 && A.ui.tl.scope == QD_TS_PAGE;
+    turn(QD_K_ALGO, 1);
+    ok &= A.ui.nheld == 1 && A.ui.held[0] == 3 && A.ui.tl.scope == QD_TS_PAGE;
+    turn(QD_K_ALGO, 1);
+    CHECK(ok && A.ui.nheld == 1 && A.ui.held[0] == 4,
+          "W3, W6: both selected, the scope kept (PAGE); ALGORITHM: the next one alone (4, 5)");
+    turn(QD_K_ALGO, -16);
+    CHECK(!A.ui.slatch && !A.ui.nheld && A.ui.tl.scope == QD_TS_PAGE && qd_tools_open(&A),
+          "ALGORITHM fully left: nothing selected, the scope kept, TOOLS open");
+    run(QD_DBL_MS);
+    white(2), white(5), white(8);
+    ok = A.ui.nheld == 3;
+    black(10);
+    run(QD_TAP_MS);
+    ok &= !A.ui.nheld && qd_tools_open(&A);
+    white(2), white(5);
+    run(QD_DBL_MS);
+    white(8);
+    white(8);
+    CHECK(ok && A.ui.nheld == 1 && A.ui.held[0] == 8, "B11 clicked: the selection cleared; W9 tapped twice: W9 alone");
+    run(QD_DBL_MS);
+    A.ui.ekeys = 1;                                     /* (the Home views' step keyboard on) */
+    black(10);
+    ok = A.ui.ekeys && qd_tools_open(&A) && !qd_snd_keys(&A);
+    white(7);
+    CHECK(ok && A.ui.nheld == 1 && A.ui.held[0] == 7, "the step keyboard on: B11 nothing, the W keys still the steps");
+    A.ui.ekeys = 0;
+    turn(QD_K_PRESETS, 1);                              /* PATTERN */
+    turn(QD_K_PRESETS, -1);                             /* TRACK */
+    m = ons(0, 0, 16);
+    turn(QD_K_SELECT, -1);                              /* ROTATE */
+    turn(QD_K_1, 1);
+    ok = qd_tools_pending(&A) && ons(0, 0, 16) != m;
+    bdown(F1);
+    run(20);
+    ok &= qd_tools_pending(&A);
+    run(QD_TAP_MS + 50);
+    bup(F1);
+    run(20);
+    CHECK(ok && qd_tools_pending(&A), "OCT- held a while, let go: nothing reverted (the layer)");
+    btap(F1);
+    CHECK(!qd_tools_pending(&A) && ons(0, 0, 16) == m, "OCT- clicked: reverted");
+    n0 = qd_undo_count(&A, -1);
+    turn(QD_K_1, 1);
+    m = ons(0, 0, 16);
+    btap(F2);
+    CHECK(!qd_tools_pending(&A) && ons(0, 0, 16) == m && qd_undo_count(&A, -1) == n0 + 1, "OCT+ clicked: kept, a level");
+    btap(F1);
+    CHECK(!qd_tools_pending(&A) && qd_undo_count(&A, -1) == n0 && qd_tools_open(&A),
+          "OCT- clicked, nothing pending: the kept change undone (2026-11-13, owner), TOOLS open");
+
+    turn(QD_K_1, 1);
+    bdown(F1);
+    run(20);
+    qd_app_key(&A, WK(0), 1, 100);
+    run(20);
+    qd_app_key(&A, WK(0), 0, 0);
+    run(20);
+    ok = !qd_tools_pending(&A) && A.ui.f1_copied;
+    qd_app_key(&A, WK(9), 1, 100);
+    run(20);
+    qd_app_key(&A, WK(9), 0, 0);
+    run(20);
+    bup(F1);
+    run(20);
+    CHECK(ok && qd_step_is_on(&PAT()->step[0][9]) == qd_step_is_on(&PAT()->step[0][0]) && qd_tools_open(&A) &&
+              A.ui.slatch && A.ui.nheld == 1 && A.ui.held[0] == 9,
+          "OCT- held + W1: the change kept, step 1 copied; + W10: pasted; let go: step 10 selected; TOOLS open");
+    bdown(F1);
+    run(20);
+    qd_app_key(&A, WK(0), 1, 100), run(20), qd_app_key(&A, WK(0), 0, 0), run(20);
+    qd_app_key(&A, WK(13), 1, 100), run(20), qd_app_key(&A, WK(13), 0, 0), run(20);
+    qd_app_key(&A, WK(14), 1, 100), run(20), qd_app_key(&A, WK(14), 0, 0), run(20);
+    ok = A.ui.held[0] == 9;
+    bup(F1);
+    run(20);
+    CHECK(ok && A.ui.nheld == 2 && qd_tools_sel_mask(&A) == 0x6000, "F1 + W1, W14, W15: let go, W14 and W15 selected");
+    btap(QD_B_HOME);
 }
 
 static void t_screens(void)                             /* every tool's screen, every scope, drawn (sanitizers) */
@@ -1443,6 +1549,7 @@ int main(void)
         {"ops: QUANTIZE (the grid's lines, 100 %, 50 %, the velocity)", t_quantize},
         {"QUANTIZE live: PRESETS, each scope, ghosts, OCT- exact, undo", t_quant_live},
         {"STRETCH live: x2, OCT- exact, fit a page, OCT+ a level, undo", t_stretch_live},
+        {"2026-11-13: SELECT the tool, ALGORITHM the steps, PRESETS the scope, B11, OCT", t_owner_1113},
         {"every screen drawn", t_screens},
     };
     size_t i;

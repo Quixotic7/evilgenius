@@ -635,7 +635,7 @@ static void tl_clip(const ui_tools_t *v)
     tl_lane(v, 0);
 }
 
-void ui_tools_draw(const ui_tools_t *v)
+FZ_COLD void ui_tools_draw(const ui_tools_t *v)
 {
     tl_head(v);
     if (v->tool != QD_TL_LENGTH)                        /* (LENGTH draws the pages itself) */

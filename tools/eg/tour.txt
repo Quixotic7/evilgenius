@@ -5,7 +5,7 @@ tap HOME
 wait 300
 play
 wait 1500
-shot 03-edit HOME: EDIT (the default view), the mode's picture over the page's row
+shot 03-edit HOME: THE ROOM (EDIT, the default view, nothing held): the page as a room over its row, the demo playing
 tap HOME
 wait 400
 shot 04-geek HOME: GEEK OUT, METERS
@@ -57,43 +57,61 @@ wait 300
 shot 15-lane-sound B10: SOUND lane
 tapkey B1
 wait 300
-# the EDIT view: each mode's picture over the page's row (PIANO ROLL -> STEPS -> EDIT)
+# the EDIT view: a mode key held, the mode's picture over the page's row (PIANO ROLL -> STEPS -> EDIT)
 tap HOME
 wait 200
 tap HOME
 wait 200
-tapkey B2
-wait 300
-shot 60-edit-vel EDIT view, VEL: the agent's somersault
-tapkey B3
-wait 300
-shot 61-edit-len EDIT view, LEN: the lift platform
-tapkey B4
-wait 300
-shot 62-edit-micro EDIT view, MICRO
-tapkey B5
-wait 300
-shot 63-edit-ratch EDIT view, RATCH: the robot's bolts
-tapkey B6
-wait 300
-shot 64-edit-chnc EDIT view, CHANCE: the security panel
-tapkey B7
-wait 300
-shot 65-edit-cond EDIT view, COND
-tapkey B8
-wait 300
-shot 66-edit-func EDIT view, FUNC
+key B2 down
+wait 400
+shot 60-edit-vel EDIT view, VEL: the agent's somersault (the mode key held)
+key B2 up
+wait 60
+key B3 down
+wait 400
+shot 61-edit-len EDIT view, LEN: the lift platform (the mode key held)
+key B3 up
+wait 60
+key B4 down
+wait 400
+shot 62-edit-micro EDIT view, MICRO (the mode key held)
+key B4 up
+wait 60
+key B5 down
+wait 400
+shot 63-edit-ratch EDIT view, RATCH: the robot's bolts (the mode key held)
+key B5 up
+wait 60
+key B6 down
+wait 400
+shot 64-edit-chnc EDIT view, CHANCE: the security panel (the mode key held)
+key B6 up
+wait 60
+key B7 down
+wait 400
+shot 65-edit-cond EDIT view, COND (the mode key held)
+key B7 up
+wait 60
+key B8 down
+wait 400
+shot 66-edit-func EDIT view, FUNC (the mode key held)
+key B8 up
+wait 60
+key B9 down
+wait 400
+shot 67-edit-trig EDIT view, TRIG: three terminals (the mode key held)
+key B9 up
+wait 60
+key B10 down
+wait 400
+shot 68-edit-sound EDIT view, SOUND: the floppy (the mode key held)
+key B10 up
+wait 60
 tapkey B9
 wait 300
-shot 67-edit-trig EDIT view, TRIG: three terminals
-tapkey B10
-wait 300
-shot 68-edit-sound EDIT view, SOUND: the floppy
 tapkey B9
 wait 300
-tapkey B9
-wait 300
-shot 69-edit-slide EDIT view, SLIDE
+shot 69-edit-slide EDIT view, SLIDE's mode: THE ROOM, the mode named in the head
 tapkey B1
 wait 300
 key W5 down
@@ -850,15 +868,231 @@ wait 200
 shot 160-snd-say-off B5 twice: SAY, OFF (WORD speaks)
 knob K1 1
 wait 300
-shot 161-snd-say B5 twice, KNOB 1: SAY, a random word, the villain speaking it
+shot 161-snd-say B5 twice, KNOB 1: SAY, a random word, the villain speaking it: SAM's samples under him
 knob K1 4
 wait 300
 shot 162-snd-say-2 KNOB 1 on: another word
 knob K2 12
 knob K3 -10
 knob K4 18
-knob ALGO 25
+knob PRESETS 25
 wait 300
-shot 163-snd-say-voice SPEED, PITCH, THROAT, MOUTH turned: the tract, the pitch line
+shot 163-snd-say-voice SPEED, PITCH, THROAT and MOUTH (PRESETS) turned: SAM's new render
+tap HOME
+wait 300
+
+# ================================================================ THE MISSION (the redesign): the room, the tower, the scenes
+reset
+wait 300
+tap HOME
+wait 600
+shot 200-room-waiting THE ROOM, stopped: the agent waits by the tracks' lift
+play
+wait 700
+shot 201-room-drums THE ROOM, DRUMS playing: a platform a note, each sound lock its colour, the agent on the step that sounds
+wait 260
+shot 202-room-drums-2 .. a somersault over the gap
+tapkey B2
+wait 300
+shot 203-room-vel THE ROOM in VEL's mode: the mode in the head, its default at the right
+tapkey B1
+down SEQ
+key W2 down
+wait 700
+key W2 up
+up SEQ
+wait 200
+tap HOME
+wait 200
+down FX
+knob ALGO 2
+up FX
+wait 1500
+shot 204-room-keys THE ROOM, KEYS (A02): chords, long gates, a crumbling platform where a step has a chance or a condition
+tap EDIT
+wait 300
+key W5 down
+wait 300
+knob K1 3
+wait 100
+key W5 up
+key W9 down
+wait 300
+knob K1 3
+wait 100
+key W9 up
+tap HOME
+wait 2350
+shot 205-room-robots Two steps with locks: a patrol robot under each
+wait 150
+shot 206-room-zap .. its bolt as its step plays, the agent caught on it
+wait 100
+shot 207-room-zap-2 .. to the bone
+# the FX tower
+reset
+wait 300
+tap HOME
+wait 300
+play
+wait 400
+tap FX
+wait 600
+shot 210-tower-sends FX: the tower. B1 SENDS, the villain's control room; the lift's shaft at the left, a window a floor
+tapkey B2
+wait 150
+shot 211-tower-ride A black key: the lift rides, the next room slides in
+wait 500
+knob K4 12
+wait 300
+shot 212-tower-chorus B2 CHORUS: the agent and his two doubles
+tapkey B3
+wait 600
+knob K4 10
+wait 200
+shot 213-tower-echo B3 ECHO: the orb bouncing, a bounce a repeat
+tapkey B4
+wait 600
+knob K4 10
+shot 214-tower-room B4 ROOM: the agent calling out in it
+tapkey B5
+wait 600
+knob K4 20
+wait 100
+shot 215-tower-crush B5 CRUSH: the wave in stairs, the press
+tapkey B6
+wait 600
+knob K4 20
+wait 130
+shot 216-tower-robot B6 ROBOT: the sentry's voice (a ring modulator)
+tapkey B7
+wait 600
+knob K4 20
+wait 100
+shot 217-tower-warp B7 WARP: the teleporter
+tapkey B8
+wait 600
+knob K4 20
+wait 100
+shot 218-tower-glitch B8 GLITCH: the picture breaks
+tapkey B9
+wait 600
+knob K4 20
+wait 100
+shot 219-tower-tv B9 TV: the family telly, the bottom floor
+tap HOME
+wait 300
+# the scenes
+down GLO
+tapkey B1
+up GLO
+wait 100
+shot 220-scene-search SHIFT + B1, SNAPSHOT stored: the agent searches the cabinet
+wait 600
+shot 221-scene-found .. and has the document
+wait 1200
+down GLO
+tapkey B4
+up GLO
+wait 1400
+down GLO
+tapkey B5
+up GLO
+wait 300
+shot 222-scene-drop SHIFT + B5, PATTERN pasted: the document to the terminal
+wait 1300
+down GLO
+tapkey B7
+up GLO
+wait 300
+shot 223-scene-word SHIFT + B7, CLICK on: the villain says it
+wait 1300
+down GLO
+tapkey B11
+up GLO
+wait 300
+shot 224-scene-arm SHIFT + B11, CLEAR?: the sentry takes aim
+wait 300
+down GLO
+tapkey B11
+up GLO
+wait 60
+shot 225-scene-zap-1 SHIFT + B11 again, CLEARED: he sees it coming
+wait 240
+shot 226-scene-zap-2 .. the bolt
+wait 500
+shot 227-scene-zap-3 .. ash
+wait 1500
+down HOME
+wait 700
+up HOME
+knob SELECT 1
+wait 300
+shot 228-settings-voice HOME held, page 2: KNOB 3 VOICE (the villain's lines and the sound effects)
+tap HOME
+wait 300
+# the mix's pages
+tap ENV
+wait 400
+shot 230-mix-faders ENV: the mix, FADERS: LEVEL PAN ECHO ROOM
+tap ENV
+wait 300
+shot 231-mix-sends ENV again: SENDS: CHORUS ECHO ROOM and the track's DRY
+tap ENV
+wait 300
+knob K1 30
+knob K3 14
+knob PRESETS 20
+wait 200
+shot 232-mix-fx ENV again: FX MIX: the five rooms' wet levels, KNOB 1..4 and PRESETS
+tap HOME
+wait 300
+# the sound editor after the review
+tap EDIT
+wait 300
+tapkey B2
+wait 300
+knob K1 2
+knob PRESETS 1
+wait 200
+shot 240-snd-osc OSC 2 synced by 1: the wave, the chip's three oscillators under it; PRESETS' value named in the head
+tapkey B4
+wait 300
+knob PRESETS 1
+knob K1 -30
+knob K2 9
+wait 200
+shot 241-snd-filter FILTER, LOWPASS: IN 1 2 3 V: the oscillators and the word through it
+key B4 down
+wait 700
+shot 242-snd-modes B4 held: the SID's eight modes, OFF first
+key B4 up
+wait 200
+tapkey B5
+wait 300
+knob K1 1
+wait 300
+shot 243-snd-word WORD: INTRUDER's own samples
+knob K1 6
+wait 300
+shot 244-snd-word-2 .. COMPUTER's
+key W5 down
+wait 400
+knob K1 4
+wait 300
+shot 245-snd-step W5 held: the page's steps under the head, the step's frame, a locked word
+key W5 up
+tap HOME
+wait 300
+# the effects' second page
+tap FX
+wait 700
+tap FX
+wait 700
+knob K1 30
+knob K2 12
+knob K4 8
+knob PRESETS 25
+wait 300
+shot 233-tower-fxmix FX twice (or B1 twice): FX MIX, the five rooms' wet levels beside the lift
 tap HOME
 wait 300

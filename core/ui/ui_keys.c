@@ -17,19 +17,11 @@
 #include "ui.h"
 #include "px.h"
 
-static const char *const OCT[5] = {"OCT -2", "OCT -1", "OCT 0", "OCT +1", "OCT +2"};
-static const char *oct_name(int o) { return OCT[o < -2 ? 0 : o > 2 ? 4 : o + 2]; }
+static const char *const OCT[9] = {"OCT -4", "OCT -3", "OCT -2", "OCT -1", "OCT 0", "OCT +1", "OCT +2", "OCT +3",
+                                    "OCT +4"};
+static const char *oct_name(int o) { return OCT[o < -4 ? 0 : o > 4 ? 8 : o + 4]; }
 
-static char *cat(char *d, const char *s)
-{
-    char *e = d;
-    while (*e)
-        e++;
-    while (*s)
-        *e++ = *s++;
-    *e = 0;
-    return d;
-}
+#define cat ui_cat                               /* (the kit's) */
 
 #define KB_BLACK(n) ((0x54au >> ((n) % 12)) & 1u)       /* C# D# F# G# A# */
 static qd_rgb fill[128];                               /* (the keybed's, both drawings': QD_NONE not lit) */
@@ -166,12 +158,29 @@ void ui_keys_draw(const ui_keys_t *v)
     }
     if (below && !above && lo >= 12)
         lo -= 12;
-    kb(4, 56, 40, lo);
+    if (v->ksteps && v->row) {                          /* FIZZ beta.18: the W keys the steps (the row up top): the ten
+                                                         * black keys that play, an orange grid */
+        for (i = 0; i < 10; i++)
+            ui_rec_key(16.f + (float)i * 21.f, 118.f, 18.f, 72.f, v->bst[i]);
+    } else {
+        kb(4, 56, 40, lo);
+    }
     foot(v, 102);
 
+    if (v->rec == 1 || v->row) {                        /* STEP recording: the cursor's page (B11 held or a selection:
+                                                         * the page edited's, the selected outlined, the playhead) */
+        const int c = v->rec == 1 && v->blink ? (v->cursor - 1) % 16 : -1;
+        uint16_t trig = 0;
+        for (i = 0; i < 16; i++)
+            trig |= (uint16_t)((v->page_trig[i] != 0) << i);
+        ui_page_row(28.f, trig, v->sel, c, v->rec != 1 ? v->play : -1);
+    }
     if (v->rec == 1) {
         char step[12];
         px_circle(6, 112, 2, UI_RED, UI_RED);           /* step recording: the red dot, the step number */
         px_rtext(116, 110, ui_itoa(step, v->cursor), UI_K3, PX_FS, 1);
     }
+    if (v->framed)                                      /* 2026-11-13 (owner): a step selected: the held step's frame,
+                                                         * as on the Home views and in the sound editor */
+        ui_step_frame();
 }

@@ -20,16 +20,7 @@
 
 static const char *const DOT = " \xc2\xb7 ";
 
-static char *cat(char *d, const char *s)
-{
-    char *e = d;
-    while (*e)
-        e++;
-    while (s && *s)
-        *e++ = *s++;
-    *e = 0;
-    return d;
-}
+#define cat ui_cat                               /* (the kit's) */
 
 static const char *const NUM[8] = {"1", "2", "3", "4", "5", "6", "7", "8"};
 #define KM_Y 202.f
@@ -370,7 +361,7 @@ static void shift_keys(const ui_shift_t *v)
     }
 }
 
-void ui_shift_draw(const ui_shift_t *v)
+FZ_COLD void ui_shift_draw(const ui_shift_t *v)
 {
     const int t = v->track < 1 ? 0 : (v->track - 1) % UI_NTRACK;
     const qd_rgb tc = UI_TRACK_PAL[t], kc = v->kind >= 0 && v->kind < 7 ? UI_PK_COL[v->kind] : UI_K3;
@@ -582,21 +573,19 @@ static __attribute__((noinline)) void menu_home(const ui_menu_t *v)
     int k;
     row(0, "HOME VIEW", VN[hv]);
     row(1, "LOCK", v->home_lock ? "ON" : "OFF");
-    for (k = 0; k < 4; k++) {                           /* the four views as little screens */
-        const int x = 10 + k * 26, y = 72;
-        const qd_rgb c = k == hv ? KCOL[0] : UI_G2;
-        px_box(x, y, 20, 20, c);
-        switch (k) {
-        case 0: px_rect(x + 3, y + 12, 3, 2, c), px_rect(x + 7, y + 8, 3, 2, c), px_rect(x + 12, y + 5, 3, 2, c); break;
-        case 1: px_rect(x + 3, y + 3, 14, 2, c), px_box(x + 3, y + 7, 14, 6, c), px_rect(x + 3, y + 15, 14, 2, c); break;
-        case 2: px_box(x + 5, y + 3, 10, 9, c), px_rect(x + 3, y + 14, 14, 3, c); break;
-        default: px_rect(x + 3, y + 12, 2, 5, c), px_rect(x + 7, y + 9, 2, 8, c), px_rect(x + 11, y + 6, 2, 11, c); break;
-        }
+    {   /* EvilGenius: THE VOICE: when the villain speaks (and the effects under him), how loud */
+        static const char *const VM[3] = {"STOPPED", "ALWAYS", "OFF"};
+        char lv[8];
+        const int m = v->voice < 0 || v->voice > 2 ? 0 : v->voice;
+        ui_itoa(lv, v->voice_lvl);
+        strcat(lv, "%");
+        row(2, "VOICE", VM[m]);
+        row(3, "VOICE LEVEL", lv);
+        px_sprite(14, ROW_Y(2) + 9, m != 2 && ((int)(v->t * 4.f) & 1) ? PXS_GENIUS_TALK : PXS_GENIUS, 0);
+        for (k = 0; k < 10; k++)                        /* the level: ten bars */
+            px_rect(14 + k * 4, ROW_Y(3) + 20 - k, 3, 2 + k, m != 2 && k * 10 < v->voice_lvl ? KCOL[3] : UI_G3);
     }
-    if (v->home_lock)
-        px_rect(16 + hv * 26, 96, 8, 6, KCOL[1]);
-    else
-        ui_icon(UI_IC_RIGHT, 120.f, 200.f, 2.f, UI_G1);
+    (void)hv;
 }
 
 static void menu_set(const ui_menu_t *v)
@@ -693,7 +682,7 @@ static void menu_trk(const ui_menu_t *v)
         px_box(2, ROW_Y(v->last) - 1, 9, 9, KCOL[v->last]);
 }
 
-void ui_menu_draw(const ui_menu_t *v)
+FZ_COLD void ui_menu_draw(const ui_menu_t *v)
 {
     if (v->kind == UI_MENU_REC)
         menu_rec(v);

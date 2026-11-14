@@ -27,6 +27,7 @@ static void wav(const char *path, const int16_t *x, int n)
     fclose(f);
 }
 
+static int room = -1;                                   /* the room under test (0 CRUSH .. 4 TV), -1 none */
 static double run(const char *name, const int *ids, const int *vals, int nv, int sends, const char *dir, double *pk)
 {
     static int16_t o16[FS * SECS * 2];
@@ -46,6 +47,15 @@ static double run(const char *name, const int *ids, const int *vals, int nv, int
             const int32_t x = gate ? (int32_t)((((t * 220) % FS) * 2 - FS) * 6000.0 / FS) : 0;
             l[i] = r[i] = x;
             sc[i] = sends & 1 ? x : 0, sd[i] = sends & 2 ? x : 0, sr[i] = sends & 4 ? x : 0;
+        }
+        if (room >= 0) {                                /* (a room: the signal through its bus, none of it dry) */
+            static int16_t rb[5][QD_FX_CTL];
+            memset(rb, 0, sizeof rb);
+            for (i = 0; i < QD_FX_CTL; i++) {
+                rb[room][i] = (int16_t)(l[i] / 16);
+                l[i] = r[i] = 0;
+            }
+            qd_fx_rooms((const int16_t (*)[QD_FX_CTL])rb, 0);
         }
         qd_fx_block(sc, sd, sr, l, r, out);
         for (i = 0; i < 2 * QD_FX_CTL; i++) {
@@ -81,7 +91,9 @@ int main(int argc, char **argv)
     double dry = 0, dpk;
     int k, fails = 0;
     for (k = 0; k < (int)(sizeof T / sizeof T[0]); k++) {
-        double pk, rms = run(T[k].name, T[k].ids, T[k].vals, T[k].n, T[k].sends, dir, &pk);
+        double pk, rms;
+        room = k >= 4 ? k - 4 : -1;                     /* (the table's order: dry, the three sends, the five rooms) */
+        rms = run(T[k].name, T[k].ids, T[k].vals, T[k].n, T[k].sends, dir, &pk);
         const char *v = "ok";
         if (!k)
             dry = rms, dpk = pk;

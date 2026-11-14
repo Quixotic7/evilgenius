@@ -1233,11 +1233,14 @@ void ui_mfx_draw(const ui_mfx_t *v)
         mf_frame(v->steps_frame);
         return;
     }
-    if (v->roll) {                                      /* PRESETS: the types' rolodex */
+    if (v->roll) {                                      /* a slot held (2026-11-13; PRESETS before): the types' rolodex,
+                                                         * KNOB 1 turns it, KNOB 2 moves the slot (the foot says) */
         qd_save();
         qd_clip_rect(0.f, 64.f, 240.f, 116.f);
         mf_roll(v->roll_pos);
         qd_restore();
+        if (v->hold_list)
+            mf_foot(v, 1.f);
         return;
     }
     if (ty)

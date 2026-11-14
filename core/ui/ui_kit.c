@@ -32,6 +32,18 @@ char *ui_itoa(char *out, int n)
     return out;
 }
 
+/* s (0: nothing) after d's end: d */
+char *ui_cat(char *d, const char *s)
+{
+    char *e = d;
+    while (*e)
+        e++;
+    while (s && *s)
+        *e++ = *s++;
+    *e = 0;
+    return d;
+}
+
 float ui_ease(float x) { return x < 0.f ? 0.f : x > 1.f ? 1.f : x * x * (3.f - 2.f * x); }
 
 /* 240-space to the grid */
@@ -112,6 +124,13 @@ void ui_RR(float x, float y, float w, float h, float r, qd_rgb col, float lw, qd
     }
     if (col != QD_NONE && lw >= 2.5f && gw > 4 && gh > 4)
         px_box(x0 + 1, y0 + 1, gw - 2, gh - 2, col);
+}
+
+/* the frame round the whole screen: a step selected (UI_STEP_FRAME), 2 px */
+void ui_step_frame(void)
+{
+    px_box(0, 0, 120, 120, UI_STEP_FRAME);
+    px_box(1, 1, 118, 118, UI_STEP_FRAME);
 }
 
 /* the track's number: reverse video, the C64's way (the number dark in a block of the colour) */

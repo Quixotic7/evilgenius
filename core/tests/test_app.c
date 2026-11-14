@@ -34,7 +34,9 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
 #include "../voice/sam/say.h"
+#include "../voice/fx/qd_fx.h"
 #include <string.h>
 
 #include "app.h"
@@ -128,10 +130,15 @@ static int vel_of(int track, int note)
 }
 static void tap_button(int b)
 {
+    const int from = A.ui.mode;
     qd_app_button(&A, b, 1);
     run(20, 0);
     qd_app_button(&A, b, 0);
     run(20, 0);
+    if (b == QD_B_REC && from != QD_MODE_KEYS && A.ui.mode == QD_MODE_KEYS)
+        A.ui.ksteps = 0;                                /* (2026-11-13: from the Home views' steps REC opens the
+                                                         * keyboard page's STEPS (B11's one state, test_ctl's
+                                                         * g_b11_global); these scenarios play its keys, as before) */
 }
 
 static void t_keys(void)
@@ -151,9 +158,9 @@ static void t_keys(void)
     qd_app_key(&A, 0, 0, 0);
     run(5, 0);
     CHECK(!sounding(0, 65), "the key's own note released after the octave changed");
-    tap_button(QD_B_OCTDN), tap_button(QD_B_OCTDN), tap_button(QD_B_OCTDN);
-    CHECK(A.oct == QD_OCT_MIN, "OCT- clamps at -2 (%d)", A.oct);
-    tap_button(QD_B_OCTUP), tap_button(QD_B_OCTUP);
+    tap_button(QD_B_OCTDN), tap_button(QD_B_OCTDN), tap_button(QD_B_OCTDN), tap_button(QD_B_OCTDN), tap_button(QD_B_OCTDN);
+    CHECK(A.oct == QD_OCT_MIN, "OCT- clamps at -4 (%d)", A.oct);
+    tap_button(QD_B_OCTUP), tap_button(QD_B_OCTUP), tap_button(QD_B_OCTUP), tap_button(QD_B_OCTUP);
     /* TRACKS + white key 3 selects track 3 and plays nothing */
     qd_app_button(&A, QD_B_TRACKS, 1);
     qd_app_key(&A, 4, 1, 100);                          /* A3: the third white key */
@@ -213,6 +220,151 @@ static void t_say(void)
     d2 = qd_say_get(qd_say_key(p), &n2);
     CHECK(d2 && n2 > n, "another voice (PITCH 100, SPEED 110): its own render, longer (%u > %u samples)", n2, n);
     printf("  say: SAM speaks \"%s\" live, %u samples; slower, %u\n", w, n, n2);
+}
+
+/* EvilGenius: the word through the filter (FILTER's ROUTE with V, a mode on: the chip's EXT IN): as loud as the volume
+ * register's digi with the filter open, quieter with it closed; without V it is the digi again, the filter passed by */
+static void vox_set(int id, int v)
+{
+    A.model.t[0].patch[id] = (int16_t)v;
+    qd_proj_pat(&A.proj, A.seq.cur)->snd[0].patch[id] = (int16_t)v;
+}
+static double vox_hf;                                   /* (the last run's treble: the energy of its sample-to-sample steps) */
+static double vox_energy(int ftype, int freq, int route, int *filt)
+{
+    double e = 0., hf = 0.;
+    int32_t prev = 0;
+    uint32_t ms;
+    int k, i;
+    fresh_keys();
+    A.ui.voice_mode = QD_VOICE_OFF;                     /* (no welcome over it) */
+    qd_ann_stop();
+    vox_set(QD_QP_W1, QD_SW_OFF), vox_set(QD_QP_W2, QD_SW_OFF), vox_set(QD_QP_W3, QD_SW_OFF);
+    vox_set(QD_QP_WORD, 1), vox_set(QD_QP_SAY, 0);
+    vox_set(QD_QP_FTYPE, ftype), vox_set(QD_QP_FREQ, freq), vox_set(QD_QP_RESO, 0), vox_set(QD_QP_FROUTE, route);
+    vox_set(QD_QP_FDEPTH, 64), vox_set(QD_QP_FKTRK, 0);
+    run(60, 0);
+    qd_app_key(&A, 7, 1, 100);
+    *filt = 0;
+    for (ms = 0; ms < 400; ms++) {
+        qd_app_tick(&A, ++now);
+        while (frames_done + 128u <= (uint64_t)now * QD_FS / 1000u) {
+            qd_app_audio(&A, last, 128);
+            frames_done += 128u;
+            for (k = 0; k < 256; k += 2) {
+                e += (double)last[k] * (double)last[k];
+                hf += (double)(last[k] - prev) * (double)(last[k] - prev);
+                prev = last[k];
+            }
+        }
+        for (i = 0; i < A.pool.nvoice; i++)
+            *filt |= qd_pool_sounding(&A.pool, i) && A.pool.v[i].q.vox.on && A.pool.v[i].q.vox.filt;
+    }
+    qd_app_key(&A, 7, 0, 0);
+    run(60, 0);
+    vox_hf = sqrt(hf);
+    return sqrt(e);
+}
+static void t_vox_filter(void)
+{
+    int f0, f1, f2, f3;
+    double dry, open, shut, by, hf_dry, hf_open, hf_shut, hf_by;
+    dry = vox_energy(QD_QF_OFF, 1000, 15, &f0), hf_dry = vox_hf;
+    open = vox_energy(QD_QF_LP, 2047, 15, &f1), hf_open = vox_hf;
+    shut = vox_energy(QD_QF_LP, 40, 15, &f2), hf_shut = vox_hf;
+    by = vox_energy(QD_QF_LP, 40, 7, &f3), hf_by = vox_hf;
+    CHECK(dry > 1000. && !f0, "VOX, the filter off: the word is the volume register's digi (energy %.0f)", dry);
+    CHECK(f1 && open > dry * 0.4 && open < dry * 2.5, "ROUTE with V, LOWPASS wide open: through the filter, about as "
+          "loud (%.0f against %.0f)", open, dry);
+    CHECK(f2 && hf_shut < hf_open * 0.4 && hf_shut < hf_dry * 0.4, "the cutoff down: the word's treble goes (%.0f "
+          "against %.0f open, %.0f the digi)", hf_shut, hf_open, hf_dry);
+    CHECK(!f3 && by > dry * 0.85 && by < dry * 1.15 && hf_by > hf_dry * 0.85, "ROUTE without V: the digi again, past "
+          "the filter (%.0f against %.0f)", by, dry);
+    printf("  vox filter: digi %.0f (treble %.0f), lowpass open %.0f (%.0f), shut %.0f (%.0f), bypassed %.0f (%.0f)\n",
+           dry, hf_dry, open, hf_open, shut, hf_shut, by, hf_by);
+}
+
+/* EvilGenius: a track's send into a room (CRUSH here) is that track's alone: another track's send changes nothing of
+ * a note on track 1; track 1's own send puts it through the room */
+static double room_energy(int track, int send, int bits, int rate)
+{
+    double e = 0.;
+    uint32_t ms;
+    int k;
+    fresh_keys();
+    A.ui.voice_mode = QD_VOICE_OFF;
+    qd_ann_stop();
+    qd_fx_set(QD_FXP_XBITS, bits), qd_fx_set(QD_FXP_XRATE, rate);
+    run(60, 0);
+    A.model.t[track].mix.room[0] = (uint8_t)send;
+    run(20, 0);
+    qd_app_key(&A, 7, 1, 100);
+    for (ms = 0; ms < 300; ms++) {
+        qd_app_tick(&A, ++now);
+        while (frames_done + 128u <= (uint64_t)now * QD_FS / 1000u) {
+            qd_app_audio(&A, last, 128);
+            frames_done += 128u;
+            for (k = 0; k < 256; k += 2)
+                e += (double)last[k] * (double)last[k];
+        }
+    }
+    qd_app_key(&A, 7, 0, 0);
+    run(60, 0);
+    return sqrt(e);
+}
+static void t_rooms(void)
+{
+    const double none = room_energy(0, 0, 2, 6), other = room_energy(1, 127, 2, 6), own = room_energy(0, 127, 2, 6);
+    const double clean = room_energy(0, 127, 16, 0);   /* (CRUSH at 16 bits, every sample: it changes nothing) */
+    CHECK(none > 1000. && other == none, "a room's send on track 2: a note on track 1 is as without it (%.0f, %.0f)",
+          other, none);
+    CHECK(own > 1000. && fabs(own - none) > none * 0.02, "track 1's own send into CRUSH: its note goes through the room "
+          "(%.0f against %.0f)", own, none);
+    CHECK(clean > none * 0.8 && clean < none * 1.25, "all of a track through a room that changes nothing: as loud as "
+          "dry (%.0f against %.0f)", clean, none);
+    printf("  rooms: track 1 dry %.0f, with track 2's send %.0f, through CRUSH %.0f, through a clean room %.0f\n", none,
+           other, own, clean);
+}
+
+/* EvilGenius: a room's send locked on a step: that step's note goes through the room, the track's other steps do
+ * not (the voice carries the lock, as a send's) */
+static double lock_energy(int lock, int *locked_voice)
+{
+    double e = 0.;
+    uint32_t ms;
+    int k, i;
+    fresh();
+    tap_button(QD_B_HOME);
+    A.ui.voice_mode = QD_VOICE_OFF;
+    qd_ann_stop();
+    qd_fx_set(QD_FXP_XBITS, 2), qd_fx_set(QD_FXP_XRATE, 6);
+    run(60, 0);
+    if (lock)
+        qd_lock_set(qd_proj_pat(&A.proj, A.seq.cur), 0, 0, QD_LK_CRUSH, 127);
+    qd_app_play(&A);
+    *locked_voice = 0;
+    for (ms = 0; ms < 500; ms++) {
+        qd_app_tick(&A, ++now);
+        while (frames_done + 128u <= (uint64_t)now * QD_FS / 1000u) {
+            qd_app_audio(&A, last, 128);
+            frames_done += 128u;
+            for (k = 0; k < 256; k += 2)
+                e += (double)last[k] * (double)last[k];
+        }
+        for (i = 0; i < A.pool.nvoice; i++)
+            *locked_voice |= qd_pool_sounding(&A.pool, i) && A.pool.v[i].track == 0 &&
+                             (A.pool.v[i].at.mixm >> QD_VMIX_ROOM & 1u) && A.pool.v[i].at.mixv[QD_VMIX_ROOM] == 127;
+    }
+    return sqrt(e);
+}
+static void t_room_locks(void)
+{
+    int v0, v1;
+    const double plain = lock_energy(0, &v0), locked = lock_energy(1, &v1);
+    CHECK(plain > 1000. && !v0, "the demo, no lock: no voice carries a room's send (energy %.0f)", plain);
+    CHECK(v1 && fabs(locked - plain) > plain * 0.01, "CRUSH's send locked on step 1 of track 1: its voice carries the "
+          "lock and the pattern sounds different (%.0f against %.0f)", locked, plain);
+    printf("  room locks: the demo %.0f, with step 1 through CRUSH %.0f\n", plain, locked);
 }
 
 static void t_presets(void)
@@ -1320,6 +1472,9 @@ int main(void)
     qd_text_stats_reset();                              /* P1.3v: the clarity guard (checked at the end) */
     t_keys();
     t_say();
+    t_vox_filter();
+    t_rooms();
+    t_room_locks();
     t_presets();
     t_screens();
     t_midi();

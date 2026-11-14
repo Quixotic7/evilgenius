@@ -367,29 +367,104 @@ static void f_trig(const ui_held_t *v, const pal_t *p, int top, int bot)
     }
 }
 
+/* FUNC (FIZZ beta.18's redraw, on the pixel grid): the page's 16 steps as a row, the held step filled; the function
+ * as the playhead's route over it: RESTART back to step 1, REVERSE / FORWARD the flow turning, FLIP both, JUMP an arc
+ * to its target (another page: the target's row, its number at the left), LEAP the hops, the random ones dotted arcs
+ * under a die; NONE the flow running on. The name centred over it */
+static int fn_cx(int i) { return 12 + i * 6 + (i / 4) * 2; }   /* a cell's centre */
+static void fn_head(int x, int y, qd_rgb c)             /* an arrowhead pointing down at x, y */
+{
+    px_line(x, y, x - 2, y - 3, c);
+    px_line(x, y, x + 2, y - 3, c);
+}
+static void fn_arc(int a, int b, int h, qd_rgb c, int dash, int ry)   /* dash 1: dotted; 2: a hop, no arrowhead */
+{
+    const int x0 = fn_cx(a), x1 = fn_cx(b), n = x1 > x0 ? x1 - x0 : x0 - x1, d = x1 > x0 ? 1 : -1;
+    int k, py = ry - 2;
+    for (k = 1; k <= n; k++) {
+        const int y = ry - 2 - h * 4 * k * (n - k) / (n * n > 0 ? n * n : 1);
+        if (dash != 1 || (k & 1))
+            px_line(x0 + d * (k - 1), py, x0 + d * k, y, c);
+        py = y;
+    }
+    if (dash != 2)
+        fn_head(x1, ry - 2, c);
+}
+static void fn_flow(int s, int dir, qd_rgb c, int dash, int ry)   /* the flow turning at s, running on dir */
+{
+    const int x = fn_cx(s), y = ry - 12, xe = x + dir * 30, x1 = xe < 8 ? 8 : xe > 112 ? 112 : xe;
+    px_vline(x, y + 2, 9, c);
+    px_pset(x + dir, y + 1, c);
+    if (dash)
+        px_dots(x1 < x ? x1 : x + 2, y, x1 < x ? x - x1 - 1 : x1 - x - 1, c, 2);
+    else
+        px_hline(x1 < x ? x1 : x + 2, y, x1 < x ? x - x1 - 1 : x1 - x - 1, c);
+    px_line(x1, y, x1 - dir * 3, y - 2, c);
+    px_line(x1, y, x1 - dir * 3, y + 2, c);
+}
 static void f_func(const ui_held_t *v, const pal_t *p, int top, int bot)
 {
-    const int ic = ui_fn_icon(v->func);
+    const int f = v->func, s = v->is_default ? -1 : v->held_col, ry = bot - 10;
+    const int other = f >= UI_FN_JUMP && f < UI_FN_LEAP && v->jump_page != (v->step - 1) / 16;
+    const qd_rgb c = p->k;
+    const uint8_t *trig = other ? v->jump_trig : v->page_trig;
     int i;
-    if (ic != UI_IC_NONE)
-        ui_icon(ic, 120.f, (float)(2 * (top + 14)), 2.f, p->k);
-    else
-        px_rect(58, top + 12, 4, 4, UI_G2);
-    if (!p->nobig)
-        px_ctext(60, top + 26, v->func_name, p->k, PX_FB, 1);
-    if (v->func >= UI_FN_JUMP && v->func < UI_FN_LEAP) {   /* JUMP: the target page's row, the step lit */
-        char s[16] = "PAGE ", n[12];
-        cat(s, ui_itoa(n, v->jump_page + 1));
-        px_text(10, bot - 16, s, UI_G1, PX_FS, 1);
-        for (i = 0; i < 16; i++) {
-            const int x = 10 + i * 6 + (i / 4) * 2;
-            if (i == v->jump_step)
-                px_rect(x, bot - 8, 5, 6, p->k);
-            else if (v->jump_trig[i])
-                px_rect(x, bot - 8, 5, 6, UI_G2);
-            else
-                px_box(x, bot - 8, 5, 6, UI_G3);
+    if (v->func_name[0] && !p->nobig)
+        px_ctext(60, top + 4, v->func_name, c, PX_FB, 1);
+    for (i = 0; i < 16; i++) {                          /* the row */
+        const int x = fn_cx(i) - 2;
+        const int me = !other && i == s;
+        const int tgt = (f >= UI_FN_JUMP && f < UI_FN_LEAP && i == v->jump_step) || (f == 1 && i == 0);
+        if (me)
+            px_rect(x, ry, 5, 7, c);
+        else if (trig[i])
+            px_rect(x, ry, 5, 7, UI_G2);
+        px_box(x, ry, 5, 7, tgt ? c : me ? c : UI_G3);
+    }
+    if (other) {
+        char n[12];
+        px_text(3, ry + 1, ui_itoa(n, v->jump_page + 1), UI_G1, PX_FS, 1);
+    }
+    if (s < 0 && !other)
+        return;
+    if (f == 0) {                                       /* NONE: the flow runs on */
+        fn_flow(s, 1, UI_G2, 1, ry);
+    } else if (f == 1) {                                /* RESTART: up, back along the top, down into step 1 */
+        const int x0 = fn_cx(s), xt = fn_cx(0), y = ry - 16;
+        px_vline(x0, y + 1, 14, c);
+        px_hline(xt, y, x0 - xt + 1, c);
+        px_vline(xt, y + 1, 14, c);
+        fn_head(xt, ry - 2, c);
+    } else if (f == 2 || f == 3) {                      /* REVERSE / FORWARD */
+        fn_flow(s, f == 2 ? -1 : 1, c, 0, ry);
+    } else if (f == 4) {                                /* FLIP: the other way, whichever */
+        fn_flow(s, -1, c, 0, ry);
+        fn_flow(s, 1, c, 0, ry);
+    } else if (f == 5 || f == 6) {                      /* RANDOM JUMP / RANDOM FUNC: dotted arcs, the die */
+        static const int8_t D[3] = {-5, 4, 9};
+        for (i = 0; i < 3; i++) {
+            const int t = ((s + D[i]) % 16 + 16) % 16;
+            fn_arc(s, t, 4 + (t > s ? t - s : s - t), f == 5 ? c : UI_G2, 1, ry);
         }
+        ui_icon(f == 5 ? UI_IC_DICE : UI_IC_DICE_FN, 120.f, (float)(2 * (ry - 26)), 1.f, c);
+    } else if (f < UI_FN_LEAP) {                        /* JUMP: an arc to the target */
+        if (other) {
+            const int x1 = fn_cx(v->jump_step);
+            px_line(9, ry - 22, x1, ry - 22, c);
+            px_vline(x1, ry - 22, 20, c);
+            fn_head(x1, ry - 2, c);
+        } else {
+            const int d = v->jump_step > s ? v->jump_step - s : s - v->jump_step;
+            fn_arc(s, v->jump_step, 8 + d, c, 0, ry);
+        }
+    } else {                                            /* LEAP n: n hops (many: one arc) */
+        const int nn = f - UI_FN_LEAP - 15, an = nn < 0 ? -nn : nn, dir = nn < 0 ? -1 : 1;
+        if (an <= 6)
+            for (i = 0; i < an; i++)
+                fn_arc(((s + dir * i) % 16 + 16) % 16, ((s + dir * (i + 1)) % 16 + 16) % 16, 5, c, i + 1 < an ? 2 : 0,
+                       ry);
+        else
+            fn_arc(s, ((s + nn) % 16 + 16) % 16, 8 + an, c, 0, ry);
     }
 }
 
@@ -514,12 +589,19 @@ static void head_val(const ui_held_t *v, int f, char *val)
     }
 }
 
+#include "ui_room.c"                    /* EvilGenius: THE ROOM (built here: the source lists stay) */
+
 void ui_edit_draw(const ui_held_t *v, const ui_lane_t *lane)
 {
     pal_t p, hp;
     const ui_held_t *hv = v->head ? v->head : v;
     char val[40], left[48];
     int f;
+    if (v->room) {                                      /* EvilGenius: nothing held: THE ROOM over the page's row */
+        ui_room_draw(lane);
+        ui_steps_row(lane, 180.f, 58.f);
+        return;
+    }
     f = frame_and_head(hv, &hp, 1);
     p = hp;
     if (hv != v)

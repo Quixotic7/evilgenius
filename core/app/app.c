@@ -728,7 +728,7 @@ static void ms_lock2(qd_app_t *a)
 /* EvilGenius: the words SAM must have rendered before a voice speaks them (say.h): each track's sound's, and each step
  * of the playing pattern that locks its word or its voice. At most one render a look (SAM's few ms in the free time,
  * never the audio's); a look every 16 ms */
-static int say_step(qd_app_t *a, const qd_pattern_t *P, int t, int step, const int16_t *tp)
+static int say_step(qd_app_t *a, const qd_pattern_t *P, int t, int step, const int16_t *tp, int render)
 {
     static const int ID[6] = {QD_QP_SAY, QD_QP_WORD, QD_QP_SSPD, QD_QP_SPIT, QD_QP_STHR, QD_QP_SMTH};
     int16_t pp[QD_QUAD_NP];
@@ -740,29 +740,65 @@ static int say_step(qd_app_t *a, const qd_pattern_t *P, int t, int step, const i
         if (qd_lock_get(P, t, step, ID[k], &v))
             pp[ID[k]] = v;
     }
-    return qd_say_want(pp);
+    return render ? qd_say_want(pp) : (qd_say_touch(pp), 0);
 }
+/* twice over the words wanted: first every one already rendered is marked wanted (none of them gives way in this
+ * look), then the first one missing is rendered */
 static void say_sync(qd_app_t *a)
 {
     const qd_pattern_t *P = qd_proj_pat(&a->proj, a->seq.cur);
-    int t, k;
-    for (t = 0; t < QD_NTRACK; t++) {
-        const int16_t *tp = a->model.t[t].patch;
-        if (qd_msnd_is(tp))
-            continue;
-        if (qd_say_want(tp))
-            return;
-        for (k = 0; P && k < P->lock_n[t]; k++) {
-            const qd_lock_t *l = &P->lock[P->lock_start[t] + k];
-            if ((l->id == QD_QP_SAY || l->id == QD_QP_WORD || (l->id >= QD_QP_SSPD && l->id <= QD_QP_SMTH)) &&
-                say_step(a, P, t, l->step, tp))
+    int t, k, render;
+    qd_say_pass();
+    for (render = 0; render < 2; render++)
+        for (t = 0; t < QD_NTRACK; t++) {
+            const int16_t *tp = a->model.t[t].patch;
+            if (qd_msnd_is(tp))
+                continue;
+            if (render ? qd_say_want(tp) : (qd_say_touch(tp), 0))
                 return;
+            for (k = 0; P && k < P->lock_n[t]; k++) {
+                const qd_lock_t *l = &P->lock[P->lock_start[t] + k];
+                if ((l->id == QD_QP_SAY || l->id == QD_QP_WORD || (l->id >= QD_QP_SSPD && l->id <= QD_QP_SMTH)) &&
+                    say_step(a, P, t, l->step, tp, render))
+                    return;
+            }
         }
+}
+
+void qd_app_announce(qd_app_t *a, const char *text, int voice, int sfx)
+{
+    if (a->ui.voice_mode == QD_VOICE_OFF || !a->ui.voice_lvl ||
+        (a->ui.voice_mode == QD_VOICE_STOPPED && a->seq.playing))
+        return;                                         /* (off, or STOPPED: never over a pattern playing) */
+    if (text && text[0]) {
+        a->ann_text = text;
+        a->ann_voice = (uint8_t)voice;
+    }
+    if (sfx) {
+        a->sfx_left = 0;                                /* (the audio reads sfx_left: the kind and place first) */
+        a->sfx = (uint8_t)sfx;
+        a->sfx_ph = 0;
+        a->sfx_lfsr = 0x1D872B41u;
+        a->sfx_left = sfx == QD_SFX_ZAP ? QD_FS * 3 / 10 : sfx == QD_SFX_BEEPS ? QD_FS / 5 : QD_FS / 4;
     }
 }
 
 static void ms_free2(qd_app_t *a)
 {
+    if (a->ann_text) {                                  /* EvilGenius, THE VOICE: SAM speaks the waiting line */
+        const char *t = a->ann_text;
+        a->ann_text = 0;
+        qd_ann_say(t, a->ann_voice, a->ui.voice_lvl * 100 / QD_VOICE_LVL_MAX);
+        return;
+    }
+    if (a->ui.voice_mode == QD_VOICE_STOPPED && a->seq.playing && (qd_ann_busy() || a->sfx_left)) {
+        qd_ann_stop();                                  /* (PLAY while he speaks: he stops) */
+        a->sfx_left = 0;
+    }
+    if (!a->ann_greeted && a->ui.mode != QD_MODE_IDLE) {   /* (the first key of a power-on: his welcome) */
+        a->ann_greeted = 1;
+        qd_app_announce(a, "INTRUDER ALERT", QD_ANN_VILLAIN, QD_SFX_NONE);
+    }
     if (!(a->ui.rec && a->seq.playing))
         qd_undo_ms(a);
     if (a->ms - a->say_ms >= 16u) {
@@ -807,6 +843,17 @@ static void chain_shares(qd_app_t *a)
                 r = r * (127 - send[b]) / 127;
             }
             mt->g_lvl = (td * 4096 + feed * r) / 127;
+        }
+        {   /* EvilGenius: the rooms: each send's gain; what goes through a room leaves the dry mix (the most of
+             * the five: at 127 the track is heard only through its rooms) */
+            int mx = 0;
+            for (k = 0; k < QD_NROOM; k++) {
+                mt->g_room[k] = (int16_t)(mt->room[k] * 4096 / 127 >> (a->ui.boost ? 0 : 1));
+                mx = mt->room[k] > mx ? mt->room[k] : mx;
+            }
+            mt->g_lvl0 = mt->g_lvl >> (a->ui.boost ? 0 : 1);   /* (as g_lvl below, before the rooms' part) */
+            mt->room_sh = a->ui.boost ? 0 : 1;
+            mt->g_lvl = mt->g_lvl * (127 - mx) / 127;
         }
         if (!a->ui.boost) {                             /* 2026-10-26 (the owner: the engine clipped inside): 6 dB
                                                          * under the old level, dry and sends alike; SETTINGS' BOOST
@@ -873,6 +920,8 @@ void qd_app_tick_free(qd_app_t *a)
 void qd_app_tick(qd_app_t *a, uint32_t ms)
 {
     uint32_t n;
+    chain_shares(a);                   /* (EvilGenius: as qd_app_tick_locked: the tracks' DRY / WET and room gains;
+                                        * the host's tick never made them, so only the unit heard DRY) */
     if (!a->started || ms < a->ms) {   /* the first tick (or a clock that restarted): the time starts here */
         a->started = 1;
         a->ms = a->free_ms = ms;
@@ -1050,7 +1099,8 @@ void qd_app_block_begin(qd_app_t *a)
 
 void qd_app_block_voices(qd_app_t *a, int v0, int v1, qd_bus_t *bus)
 {
-    bus->n = qd_mix_voices(&a->mix, &a->pool, a->blk_mt, QD_NTRACK, v0, v1, bus->l, bus->r, bus->sc, bus->sd, bus->sr);
+    bus->n = qd_mix_voices(&a->mix, &a->pool, a->blk_mt, QD_NTRACK, v0, v1, bus->l, bus->r, bus->sc, bus->sd, bus->sr,
+                           bus->rb);
 }
 
 /* the end's own part (P2.6g: a pipelined block's too): the sum, the metronome at its block's beat, the effects at its
@@ -1085,6 +1135,33 @@ static void block_out(qd_app_t *a, const qd_bus_t *A, const qd_bus_t *B, int64_t
         a->metro_left = 0;
         a->metro_beat = -1;
     }
+    if (a->sfx_left) {                                  /* EvilGenius: THE VOICE's sound effects (integer, the SID's
+                                                         * kind of noise: an LFSR, squares) */
+        for (i = 0; i < QD_MIX_CTL && a->sfx_left; i++, a->sfx_left--, a->sfx_ph++) {
+            const uint32_t ph = a->sfx_ph;
+            int32_t v = 0;
+            if (a->sfx == QD_SFX_ZAP) {                 /* the bolt: noise chopped at 50 Hz, falling */
+                const int32_t env = (int32_t)(a->sfx_left * 256u / (QD_FS * 3 / 10));
+                if ((ph & 3u) == 0u)
+                    a->sfx_lfsr = (a->sfx_lfsr >> 1) ^ (0u - (a->sfx_lfsr & 1u) & 0xD0000001u);
+                v = ((a->sfx_lfsr & 1u) ? 6500 : -6500) * env / 256;
+                if ((ph / 441u) & 1u)
+                    v /= 4;
+            } else if (a->sfx == QD_SFX_BEEPS) {        /* the search: three beeps going up */
+                static const uint16_t HALF[3] = {33, 25, 17};   /* (half periods: 668, 882, 1297 Hz) */
+                const uint32_t k = ph / (QD_FS / 15);
+                if (k < 3u && ph % (QD_FS / 15) < QD_FS / 22)
+                    v = ((ph / HALF[k]) & 1u) ? 4200 : -4200;
+            } else {                                    /* the refusal: two low buzzes */
+                if (ph % (QD_FS / 8) < QD_FS / 11)
+                    v = ((ph / 200u) & 1u) ? 5200 : -5200;
+            }
+            v = v * (int32_t)a->ui.voice_lvl / QD_VOICE_LVL_MAX;
+            l[i] += v, r[i] += v;
+        }
+    }
+    qd_ann_mix(l, r, QD_MIX_CTL);                       /* .. and his line (SAM's buffer, say.h) */
+    qd_fx_rooms(A->rb, B->rb);                          /* (the tracks' sends into the five rooms, for this block) */
     qd_fx_block(sc, sd, sr, l, r, o);
     for (i = 0; i < 2 * QD_MIX_CTL; i++)
         out[i] = (int16_t)(o[i] > 32767 ? 32767 : o[i] < -32768 ? -32768 : o[i]);

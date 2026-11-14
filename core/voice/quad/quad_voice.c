@@ -95,7 +95,7 @@ static val_t val(int i)
     case QD_QP_FREQ: return (val_t){"CUTOFF", 0, 2047, 1024, VK_NUM, 0};
     case QD_QP_RESO: return (val_t){"RESO", 0, 15, 0, VK_NUM, 0};
     case QD_QP_FTYPE: return (val_t){"MODE", 0, QD_QF_N - 1, QD_QF_OFF, VK_LIST, L_FTYPE};
-    case QD_QP_FROUTE: return (val_t){"ROUTE", 0, 7, 7, VK_ROUTE, 0};
+    case QD_QP_FROUTE: return (val_t){"ROUTE", 0, 15, 15, VK_ROUTE, 0};   /* (bits 0..2 the oscillators, 3 the word) */
     case QD_QP_FDEPTH: return (val_t){"DEPTH", 0, 127, 64, VK_C64, 0};
     case QD_QP_FKTRK: return (val_t){"KEYTRK", 0, 127, 0, VK_NUM, 0};
     case QD_QP_FATK: return (val_t){"F ATK", 0, 127, 0, VK_NUM, 0};
@@ -216,6 +216,8 @@ const char *qd_quad_value_text(int i, int v, char *buf)
         for (n = 0; n < 3; n++)
             if (v >> n & 1)
                 buf[k++] = (char)('1' + n);
+        if (v & 8)                                      /* (the word: VOX's speech into the filter) */
+            buf[k++] = 'V';
         if (!k)
             buf[k++] = '-';
         buf[k] = 0;
@@ -623,14 +625,10 @@ static void vox_start(qd_quad_voice_t *v)
     const uint8_t *src = 0;
     uint32_t len = 0;
     v->vox.on = 0;
-    if (say > 0 || (w >= 1 && w <= (int)VOX_NWORDS && !qd_say_default_voice(p)))
-        src = qd_say_get(qd_say_key(p), &len);          /* SAM's live render (the app made it: qd_say_want) */
-    if (!src || !len) {                                 /* not rendered (yet): the stored word, or silence */
-        if (say > 0 || w < 1 || w > (int)VOX_NWORDS)
-            return;
-        src = VOX_DATA + VOX_WORD_OFF[w - 1];
-        len = VOX_WORD_LEN[w - 1];
-    }
+    if (say > 0 || (w >= 1 && w <= (int)VOX_NWORDS))
+        src = qd_say_get(qd_say_key(p), &len);          /* SAM's render (the app made it: qd_say_want) */
+    if (!src || !len)                                   /* not rendered (yet), or no room for it: silence */
+        return;
     {
         uint32_t lo = len * (uint32_t)p[QD_QP_VSTART] / 127u, hi = len * (uint32_t)p[QD_QP_VEND] / 127u;
         if (hi > len)
@@ -922,12 +920,17 @@ static void registers(qd_quad_voice_t *v, const int32_t *d, int *vox_only)
                                               SID_BP | SID_HP, SID_LP | SID_BP | SID_HP};
         mode = MODE[clamp(p[QD_QP_FTYPE], 0, QD_QF_N - 1)];
     }
+    /* the word through the filter (ROUTE's V, a mode on): it is the chip's EXT IN then, FILT EX set, the volume
+     * register left full; else the volume register's digi, after the filter as on the C64 */
+    v->vox.filt = (uint8_t)(v->vox.on && mode && (p[QD_QP_FROUTE] & 8));
     if (mode)
-        route = p[QD_QP_FROUTE] & on & 7;
+        route = (p[QD_QP_FROUTE] & on & 7) | (v->vox.filt ? 8 : 0);
+    if (!v->vox.filt)
+        c->ext = 0;
     sid_write(c, SID_FC_LO, (uint32_t)cut & 7u);
     sid_write(c, SID_FC_HI, (uint32_t)cut >> 3);
     sid_write(c, SID_RES_FILT, (uint32_t)(res << 4 | route));
-    sid_write(c, SID_MODE_VOL, (uint32_t)(mode | (v->vox.on ? v->vox.nib : 15)));
+    sid_write(c, SID_MODE_VOL, (uint32_t)(mode | (v->vox.on && !v->vox.filt ? v->vox.nib : 15)));
 }
 
 /* VOX: the nibble at the word's place, its bits and level */
@@ -1012,7 +1015,11 @@ int qd_quad_voice_render(qd_quad_voice_t *v, int32_t *out)
             if (v->vox.hold_acc < 65536u) {
                 if (v->vox.on)
                     v->vox.nib = (uint8_t)vox_nib(v, wpos);
-                sid_write(&v->chip, SID_MODE_VOL, mode | (v->vox.on ? v->vox.nib : 15u));
+                if (v->vox.filt)                        /* (EXT IN: a volume step of the 6581's digi is 375 after the
+                                                         * volume: 800 before it, the same loudness) */
+                    v->chip.ext = v->vox.on ? ((int32_t)v->vox.nib - 8) * 800 : 0;
+                else
+                    sid_write(&v->chip, SID_MODE_VOL, mode | (v->vox.on ? v->vox.nib : 15u));
                 v->vox.hold_acc += ival;
             }
             n = (v->vox.hold_acc + 65535u) >> 16;

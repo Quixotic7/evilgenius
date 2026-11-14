@@ -158,9 +158,33 @@ static uint32_t div_samples(int div, uint32_t fs)
     return q * Q16THS[div < 0 ? 0 : div > 11 ? 11 : div] / 16u;
 }
 
+/* the five rooms' buses for the next block (qd_fx_rooms), and each room's tail (blocks left to run) */
+static const int16_t (*rm_a)[N], (*rm_b)[N];
+static uint8_t rm_live[5];
+
+/* ---------------------------------------------------------------- the lines' storage ---
+ * The FM-1's memory decides how the delay lines are kept (the same on every build, so RemoteFM1 sounds as the unit):
+ * the short ones 16-bit, the long ones (ECHO, GLITCH) a byte a sample, companded: the byte is the sample's square
+ * root (sign kept), so a quiet tail keeps its detail (a step is ~1 % of the level, not a fixed 1 / 256 of full
+ * scale) and the loud end is coarser, as the tape-and-chip echoes of the time were */
+static int8_t c8_put(int32_t v)                         /* v within +-32767 (seven integer steps: no square root) */
+{
+    const int32_t a = v < 0 ? -v : v;
+    int lo = 0, hi = 127;
+    while (lo < hi) {
+        const int mid = (lo + hi + 1) >> 1;
+        if (((int32_t)mid * mid * 8321) >> 12 <= a)
+            lo = mid;
+        else
+            hi = mid - 1;
+    }
+    return (int8_t)(v < 0 ? -lo : lo);
+}
+static int32_t c8_get(int8_t c) { return c < 0 ? -(((int32_t)c * c * 8321) >> 12) : ((int32_t)c * c * 8321) >> 12; }
+
 /* ---------------------------------------------------------------- CHORUS --- */
-#define CH_LEN 2048u
-static int32_t ch_buf[CH_LEN];
+#define CH_LEN 1024u                    /* (the taps reach 690 samples back) */
+static int16_t ch_buf[CH_LEN];
 static uint32_t ch_w, ch_ph;
 static void chorus(const int32_t *in, int32_t *l, int32_t *r)
 {
@@ -173,7 +197,7 @@ static void chorus(const int32_t *in, int32_t *l, int32_t *r)
         any |= in[i];
     for (i = 0; i < N; i++) {
         int k;
-        ch_buf[ch_w & (CH_LEN - 1u)] = in[i];
+        ch_buf[ch_w & (CH_LEN - 1u)] = (int16_t)sat16(in[i]);
         for (k = 0; k < 2; k++) {
             const int32_t m = tri_q15(ch_ph + (k ? off : 0u));
             const int32_t d16 = (300 << 16) + (int32_t)(((int64_t)m * depth) << 1);   /* Q16 samples back */
@@ -192,8 +216,8 @@ static void chorus(const int32_t *in, int32_t *l, int32_t *r)
 }
 
 /* ---------------------------------------------------------------- ECHO (half rate) --- */
-#define EC_LEN 22050u                   /* 1 s at 22.05 kHz, a side */
-static int16_t ec_buf[2][EC_LEN];
+#define EC_LEN 12680u                   /* 0.575 s at 22.05 kHz, a side (a quarter note down to 104 BPM) */
+static int8_t ec_buf[2][EC_LEN];        /* (companded: c8_put) */
 static uint32_t ec_w;
 static int32_t ec_lp[2], ec_hold[2], ec_prev[2];
 static uint32_t ec_ph, ec_cnt;
@@ -206,7 +230,7 @@ static uint32_t echo_len(int side)
         if (side)
             n = n * RAT[P[QD_FXP_DRATIO] & 3][0] / RAT[P[QD_FXP_DRATIO] & 3][1];
     } else {
-        n = (uint32_t)(220 + P[QD_FXP_DTIME] * 172);                 /* 10 ms .. 1 s */
+        n = (uint32_t)(220 + P[QD_FXP_DTIME] * 98);                  /* 10 ms .. 0.57 s */
         if (side)
             n += n * (uint32_t)P[QD_FXP_DSPREAD] / 254u;
     }
@@ -230,7 +254,7 @@ static void echo(const int32_t *in, int32_t *l, int32_t *r)
         ec_ph += 136000u;                                            /* (~0.7 Hz at 22.05 kHz) */
         for (s = 0; s < 2; s++) {
             const uint32_t rp = ec_w + EC_LEN - len[s] + (uint32_t)wm;
-            int32_t v = (int32_t)ec_buf[s][rp % EC_LEN] << 1;
+            int32_t v = c8_get(ec_buf[s][rp % EC_LEN]) << 1;
             ec_lp[s] += (int32_t)(((int64_t)(v - ec_lp[s]) * lpk) >> 15);
             y[s] = ec_lp[s];
         }
@@ -242,7 +266,7 @@ static void echo(const int32_t *in, int32_t *l, int32_t *r)
         for (s = 0; s < 2; s++) {
             const int32_t back = (int32_t)(((int64_t)ec_hold[s ^ (ping ? 1 : 0)] * fb) >> 15);
             const int32_t inp = ping ? (s ? 0 : x) : x;
-            ec_buf[s][ec_w % EC_LEN] = (int16_t)sat16((inp + back) >> 1);
+            ec_buf[s][ec_w % EC_LEN] = c8_put(sat16((inp + back) >> 1));
         }
         ec_w++;
         for (s = 0; s < 2; s++) {                                    /* up to the full rate: a step and its average */
@@ -258,7 +282,7 @@ static void echo(const int32_t *in, int32_t *l, int32_t *r)
 static const uint16_t RC_LEN[4] = {558, 594, 638, 678};               /* Freeverb's combs at 22.05 kHz */
 static const uint16_t RA_LEN[2] = {278, 220};
 #define RC_MAX 1100u
-#define RP_LEN 4096u
+#define RP_LEN 512u
 static int16_t rc_buf[2][4][RC_MAX];
 #define RA_LEN_MAX 300u
 static int16_t ra_buf[2][2][RA_LEN_MAX + 1u];
@@ -270,7 +294,7 @@ static void room(const int32_t *in, int32_t *l, int32_t *r)
 {
     const int32_t g = P[QD_FXP_RDECAY] >= 127 ? 32700 : 22000 + P[QD_FXP_RDECAY] * 82;   /* Q15 feedback */
     const int32_t damp = P[QD_FXP_RDAMP] * 200;                    /* Q15 */
-    const uint32_t pre = (uint32_t)P[QD_FXP_RPRE] * 20u;            /* to ~115 ms */
+    const uint32_t pre = (uint32_t)P[QD_FXP_RPRE] * 4u;             /* to ~23 ms */
     const int32_t sz = 20000 + P[QD_FXP_RSIZE] * 360;               /* Q15 length scale (0.61 .. 2.0) */
     const int32_t wid = P[QD_FXP_RWIDTH] * 258, hpk = 200 + P[QD_FXP_RLOW] * 40;
     const uint32_t mod = (uint32_t)P[QD_FXP_RMOD] / 16u;
@@ -326,7 +350,7 @@ static int32_t cr_h[2];
 static void crush(int32_t *l, int32_t *r)
 {
     static const uint8_t DIV[8] = {1, 2, 3, 4, 6, 9, 11, 15};
-    const int mix = P[QD_FXP_XMIX], bits = P[QD_FXP_XBITS];
+    const int mix = 127, bits = P[QD_FXP_XBITS];        /* (a room is whole on its own bus: qd_fx_rooms) */
     const uint32_t div = DIV[P[QD_FXP_XRATE] & 7];
     int i;
     if (!mix)
@@ -348,7 +372,7 @@ static void crush(int32_t *l, int32_t *r)
 static uint32_t rb_ph, rb_lph;
 static void robot(int32_t *l, int32_t *r)
 {
-    const int mix = P[QD_FXP_RBMIX];
+    const int mix = 127;
     float hz;
     uint32_t inc;
     int i;
@@ -380,11 +404,11 @@ static void robot(int32_t *l, int32_t *r)
 
 /* ---------------------------------------------------------------- WARP: a comb / flanger --- */
 #define WP_LEN 512u
-static int32_t wp_buf[2][WP_LEN];
+static int16_t wp_buf[2][WP_LEN];
 static uint32_t wp_w, wp_ph;
 static void warp(int32_t *l, int32_t *r)
 {
-    const int mix = P[QD_FXP_WMIX];
+    const int mix = 127;
     const int32_t fb = (P[QD_FXP_WFB] - 64) * 480;                  /* Q15: to +-0.94 */
     const int32_t base = 9 + P[QD_FXP_WTIME] * 3;                    /* samples (0.2 .. 8.8 ms) */
     const uint32_t inc = (uint32_t)P[QD_FXP_WRATE] * P[QD_FXP_WRATE] * 25u;
@@ -399,7 +423,7 @@ static void warp(int32_t *l, int32_t *r)
                                    : base;
             const int32_t d = sw < 2 ? 2 : sw > (int32_t)WP_LEN - 2 ? (int32_t)WP_LEN - 2 : sw;
             const int32_t y = wp_buf[s][(wp_w - (uint32_t)d) & (WP_LEN - 1u)];
-            wp_buf[s][wp_w & (WP_LEN - 1u)] = *x + (int32_t)(((int64_t)y * fb) >> 15);
+            wp_buf[s][wp_w & (WP_LEN - 1u)] = (int16_t)sat16(*x + (int32_t)(((int64_t)y * fb) >> 15));
             *x += (int32_t)(((int64_t)y * mix) / 127);              /* (the comb's notches: the dry and the delayed) */
         }
         wp_w++;
@@ -408,7 +432,7 @@ static void warp(int32_t *l, int32_t *r)
 
 /* ---------------------------------------------------------------- GLITCH: a beat-repeat --- */
 #define GL_LEN 8192u                    /* at half rate (0.37 s) */
-static int16_t gl_buf[2][GL_LEN];
+static int8_t gl_buf[GL_LEN];           /* (the two sides' sum, companded: c8_put; the caught slice comes back mono) */
 static uint32_t gl_w, gl_cnt, gl_slice, gl_start, gl_pos, gl_step, gl_left;
 static uint8_t gl_on, gl_half;
 int qd_fx_glitch_on(float *pos)
@@ -420,7 +444,7 @@ int qd_fx_glitch_on(float *pos)
 static void glitch(int32_t *l, int32_t *r)
 {
     static const uint8_t DIV[4] = {0, 2, 5, 8};                      /* (div_samples' 1/32 1/16 1/8 1/4) */
-    const int mix = P[QD_FXP_GMIX];
+    const int mix = 127;
     int i;
     if (!mix) {
         gl_on = 0;
@@ -428,8 +452,7 @@ static void glitch(int32_t *l, int32_t *r)
     }
     for (i = 0; i < N; i++) {
         if (!(gl_half ^= 1)) {                                       /* (the half rate: every other sample) */
-            gl_buf[0][gl_w & (GL_LEN - 1u)] = (int16_t)sat16(l[i] >> 1);
-            gl_buf[1][gl_w & (GL_LEN - 1u)] = (int16_t)sat16(r[i] >> 1);
+            gl_buf[gl_w & (GL_LEN - 1u)] = c8_put(sat16((l[i] + r[i]) >> 2));
             gl_w++;
             if (gl_cnt == 0) {                                       /* a slice boundary: repeat the last one? */
                 uint32_t n = div_samples(DIV[P[QD_FXP_GLEN] & 3], 22050u);
@@ -461,7 +484,7 @@ static void glitch(int32_t *l, int32_t *r)
         }
         if (gl_on) {
             const uint32_t k = (gl_start + (gl_pos >> 16)) & (GL_LEN - 1u);
-            const int32_t a = (int32_t)gl_buf[0][k] << 1, b = (int32_t)gl_buf[1][k] << 1;
+            const int32_t a = c8_get(gl_buf[k]) << 1, b = a;
             l[i] += (a - l[i]) * mix / 127;
             r[i] += (b - r[i]) * mix / 127;
         }
@@ -473,7 +496,7 @@ static int32_t tv_hp[2], tv_lp[2], tv_lp2[2];
 static uint32_t tv_ph;
 static void tv(int32_t *l, int32_t *r)
 {
-    const int mix = P[QD_FXP_TVMIX];
+    const int mix = 127;
     const int32_t lpk = 3000 + P[QD_FXP_TVTONE] * 180;               /* Q15 low-pass (the speaker's top) */
     const int32_t hpk = 2400 - P[QD_FXP_TVTONE] * 12;                /* Q15 high-pass (its bottom) */
     const int32_t hum = P[QD_FXP_TVHUM] * 14;
@@ -518,6 +541,7 @@ void qd_fx_init(void)
     gl_slice = gl_start = gl_step = gl_left = 0, gl_half = 0;
     rng = 0x2545F491u;
     memset(fx_dc, 0, sizeof fx_dc);
+    memset(rm_live, 0, sizeof rm_live), rm_a = rm_b = 0;
     for (i = 0; i < QD_NFXP; i++)
         P[i] = FXV[i].def;
     fx_bpm = 120;
@@ -541,16 +565,39 @@ int qd_fx_route_block(int pos) { return pos & 3; }
 void qd_fx_chain_g(const int32_t g[3]) { (void)g; }
 int qd_fx_route_move(int block, int dir) { (void)block, (void)dir; return 0; }
 
+void qd_fx_rooms(const int16_t (*a)[QD_FX_CTL], const int16_t (*b)[QD_FX_CTL]) { rm_a = a, rm_b = b; }
 void qd_fx_block(const int32_t *sc, const int32_t *sd, const int32_t *sr, int32_t *l, int32_t *r, int32_t *out)
 {
     chorus(sc, l, r);
     echo(sd, l, r);
     room(sr, l, r);
-    crush(l, r);
-    robot(l, r);
-    warp(l, r);
-    glitch(l, r);
-    tv(l, r);
+    {   /* the five rooms, each on its own bus (the tracks' sends), its output added to the mix; a room with nothing
+         * coming in (and its tail gone: 64 blocks, 46 ms) is not run */
+        static void (*const ROOM[5])(int32_t *, int32_t *) = {crush, robot, warp, glitch, tv};
+        int32_t tl[N], tr[N];
+        int k, i;
+        for (k = 0; k < 5; k++) {
+            int32_t any = 0;
+            for (i = 0; i < N; i++) {
+                const int32_t v = ((rm_a ? rm_a[k][i] : 0) + (rm_b ? rm_b[k][i] : 0)) * 16;
+                tl[i] = tr[i] = v;
+                any |= v;
+            }
+            if (any)
+                rm_live[k] = 64;
+            else if (rm_live[k])
+                rm_live[k]--;
+            else {
+                if (k == 3)
+                    gl_on = 0;
+                continue;
+            }
+            ROOM[k](tl, tr);
+            for (i = 0; i < N; i++)
+                l[i] += tl[i], r[i] += tr[i];
+        }
+        rm_a = rm_b = 0;                                /* (a block's buses: given again for the next) */
+    }
     out_master(out, l, r, (const int32_t *)0, CTL);
 }
 
@@ -566,7 +613,7 @@ const char *qd_fx_text(int id, int v, char *buf)
     switch (id) {
     case QD_FXP_DTIME: {
         char t[12];
-        strcpy(buf, itoa_(t, (220 + v * 172) * 10 / 221));
+        strcpy(buf, itoa_(t, (220 + v * 98) * 10 / 221));
         strcat(buf, " MS");
         return buf;
     }

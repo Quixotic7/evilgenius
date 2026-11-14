@@ -56,7 +56,12 @@
 enum {
     RO_SAVE = 1, RO_RESTORE, RO_TRANSLATE, RO_SCALE, RO_ROTATE, RO_ALPHA, RO_CLIP, RO_LW, RO_CAP, RO_JOIN, RO_DASH,
     RO_LINE, RO_POLY, RO_CIRCLE, RO_ARC, RO_ELL, RO_ELLARC, RO_RRECT, RO_FRECT, RO_PBEGIN, RO_MOVE, RO_LINETO, RO_QUAD,
-    RO_CUBIC, RO_PARC, RO_PCLOSE, RO_PFILL, RO_PSTROKE, RO_PSTROKEK, RO_PPAINT, RO_PCLIP, RO_TEXT, RO_LDRAW
+    RO_CUBIC, RO_PARC, RO_PCLOSE, RO_PFILL, RO_PSTROKE, RO_PSTROKEK, RO_PPAINT, RO_PCLIP, RO_TEXT, RO_LDRAW,
+    RO_PXR                              /* EvilGenius: a pixel-kit rectangle, packed: two words, not six. The pixel
+                                         * screens are thousands of small rectangles (a glyph's runs, a sprite's): as
+                                         * RO_FRECT (24 bytes) most frames outgrew the list and were drawn live, the
+                                         * whole screen again for every band. Word 0: the op (its low byte), x, y, w
+                                         * in half units (a byte each: 0..255, the 120-space's); word 1: h, the colour */
 };
 
 static int rl_pin;
@@ -248,6 +253,18 @@ void qd_fill_rect(float x, float y, float w, float h, qd_rgb col)
         qdb_fill_rect(x, y, w, h, col);
         return;
     }
+#ifndef QD_NO_PXR                        /* (a build knob: the old 24-byte records, for a comparison) */
+    {   /* (even whole numbers on the screen, a plain colour: the packed record) */
+        const int ix = (int)x, iy = (int)y, iw = (int)w, ih = (int)h;
+        if ((float)ix == x && (float)iy == y && (float)iw == w && (float)ih == h && !((ix | iy | iw | ih) & 1) &&
+            ix >= 0 && iy >= 0 && iw > 0 && ih > 0 && ix <= 510 && iy <= 510 && iw <= 510 && ih <= 510 &&
+            col <= 0xFFFFFFu) {
+            rl_u((uint32_t)RO_PXR | (uint32_t)(ix >> 1) << 8 | (uint32_t)(iy >> 1) << 16 | (uint32_t)(iw >> 1) << 24);
+            rl_u((uint32_t)(ih >> 1) << 24 | col);
+            return;
+        }
+    }
+#endif
     rl_op(RO_FRECT), rl_f(x), rl_f(y), rl_f(w), rl_f(h), rl_u(col);
 }
 void qd_path_begin(void)
@@ -517,7 +534,21 @@ void qd_dl_play(void)
         qd_dl_strip_hashes(0, 0, 0);
     rl_at = 0;
     while (rl_buf && rl_at < rl_len) {
-        const int op = (int)rl_gu();
+        const uint32_t opw = rl_gu();
+        const int op = (int)(opw & 255u);
+        if (op == RO_PXR) {                             /* (first: the pixel screens are mostly these) */
+            const uint32_t w1 = rl_gu();
+            const float y = (float)((opw >> 16 & 255u) << 1), hh = (float)((w1 >> 24) << 1);
+#ifdef QDB_ROW0
+            if (axis_aligned()) {                       /* (its rows miss the strip's: not drawn) */
+                const float Y0 = y * S.m.d + S.m.f, Y1 = (y + hh) * S.m.d + S.m.f;
+                if ((Y0 < Y1 ? Y1 : Y0) <= (float)QDB_ROW0 || (Y0 < Y1 ? Y0 : Y1) >= (float)QDB_ROW1)
+                    continue;
+            }
+#endif
+            qdb_fill_rect((float)((opw >> 8 & 255u) << 1), y, (float)((opw >> 24) << 1), hh, w1 & 0xFFFFFFu);
+            continue;
+        }
         if (skip && op >= RO_MOVE && op <= RO_PPAINT) {
             static const uint8_t W[RO_PPAINT - RO_MOVE + 1] = {8, 8, 16, 24, 20, 0, 4, 8, 8, 12};   /* (their bytes) */
             rl_at += W[op - RO_MOVE];
@@ -732,7 +763,8 @@ void qd_dl_strip_hashes(uint32_t *h, int n, int rows)
     rl_at = 0;
     while (rl_buf && rl_at < rl_len) {
         const uint32_t at0 = rl_at;
-        const int op = (int)rl_gu();
+        const uint32_t opw = rl_gu();
+        const int op = (int)(opw & 255u);
         uint32_t ch;                                    /* (this call's bytes and the state) */
 #define CALLH() (ch = h ? rl_mix(rl_mix(st.sh, &st.mh, 4), rl_buf + at0, rl_at - at0) : 0u)
 #define PT(x, y)                                                                                                       \
@@ -842,6 +874,15 @@ void qd_dl_strip_hashes(uint32_t *h, int n, int rows)
                 rl_at += 4u;
             CALLH();
             rl_box(&st, cx - rx, cy - ry, cx + rx, cy + ry, w, &ya, &yb);
+            rl_into(h, n, rows, ya, yb, ch);
+            break;
+        }
+        case RO_PXR: {                                  /* (EvilGenius: the packed rectangle) */
+            const uint32_t w1 = rl_gu();
+            const float x = (float)((opw >> 8 & 255u) << 1), y = (float)((opw >> 16 & 255u) << 1),
+                        w = (float)((opw >> 24) << 1), hh = (float)((w1 >> 24) << 1);
+            CALLH();
+            rl_box(&st, x, y, x + w, y + hh, 0.f, &ya, &yb);
             rl_into(h, n, rows, ya, yb, ch);
             break;
         }

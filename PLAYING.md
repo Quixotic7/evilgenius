@@ -38,6 +38,76 @@ pool's) as a library to load back later.
 sixteenth of the range a click, so one fast turn sweeps it all. Values with few steps (a list of 24 or fewer: a
 type, a mode, a scale) never speed up, and **SHIFT + a knob** is always the finest step.
 
+## The mission: EvilGenius's own screens (2026-11-13)
+
+EvilGenius keeps FIZZ's controls exactly. What changes is what the screen shows while you use them: the villain's
+tower, with the game's cast doing the sequencer's work.
+
+**The room (the Home view, EDIT, with nothing held).** The page you edit is a room, drawn over the page's row of
+steps, so everything in it stands over its own step:
+
+- **A note is a platform**: as high as its pitch, as long as its gate. Yellow: the step has its own notes. Cyan: the
+  track's notes. A step with a sound lock takes its sound's colour (a drum kit is a room of colours). White while it
+  sounds. A chord's other notes are thin lines under it. A step with a chance or a condition is a crumbling (dotted)
+  platform; a ratchet hangs its hits under it.
+- **The agent is the playhead.** He lands on each note as it sounds, runs along its gate and somersaults the gaps,
+  higher the longer they are. He leaves by the floor at the page's end. Stopped, he waits by the lift. When the
+  pattern plays another page he is not in this room: "PAGE n" says where he is.
+- **A robot guards a step with locks** on the sound (a patrol robot), and a trigless LOCK step is a sentry on its
+  skirt. It fires as its step plays, and the agent caught on that step flashes to the bone. Robots do not stand for
+  mix locks (level, pan, sends).
+- **The floor** runs under the page's start..end; outside it there is a pit.
+- **The lift at the left is the tracks**: a floor a track, the car at the selected one. A track's number flashes green
+  when it plays and is red when it is not heard (muted, or another soloed). A track that is not heard has its lights
+  out and its robots asleep.
+- The head names the mode (B1..B10) as the lanes do, with the mode's default at the right. **Hold a step, turn a
+  default, hold a mode key or select with the latch and the mode's own picture is back**, exactly as before: the
+  room is only what EDIT shows at rest.
+
+**The FX tower (FX tapped).** The effects are floors, B1 SENDS (the villain's control room) at the top and B9 TV at
+the bottom. The shaft at the left has a window a floor, lit when that effect is heard (a send up, a room's MIX over
+0), and the agent's car at the floor you are on. A black key, FX again or SELECT rides the lift: the car moves, the
+next room slides in, and the lift calls the floor. The rooms: CHORUS the agent and his two doubles, ECHO the bouncing
+orb (a bounce a repeat), ROOM the agent calling out in a room as big as SIZE, CRUSH the press, ROBOT the sentry
+speaking, WARP the teleporter, GLITCH the picture breaking, TV the telly.
+
+**The scenes.** A confirmation still takes the screen for a second with its word, and the cast plays what it means:
+something cleared, the robot's bolt and a heap of ash; CLEAR? armed, the sentry takes aim; no room / full / no undo,
+the sentry refuses; copied or stored, the agent searches a cabinet and takes the document; pasted, recalled or
+doubled, he puts it down; anything else, the villain says it at his desk.
+
+**The voice.** The villain speaks, with SAM (the same Software Automatic Mouth the VOX engine's SAY uses): his
+welcome at the first key, a remark at each scene ("DESTROYED", "STOP. THIEF", the sentry's "ACCESS DENIED" and "ARE
+YOU SURE"), a plain confirmation read out, and the lift's floors. A bolt, the search's beeps and the refusal's buzz
+sound under them. They go into the mix before the master rooms, so CRUSH, ROBOT and TV get him too. A track's own
+SAY word always comes first: if SAM must render one, his line is cut. **HOME held, page 2, KNOB 3 VOICE** turns the
+lines and the effects off, or keeps them for when nothing plays (saved with the settings): **STOPPED** (the
+default: he speaks only while the pattern is stopped, and PLAY cuts him off), **ALWAYS** or **OFF**; **KNOB 4 VOICE
+LEVEL** sets how loud, 0 to 100 %.
+
+**The mix's three pages (ENV; ENV again or SELECT for the next).** FADERS: KNOB 1..4 LEVEL, PAN, ECHO, ROOM.
+SENDS: CHORUS, ECHO, ROOM and the track's DRY. **FX MIX**: the selected track's sends into the five rooms, as five
+lifts: KNOB 1 CRUSH, KNOB 2 ROBOT, KNOB 3 WARP, KNOB 4 GLITCH, PRESETS TV (the track's number is top right; ALGORITHM
+or FX held + ALGORITHM changes the track). The same page is the effects' second page: **FX twice (or B1 twice)**, so
+SENDS and FX MIX together are every effect's amount for the track. On a room's own page KNOB 4 is the same send.
+
+A room is the track put through it. What goes into a room leaves the dry mix (as much as the largest of the five
+sends), so at 100 % the track is heard only through its rooms and at 50 % half and half. Two rooms on one track run
+side by side, not one after the other. A room's bus is mono.
+
+**They lock on a step, as the other sends do.** Hold a step (or select steps with ALGORITHM or the latch) on FX MIX
+or on a room's page and turn the send: that step's note goes through the room by that much, whatever the track's own
+send is, and the rest of the track is untouched. The locked value is a filled chip under its lift while the step is
+held; with nothing held, a send that some step locks is outlined. In the room view a step with such a lock has a
+robot under it. F2 + the knob, or the step's CLR, takes a lock off as for any other.
+
+**The word through the filter.** On the sound editor's FILTER page, ROUTE (KNOB 3) says what goes into the SID's
+filter: oscillators 1, 2, 3 and **V, the word**. With V and a mode on, VOX's speech (a stored word or a SAY word) is
+filtered with everything else, so CUTOFF, RESO, the filter envelope and an LFO on the cutoff shape it. Without V the
+word is the volume register's digi, after the filter, as on the C64. A new sound has V; a sound saved before keeps the
+route it had. **PRESETS is the filter's mode** (the pink P in the head): OFF, LOWPASS, BANDPASS, HIGHPASS, NOTCH,
+LP+BP, BP+HP, ALL; hold B4 for the eight as a menu on B1..B8.
+
 ## Getting around
 
 - The unit wakes on the FIZZ logo screen: champagne bubbles rising in the app's colours, the big ones turning with
@@ -1103,7 +1173,8 @@ SELECT turns the pages (the dots at the top):
   **KNOB 3 CLOCK OUT**, **KNOB 4 CC OUT**.
 - Page 2, **HOME**: **KNOB 1 HOME VIEW** chooses the Home view (PIANO ROLL, STEPS, EDIT, GEEK OUT, OVERVIEW; the
   five drawn small, the chosen one lit), **KNOB 2 LOCK** on / off: locked, HOME clicks no longer cycle the views,
-  HOME always brings you back to that view (a padlock under it). Saved with the other settings.
+  HOME always brings you back to that view (a padlock under it). Saved with the other settings. **KNOB 3 VOICE**
+  (EvilGenius): the villain's lines and the sound effects, on / off.
 - Page 3 (the Bluetooth package): **BLUETOOTH** on / off and its state.
 
 ## The maps

@@ -6,9 +6,12 @@
  *
  *   SHIFT + ARP        the screen, latched: always the selected track's group (SHIFT + SELECT: the next track's)
  *   B1..B8             slot 1..8; the selected one again: its next page
- *   PRESETS            the slot's effect: NONE, then the ten (heard at once; a rolodex while turning)
+ *   B1..B8 held        (2026-11-13, owner) the effects' list: KNOB 1 the slot's effect (NONE, then the ten; heard at
+ *                      once), KNOB 2 moves it along the rail (dropped at the release)
  *   KNOB 1..4, SELECT  the page's values (KNOB 4 CHANCE on page 1); SELECT the page too
- *   ALGORITHM          the track's group: OFF, 1..5 (the screen follows; the five groups as small rails)
+ *   PRESETS            the track's group: OFF, 1..5 (the screen follows; the five groups as small rails); steps held:
+ *                      their MIDI FX
+ *   ALGORITHM          (2026-11-13) the step cursor, as everywhere (fully left: LIVE)
  *   B10                the slot bypassed / playing; B9 its effect removed (twice: the first press arms it; 2026-11-10:
  *                      B11 is the hold key, every page's)
  *   F1 + B n, F2 + B n the slot copied to n / moved to n (the others close up); F1 tapped (its release): closed
@@ -31,6 +34,30 @@ int qd_mfx_tgroup(const qd_app_t *a)
     const int m = qd_ctl_cpat(a)->trk[a->sel].mfx & 0x7f;   /* (QD_TMFX_OFF: a playback bypass, the group edited) */
     return m <= QD_MFX_NGROUP ? m : 0;
 }
+/* 2026-11-13 (owner): the group the screen shows and edits: a step selected (or its W key held), the step's (OFF: none;
+ * TRACK: the track's), else the track's */
+static int mf_step_group(const qd_app_t *a, int s)
+{
+    const int m = qd_ctl_cpat(a)->step[a->sel][s].mfx;
+    if (m == QD_SMFX_OFF)
+        return 0;
+    if (m >= QD_SMFX_G1)
+        return m - QD_SMFX_G1 + 1 <= QD_MFX_NGROUP ? m - QD_SMFX_G1 + 1 : 0;
+    return qd_mfx_tgroup(a);
+}
+int qd_mfx_vgroup(const qd_app_t *a)
+{
+    int s0 = 0;
+    return qd_mfx_steps_held(a, &s0) ? mf_step_group(a, s0) : qd_mfx_tgroup(a);
+}
+/* (the arp's lanes on pages 3, 4: the W keys the lane's steps; the group: the selection's, else the track's, so the W
+ * keys' own steps never decide it) */
+static int mf_lane_sel(const qd_app_t *a)
+{
+    const int g = a->ui.nheld ? mf_step_group(a, a->ui.held[0]) : qd_mfx_tgroup(a);
+    return g && a->proj.mfx[g - 1].slot[a->ui.mfx_slot & 7].type == QD_MFX_ARP &&
+           (a->ui.mfx_page == 2 || a->ui.mfx_page == 3);
+}
 void qd_mfx_track_changed(qd_app_t *a, int t)
 {
     if (t < 0 || t >= QD_PAT_NTRACK)
@@ -51,12 +78,12 @@ void qd_mfx_step_popup(qd_app_t *a)
 }
 static qd_mfx_slot_t *mf_slot(qd_app_t *a)
 {
-    const int g = qd_mfx_tgroup(a);
+    const int g = qd_mfx_vgroup(a);
     return g ? &a->proj.mfx[g - 1].slot[a->ui.mfx_slot & 7] : 0;
 }
 int qd_mfx_lane_page(const qd_app_t *a)
 {
-    const int g = qd_mfx_tgroup(a);
+    const int g = qd_mfx_vgroup(a);
     if (!qd_mfx_open(a) || !g || a->proj.mfx[g - 1].slot[a->ui.mfx_slot & 7].type != QD_MFX_ARP)
         return 0;
     return a->ui.mfx_page == 2 ? 1 : a->ui.mfx_page == 3 ? 2 : 0;
@@ -64,7 +91,7 @@ int qd_mfx_lane_page(const qd_app_t *a)
 
 static void mf_first_slot(qd_app_t *a)                  /* an empty slot selected: the first with an effect (the OMX's) */
 {
-    const int g = qd_mfx_tgroup(a);
+    const int g = qd_mfx_vgroup(a);
     int k;
     if (!g || a->proj.mfx[g - 1].slot[a->ui.mfx_slot & 7].type)
         return;
@@ -79,11 +106,10 @@ static void mf_first_slot(qd_app_t *a)                  /* an empty slot selecte
 void qd_mfx_screen(qd_app_t *a)
 {
     qd_ui_t *u = &a->ui;
-    if (u->mode != QD_MODE_STEP && u->mode != QD_MODE_KEYS)
-        qd_ctl_set_mode(a, QD_MODE_STEP);               /* (P1.6f: from the keyboard: KEYS; else STEPS) */
-    if (!u->slatch)                                     /* (P1.6e: the latch's selection kept: STEPS locks it) */
-        qd_step_release_all(a);
-    qd_latch_open(a, QD_LATCH_MFX);
+    u->mfx_from_keys = u->mode == QD_MODE_KEYS;
+    qd_page_open(a, QD_LATCH_MFX, QD_PO_KEYS);
+    u->mode = u->ekeys ? QD_MODE_KEYS : QD_MODE_STEP;   /* (2026-11-13, owner: B11's one global state: the step
+                                                         * keyboard KEYS, the step selection STEPS) */
     u->mfx_wheld = 0;
     u->mfx_drop = -1, u->mfx_f1_src = -1;
     u->mfx_slot &= 7;
@@ -97,6 +123,16 @@ void qd_mfx_screen(qd_app_t *a)
     mf_first_slot(a);
 }
 static void mf_closed(qd_app_t *a) { a->ui.mfx_arm = -1, a->ui.mfx_f1 = 0; }
+void qd_mfx_close(qd_app_t *a)                          /* (ARP tapped: back to the page it opened over, B11's state
+                                                         * kept; HOME and the other pages: theirs) */
+{
+    qd_ui_t *u = &a->ui;
+    qd_latch_close(a);
+    if (u->mode == QD_MODE_STEP || u->mode == QD_MODE_KEYS) {
+        u->mode = u->mfx_from_keys ? QD_MODE_KEYS : QD_MODE_STEP;
+        u->ksteps = (uint8_t)!u->ekeys;
+    }
+}
 static int mf_key_down(const qd_app_t *a, int b) { return (int)((a->keys_held >> QD_BLACK_KEY[b]) & 1u); }
 
 /* the slot moved from i to j, the ones between closing up (F2 + B) */
@@ -119,7 +155,7 @@ static void mf_move(qd_mfx_group_t *G, int i, int j)
 static void mf_drop(qd_app_t *a)
 {
     qd_ui_t *u = &a->ui;
-    const int g = qd_mfx_tgroup(a), b = u->mfx_bheld - 1;
+    const int g = qd_mfx_vgroup(a), b = u->mfx_bheld - 1;
     u->mfx_bheld = 0;
     if (!g || b < 0 || b >= QD_MFX_NSLOT)
         return;
@@ -143,12 +179,23 @@ void qd_mfx_ms(qd_app_t *a)
         mf_drop(a);
     if (u->mfx_wheld && !qd_mfx_open(a))
         u->mfx_wheld = 0;
+    if (u->mfx_wheld) {                                 /* (2026-11-13: only the W keys really down: a release missed
+                                                         * never leaves a step stuck held) */
+        int w;
+        for (w = 0; w < 16; w++)
+            if (!((a->keys_held >> QD_WHITE_KEY[w]) & 1u))
+                u->mfx_wheld &= (uint16_t)~(1u << w);
+    }
+    if (u->mfx_wheld && u->mfx_wms && a->ms - u->mfx_wms >= QD_TAP_MS) {
+        u->mfx_wms = 0;
+        qd_mfx_step_popup(a);
+    }
 }
 
 void qd_mfx_black(qd_app_t *a, int b, int down)
 {
     qd_ui_t *u = &a->ui;
-    const int g = qd_mfx_tgroup(a);
+    const int g = qd_mfx_vgroup(a);
     qd_mfx_slot_t *s = mf_slot(a);
     if (!down) {
         if (b < QD_MFX_NSLOT && u->mfx_bheld == b + 1)
@@ -160,18 +207,18 @@ void qd_mfx_black(qd_app_t *a, int b, int down)
     {   /* 2026-10-26 (the owner): a step held (or the latch's selection): the black keys are its group: B1 OFF, B2..B6
          * groups 1..5, B11 back to the track's; the popup shows it */
         int s0 = 0;
-        if (qd_mfx_steps_held(a, &s0) && (b < 1 + QD_MFX_NGROUP || b == 10)) {
+        if (u->mfx_wheld && qd_mfx_steps_held(a, &s0)) {   /* (2026-11-13, owner: only with the W keys held, the
+                                                         * latch on or off; a selection alone: the slots. The other
+                                                         * black keys do nothing then) */
             qd_pattern_t *p = qd_ctl_pat(a);
             const int m = b == 10 ? QD_SMFX_TRACK : b == 0 ? QD_SMFX_OFF : QD_SMFX_G1 + b - 1;
-            int w, i;
-            if (u->mfx_wheld) {
-                for (w = 0; w < 16; w++)
-                    if ((u->mfx_wheld >> w) & 1u)
-                        qd_step_set_mfx(p, a->sel, u->page[a->sel] * QD_PAGE + w, m);
-            } else {
-                for (i = 0; i < u->nheld; i++)
-                    qd_step_set_mfx(p, a->sel, u->held[i], m);
-            }
+            int w;
+            if (b >= 1 + QD_MFX_NGROUP && b != 10)
+                return;
+            for (w = 0; w < 16; w++)
+                if ((u->mfx_wheld >> w) & 1u)
+                    qd_step_set_mfx(p, a->sel, u->page[a->sel] * QD_PAGE + w, m);
+            u->mfx_wms = 0;                             /* (a shortcut: the popup at once) */
             qd_mfx_step_popup(a);
             return;
         }
@@ -243,6 +290,7 @@ void qd_mfx_black(qd_app_t *a, int b, int down)
             qd_ctl_confirm(a, "REMOVED", "");
         } else {
             u->mfx_arm = u->mfx_slot;
+            u->arm_ms = a->ms;
         }
     }
 }
@@ -269,23 +317,23 @@ void qd_mfx_white(qd_app_t *a, int key, int w, int down, int vel)
                                                          * FX); no sound */
         if (w < 0 || w >= 16)
             return;
+        if (down && !u->mfx_wheld)
+            u->mfx_wms = a->ms ? a->ms : 1u;            /* (2026-11-13, owner: the popup after a moment held, not on
+                                                         * a quick click: qd_mfx_ms) */
+        if (down)                                       /* (2026-11-13: the W keys down, the latch on or off: the
+                                                         * black keys' shortcuts; the release always clears it) */
+            u->mfx_wheld |= (uint16_t)(1u << w);
+        else
+            u->mfx_wheld &= (uint16_t)~(1u << w);
         if (u->slatch) {                                /* 2026-10-26 (the owner): the latch on: the step view's
                                                          * selection, as on EDIT (a tap selects, several together) */
             if (down)
                 qd_step_white_down(a, w);
             else
                 qd_step_white_up_hold(a, w);
-            qd_mfx_step_popup(a);
-            return;
         }
-        if (down)
-            u->mfx_wheld |= (uint16_t)(1u << w);
-        else
-            u->mfx_wheld &= (uint16_t)~(1u << w);
         if (!u->mfx_wheld && u->tk == QD_TK_MFX_STEP)
-            u->tk = QD_TK_NONE;                         /* (its picture: while held) */
-        if (down)
-            qd_mfx_step_popup(a);                       /* (2026-10-26: the popup at once, not only after ALGORITHM) */
+            u->tk = QD_TK_NONE, u->tk_hold = 0;         /* (its picture: while held, the latch on too) */
         return;
     }
     if (down) {                                         /* the track through the group (its release: the app's) */
@@ -304,27 +352,30 @@ void qd_mfx_rec(qd_app_t *a)
     if (u->mode == QD_MODE_KEYS) {
         u->mode = QD_MODE_STEP;
     } else {
-        u->slatch = 0;                                  /* (into the keyboard: the latch ends, as anywhere) */
-        qd_step_release_all(a);
+        if (!u->slatch)                                 /* (2026-11-13, owner: the selection kept) */
+            qd_step_release_all(a);
         u->mode = QD_MODE_KEYS;
     }
+    u->ekeys = u->mode == QD_MODE_KEYS;                 /* (B11's one global state) */
+    u->ksteps = (uint8_t)!u->ekeys;
     u->mfx_wheld = 0;
     if (u->tk == QD_TK_MFX_STEP)
         u->tk = QD_TK_NONE, u->tk_hold = 0;
 }
-int qd_mfx_steps_held(const qd_app_t *a, int *first)   /* STEPS: the W keys held, else the latch's selection */
+int qd_mfx_steps_held(const qd_app_t *a, int *first)   /* STEPS: the W keys held, else the selection (2026-11-13:
+                                                         * KEYS too, ALGORITHM's) */
 {
     const qd_ui_t *u = &a->ui;
     int w, n = 0;
-    if (!qd_mfx_open(a) || u->mode != QD_MODE_STEP || qd_mfx_lane_page(a))
+    if (!qd_mfx_open(a))
         return 0;
-    for (w = 0; w < 16; w++)
+    for (w = 0; w < 16 && u->mode == QD_MODE_STEP && !mf_lane_sel(a); w++)
         if ((u->mfx_wheld >> w) & 1u) {
             if (!n && first)
                 *first = u->page[a->sel] * QD_PAGE + w;
             n++;
         }
-    if (!n && u->slatch && u->nheld) {
+    if (!n && u->nheld) {
         if (first)
             *first = u->held[0];
         n = u->nheld;
@@ -356,23 +407,43 @@ int qd_mfx_glide(const qd_app_t *a, int from, int to, uint32_t t0)
 int qd_mfx_knob(qd_app_t *a, int knob, int d)
 {
     qd_ui_t *u = &a->ui;
-    const int g = qd_mfx_tgroup(a);
+    const int g = qd_mfx_vgroup(a);
     qd_mfx_slot_t *s = mf_slot(a);
     if (knob != QD_K_ALGO)
         u->mfx_arm = -1;
     if (u->mfx_bheld && !mf_key_down(a, u->mfx_bheld - 1))
         mf_drop(a);                                     /* (P1.6e: its release missed: dropped first) */
-    if (u->mfx_bheld && g && d) {                       /* P1.6d: a slot key held + any knob: that slot along the rail,
-                                                         * a place a detent, the others making room; P1.6e: a preview,
-                                                         * dropped at the key's release */
+    if (u->mfx_bheld && g && d) {                       /* a slot key held (2026-11-13, owner): KNOB 1 its effect (the
+                                                         * list shown), KNOB 2 moves it along the rail (P1.6d: a place a
+                                                         * detent, the others making room; P1.6e: a preview, dropped at
+                                                         * the key's release); the others nothing */
         u->mfx_bused = 1;
-        u->mfx_dprev = u->mfx_dto;
-        u->mfx_dto = mf_clampi(u->mfx_dto + d, 0, QD_MFX_NSLOT - 1);
-        u->mfx_dms = a->ms ? a->ms : 1u;
+        if (knob == QD_K_1 && s) {
+            const int up = u->mfx_roll_ms && a->ms - u->mfx_roll_ms < QD_TK_MS;
+            const int ty = mf_clampi(s->type + d, 0, QD_MFX_NTYPE - 1);
+            u->mfx_roll_from = up ? qd_mfx_glide(a, u->mfx_roll_from, u->mfx_roll_to, u->mfx_roll_t0) : s->type * 100;
+            if (ty != s->type)
+                qd_mfx_slot_init(s, ty);
+            u->mfx_roll_to = ty * 100;
+            u->mfx_roll_ms = u->mfx_roll_t0 = a->ms ? a->ms : 1u;
+            u->mfx_page = 0;
+            u->mfx_knob = 0, u->mfx_ms = a->ms ? a->ms : 1u;
+        } else if (knob == QD_K_2) {
+            u->mfx_dprev = u->mfx_dto;
+            u->mfx_dto = mf_clampi(u->mfx_dto + d, 0, QD_MFX_NSLOT - 1);
+            u->mfx_dms = a->ms ? a->ms : 1u;
+            u->mfx_knob = 1, u->mfx_ms = a->ms ? a->ms : 1u;
+        }
         return 1;
     }
-    if (knob == QD_K_ALGO && d) {                       /* P1.6e, STEPS: steps held: their MIDI FX (TRACK, OFF, 1..5),
-                                                         * TRIG's KNOB 2's lock, its picture */
+    if (knob == QD_K_ALGO) {                            /* 2026-11-13 (owner): ALGORITHM the step cursor, as everywhere
+                                                         * (fully left: LIVE) */
+        qd_step_cursor(a, d);
+        return 1;
+    }
+    if (knob == QD_K_PRESETS && d) {                    /* P1.6e, STEPS: steps held: their MIDI FX (TRACK, OFF, 1..5),
+                                                         * TRIG's KNOB 2's lock, its picture (2026-11-13: PRESETS, the
+                                                         * group's knob, ALGORITHM the steps) */
         int s0 = 0;
         if (qd_mfx_steps_held(a, &s0)) {
             qd_pattern_t *p = qd_ctl_pat(a);
@@ -393,8 +464,8 @@ int qd_mfx_knob(qd_app_t *a, int knob, int d)
         }
     }
     switch (knob) {
-    case QD_K_ALGO: {                                   /* the track's group (the screen follows; P1.6d: the slot
-                                                         * kept, the glide from where it is) */
+    case QD_K_PRESETS: {                                /* the track's group (the screen follows; P1.6d: the slot
+                                                         * kept, the glide from where it is; 2026-11-13: PRESETS) */
         qd_tset_t *ts = &qd_ctl_pat(a)->trk[a->sel];
         const int was = qd_mfx_tgroup(a);
         const int up = u->mfx_gsel_ms && a->ms - u->mfx_gsel_ms < QD_TK_MS;
@@ -404,20 +475,6 @@ int qd_mfx_knob(qd_app_t *a, int knob, int d)
         u->mfx_gsel_to = (ts->mfx & 0x7f) * 100;
         u->mfx_gsel_ms = u->mfx_gsel_t0 = a->ms ? a->ms : 1u;
         u->mfx_arm = -1;
-        u->mfx_page = 0;
-        return 1;
-    }
-    case QD_K_PRESETS: {                                /* the slot's effect (NONE, then the ten) */
-        int ty;
-        const int up = u->mfx_roll_ms && a->ms - u->mfx_roll_ms < QD_TK_MS;
-        if (!s)
-            return 1;
-        u->mfx_roll_from = up ? qd_mfx_glide(a, u->mfx_roll_from, u->mfx_roll_to, u->mfx_roll_t0) : s->type * 100;
-        ty = mf_clampi(s->type + d, 0, QD_MFX_NTYPE - 1);
-        if (ty != s->type)
-            qd_mfx_slot_init(s, ty);
-        u->mfx_roll_to = ty * 100;
-        u->mfx_roll_ms = u->mfx_roll_t0 = a->ms ? a->ms : 1u;
         u->mfx_page = 0;
         return 1;
     }
@@ -478,22 +535,26 @@ int qd_mfx_oct(qd_app_t *a, int d, int down)
 void qd_mfx_leds(const qd_app_t *a, uint8_t *key)
 {
     const qd_ui_t *u = &a->ui;
-    const int g = qd_mfx_tgroup(a), lane = qd_mfx_lane_page(a);
+    const int g = qd_mfx_vgroup(a), lane = qd_mfx_lane_page(a);
     const int bl = (int)((a->ms / QD_BLINK_MS) & 1u) == 0;
     int k;
     memset(key, 0, QD_NKEY);
     if (!lane && u->mode == QD_MODE_STEP) {             /* P1.6e, STEPS: the page's steps as in the step view (a trig
                                                          * lit, a LOCK dim, none faint), held ones blinking */
-        const qd_pattern_t *p = qd_ctl_cpat(a);
-        for (k = 0; k < 16; k++) {
-            const int st = u->page[a->sel] * QD_PAGE + k, ty = qd_step_type(p, a->sel, st);
-            int i, sel = (u->mfx_wheld >> k) & 1u;
-            for (i = 0; i < u->nheld && !u->mfx_wheld; i++)
-                sel |= u->held[i] == st;
-            key[QD_WHITE_KEY[k]] = sel ? (bl ? QD_LED_LIT : QD_LED_OFF)
-                                 : !qd_page_in_range(&p->trk[a->sel], st) ? QD_LED_OFF
-                                 : ty == QD_TRIG_LOCK ? QD_LED_DIM : ty ? QD_LED_LIT : QD_LED_FAINT;
-        }
+        qd_leds_steps(a, key, u->mfx_wheld ? u->mfx_wheld : qd_sel_mask(u, u->page[a->sel]));   /* (2026-11-13,
+                                                         * owner: the playhead too, the step view's blink) */
+    }
+    if (u->mfx_wheld && !lane && u->mode == QD_MODE_STEP) {   /* (2026-11-13, owner: W keys held: the black keys
+                                                         * their group's shortcuts, B1 OFF, B2..B6 1..5, B11 TRACK; the
+                                                         * held step's lit) */
+        int s0 = 0, m;
+        qd_mfx_steps_held(a, &s0);
+        m = qd_ctl_cpat(a)->step[a->sel][s0].mfx;
+        for (k = 0; k <= QD_MFX_NGROUP; k++)
+            key[QD_BLACK_KEY[k]] = QD_LED_DIM;
+        key[QD_BLACK_KEY[10]] = QD_LED_DIM;
+        key[QD_BLACK_KEY[m == QD_SMFX_OFF ? 0 : m == QD_SMFX_TRACK ? 10 : m - QD_SMFX_G1 + 1]] = QD_LED_LIT;
+        return;
     }
     if (!g)
         return;
@@ -527,16 +588,15 @@ void qd_mfx_leds(const qd_app_t *a, uint8_t *key)
         qd_ctl_sounding(a, notes);
         qd_track_key(&a->proj, qd_ctl_cpat(a), a->sel, &sc, &rt);
         for (k = 0; k < 16; k++) {
-            const int n = qd_snd_scale_note(a, k);
-            key[QD_WHITE_KEY[k]] = n >= 0 && n < 128 && notes[n] ? QD_LED_LIT : ((n % 12) + 12) % 12 == rt ? QD_LED_ROOT
-                                                                                                    : QD_LED_SCALE;
+            key[QD_WHITE_KEY[k]] = (uint8_t)qd_key_led(a, QD_WHITE_KEY[k], qd_snd_scale_note(a, k), notes, sc, rt);
+                                                        /* (2026-11-13, owner: a key held lit at once, as elsewhere) */
         }
     }
 }
 
 const char *qd_mfx_knob_name(const qd_app_t *a, int k, char *val)
 {
-    const int g = qd_mfx_tgroup(a);
+    const int g = qd_mfx_vgroup(a);
     const qd_mfx_slot_t *s;
     int id;
     val[0] = 0;

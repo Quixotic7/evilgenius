@@ -10,7 +10,7 @@
  *   IMPORTED: a sound arriving over SysEx, its floppy dropping in */
 
 static float lb_clamp(float x, float a, float b) { return x < a ? a : x > b ? b : x; }
-static float lb_ease(float x) { x = lb_clamp(x, 0.f, 1.f); return x * x * (3.f - 2.f * x); }
+#define lb_ease ui_ease
 static float lb_hash(int n)
 {
     uint32_t h = (uint32_t)n * 0x9E3779B1u + 0x7F4A7C15u;
@@ -164,7 +164,7 @@ static void prj_dots(int x, int page)
         px_rect(x + i * 4, 5, 2, 2, i == page ? UI_K3 : UI_G2);
 }
 
-void ui_prj_draw(const ui_prj_t *v)
+FZ_COLD void ui_prj_draw(const ui_prj_t *v)
 {
     static const char *const BANK[4] = {"A", "B", "C", "D"};
     char n[16];

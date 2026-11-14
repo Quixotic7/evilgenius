@@ -3,12 +3,17 @@
  * distributed with this file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 /* EvilGenius: SAM inside the firmware. Every global of SAM's C port gets a sam_ prefix (it has names such as A, X,
  * Y, input, buffer, speed), its debug output is compiled out, and its output buffer is a fixed array (SAM_BUF_LEN
- * samples at 22050 Hz, writes past it dropped) instead of 10 seconds from malloc. Included by SAM's .c files after
+ * samples at the words' 6 kHz, writes past it dropped) instead of 10 seconds from malloc. Included by SAM's .c files after
  * the C library's headers and before SAM's own, and by core/voice/sam/say.c. See README.md here. */
 #pragma once
 #include "../../qd_config.h"
+/* SAM's clock runs 50 ticks a sample of its 22050 Hz; its output is written a sample every SAM_DIV ticks instead:
+ * 184 ticks is 5992 Hz, the words' rate (QD_VOX_FS), so the buffer is the word as the voices play it and a second of
+ * speech is 6 KB, not 22 (the C64's own SAM spoke at about this rate). A sample is the last value SAM gave it */
+#define SAM_DIV 184
+#define SAM_AHEAD 2                     /* (SAM writes five 22 kHz samples ahead: about one and a half of these) */
 #ifndef SAM_BUF_LEN
-#define SAM_BUF_LEN (22050u * QD_SAY_TENTHS / 10u)
+#define SAM_BUF_LEN (6000u * QD_SAY_TENTHS / 10u)
 #endif
 #define debug 0
 #define PrintOutput(...) ((void)0)

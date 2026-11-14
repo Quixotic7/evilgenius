@@ -153,7 +153,8 @@ void qd_ctl_labels(const qd_app_t *a, qd_labels_t *o)
     lb_ctx(a, o);
     if (qd_ctl_b11_free(a) && !qd_ctl_b11(a))         /* 2026-11-10: B11 the hold key (held: select, the pages; a
                                                          * click: what the W keys become) */
-        lb_set(o, LB_B(10), qd_snd_keys(a) || (u->mode == QD_MODE_KEYS && !u->ksteps) ? "SEL/STEPS" : "SEL/KEYS");
+        lb_set(o, LB_B(10), qd_tools_open(a) ? "SEL/CLEAR"   /* (2026-11-13: TOOLS: a click clears the selection) */
+                            : qd_snd_keys(a) || (u->mode == QD_MODE_KEYS && !u->ksteps) ? "SEL/STEPS" : "SEL/KEYS");
 }
 static void lb_ctx(const qd_app_t *a, qd_labels_t *o)
 {
@@ -186,7 +187,7 @@ static void lb_ctx(const qd_app_t *a, qd_labels_t *o)
         lb_set(o, LB_KNOB(QD_K_1), "LETTER");
         lb_set(o, LB_KNOB(QD_K_ALGO), "CURSOR");
         lb_set(o, LB_KNOB(QD_K_PRESETS), "NEW NAME");
-        lb_set(o, LB_KNOB(QD_K_4), "NEW NAME");
+        lb_set(o, LB_KNOB(QD_K_4), save && u->sv.step >= 0 ? "TRACK/STEP" : "NEW NAME");
         lb_set(o, LB_BTN(QD_B_OCTDN), shift ? "CLEAR" : "DELETE");
         if (save && u->sv.replace >= 0)
             lb_set(o, LB_BTN(QD_B_OCTUP), u->sv.choice ? "NEW" : "REPLACE");
@@ -324,18 +325,20 @@ static void lb_ctx(const qd_app_t *a, qd_labels_t *o)
         return;
     }
     if (step && u->latch == QD_LATCH_MIX) {             /* the mix: the track, its level, pan, sends */
-        static const char *const MIXK[2][4] = {{"LEVEL", "PAN", "DELAY", "REVERB"}, {"CHORUS", "DELAY", "REVERB", ""}};
+        static const char *const MIXK[QD_MIX_NPAGE][4] = {{"LEVEL", "PAN", "ECHO", "ROOM"}, {"CHORUS", "ECHO", "ROOM", "DRY"},
+                                                          {"CRUSH SEND", "ROBOT SEND", "WARP SEND", "GLITCH SEND"}};
+        static const char *const MIXB[QD_MIX_NPAGE] = {"SENDS", "FX MIX", "FADERS"};
         for (k = 0; k < 4; k++)
-            lb_set(o, LB_KNOB(QD_K_1 + k), MIXK[u->mix_page & 1][k]);
+            lb_set(o, LB_KNOB(QD_K_1 + k), MIXK[u->mix_page % QD_MIX_NPAGE][k]);
         lb_set(o, LB_KNOB(QD_K_SELECT), "PAGE");
         lb_set(o, LB_KNOB(QD_K_ALGO), "TRACK");
-        lb_set(o, LB_KNOB(QD_K_PRESETS), "MUTE");
+        lb_set(o, LB_KNOB(QD_K_PRESETS), u->mix_page % QD_MIX_NPAGE == 2 ? "TV SEND" : "MUTE");
         for (i = 0; i < QD_NTRACK; i++)
             lb_setn(o, LB_B(i), "TRACK ", i + 1);
         lb_set(o, LB_B(10), "CLEAR M/S");               /* (with a track key held; alone the hold key) */
         if (qd_snd_keys(a))
             lb_notes(a, o, !a->proj.rec_ekeys);
-        lb_set(o, LB_BTN(QD_B_PAGE), (u->mix_page & 1) ? "FADERS" : "SENDS");
+        lb_set(o, LB_BTN(QD_B_PAGE), MIXB[u->mix_page % QD_MIX_NPAGE]);
         lb_set(o, LB_BTN(QD_B_HOME), "BACK");
         return;
     }
@@ -385,26 +388,25 @@ static void lb_ctx(const qd_app_t *a, qd_labels_t *o)
             const int t = qd_tools_key_tool(i);
             lb_set(o, LB_B(i), t >= 0 ? TN[t] : t == -1 ? "HUMAN/QUAN" : "SCOPE");
         }
-        if (qd_snd_keys(a))
-            lb_notes(a, o, !a->proj.rec_ekeys);
-        else
-            for (i = 0; i < 16; i++)
-                lb_setn(o, LB_W(i), "STEP ", u->page[a->sel] * 16 + i + 1);
+        for (i = 0; i < 16; i++)                        /* (2026-11-13: always the steps) */
+            lb_setn(o, LB_W(i), "STEP ", u->page[a->sel] * 16 + i + 1);
         for (k = 0; k < 3; k++)
             lb_set(o, LB_KNOB(QD_K_1 + k), KL[tool][k]);
         lb_set(o, LB_KNOB(QD_K_4), KL[tool][3]);
-        lb_set(o, LB_KNOB(QD_K_ALGO), "SCOPE");
-        lb_set(o, LB_KNOB(QD_K_SELECT), "PAGE");
-        lb_set(o, LB_KNOB(QD_K_PRESETS), "TOOL");
+        lb_set(o, LB_KNOB(QD_K_ALGO), "STEP");         /* (2026-11-13, owner: SELECT the tool, ALGORITHM the step
+                                                         * cursor, PRESETS the scope) */
+        lb_set(o, LB_KNOB(QD_K_SELECT), "TOOL");
+        lb_set(o, LB_KNOB(QD_K_PRESETS), "SCOPE");
         lb_set(o, LB_BTN(QD_B_OCTUP), tool == QD_TL_CLIP ? CA[u->tl.v.cl.act % QD_CL_N] : "KEEP");
-        lb_set(o, LB_BTN(QD_B_OCTDN), "REVERT");
+        lb_set(o, LB_BTN(QD_B_OCTDN), "UNDO");         /* (2026-11-13: a click undoes; held: F1) */
         lb_set(o, LB_BTN(QD_B_HOME), "CLOSE");
         return;
     }
     if (qd_mfx_open(a)) {                               /* P1.6c: the MIDI FX screen */
-        const int g = qd_mfx_tgroup(a), lane = qd_mfx_lane_page(a), ml = qd_ctl_main_layer(a);
+        const int g = qd_mfx_vgroup(a), lane = qd_mfx_lane_page(a), ml = qd_ctl_main_layer(a);
         char val[12];
-        lb_set(o, LB_KNOB(QD_K_ALGO), qd_mfx_steps_held(a, 0) ? "STEP MFX" : "GROUP");   /* (P1.6e: STEPS' steps) */
+        lb_set(o, LB_KNOB(QD_K_ALGO), "STEP");          /* (2026-11-13: the step cursor; PRESETS the group) */
+        lb_set(o, LB_KNOB(QD_K_PRESETS), qd_mfx_steps_held(a, 0) ? "STEP MFX" : "GROUP");   /* (P1.6e: STEPS' steps) */
         if (u->mode == QD_MODE_STEP && !lane)
             for (i = 0; i < 16; i++)
                 lb_setn(o, LB_W(i), "STEP ", u->page[a->sel] * 16 + i + 1);
@@ -420,7 +422,6 @@ static void lb_ctx(const qd_app_t *a, qd_labels_t *o)
         lb_set(o, LB_BTN(QD_B_KEYS), "CLOSE");
         if (!g)
             return;
-        lb_set(o, LB_KNOB(QD_K_PRESETS), "EFFECT");
         lb_set(o, LB_KNOB(QD_K_SELECT), "PAGE");
         for (i = 0; i < QD_MFX_NSLOT; i++) {
             const int ty = a->proj.mfx[g - 1].slot[i].type;
@@ -436,7 +437,8 @@ static void lb_ctx(const qd_app_t *a, qd_labels_t *o)
         if (ml == QD_LAYER_F1)
             lb_set(o, LB_B(10), "UNDO");
         for (k = 0; k < 4; k++)
-            lb_set(o, LB_KNOB(QD_K_1 + k), qd_mfx_knob_name(a, k, val));
+            lb_set(o, LB_KNOB(QD_K_1 + k), u->mfx_bheld ? (k == 0 ? "EFFECT" : k == 1 ? "MOVE" : "")
+                                                        : qd_mfx_knob_name(a, k, val));   /* (2026-11-13: a slot held) */
         for (i = 0; i < 16; i++) {
             if (lane)
                 lb_setn(o, LB_W(i), "LANE ", i + 1);
@@ -448,7 +450,7 @@ static void lb_ctx(const qd_app_t *a, qd_labels_t *o)
     if (qd_snd_open(a)) {                               /* the sound editor: its groups, the page's values */
         static const char *const GRP[QD_NSG] = {"PLAY/MOD", "OPERATORS", "OP ENV", "FILTERS", "AMP/FX", "LFO 1", "LFO 2",
                                                 "LFO 3"};
-        static const int KN[5] = {QD_K_1, QD_K_2, QD_K_3, QD_K_4, QD_K_ALGO};
+        static const int KN[5] = {QD_K_1, QD_K_2, QD_K_3, QD_K_4, QD_K_PRESETS};   /* (2026-11-13: the fifth on PRESETS) */
         if (qd_snd_keys(a))
             lb_notes(a, o, !a->proj.rec_ekeys);
         if (!qd_snd_keys(a) || !a->proj.rec_ekeys)      /* (FULL: the black keys play too) */
@@ -457,13 +459,17 @@ static void lb_ctx(const qd_app_t *a, qd_labels_t *o)
         if (!qd_snd_keys(a))
             for (i = 0; i < 16; i++)
                 lb_setn(o, LB_W(i), "STEP ", u->page[a->sel] * 16 + i + 1);
-        lb_set(o, LB_B(8), "DICE");
-        lb_set(o, LB_B(9), "NEW SOUND");
+        if (!qd_snd_keys(a) || !a->proj.rec_ekeys) {    /* (2026-11-13, owner: FULL: B9 / B10 play notes, named so) */
+            lb_set(o, LB_B(8), "DICE");
+            lb_set(o, LB_B(9), "NEW SOUND");
+        }
         lb_set(o, LB_B(10), u->nheld ? "CLR LOCKS" : "");
         for (k = 0; k < 5; k++)
             lb_set(o, LB_KNOB(KN[k]), qd_snd_label(a, u->snd_page, k));
         lb_set(o, LB_KNOB(QD_K_SELECT), "PAGE");
-        lb_set(o, LB_KNOB(QD_K_PRESETS), u->nheld ? "SOUND LOCK" : "PRESETS");
+        if (!qd_snd_fifth(a, u->snd_page))              /* (2026-11-13, owner: no fifth value: KNOB 1's) */
+            lb_set(o, LB_KNOB(QD_K_PRESETS), qd_snd_label(a, u->snd_page, 0));
+        lb_set(o, LB_KNOB(QD_K_ALGO), "STEP");          /* (2026-11-13, owner: the step cursor, as on the Home views) */
         lb_set(o, LB_BTN(QD_B_SOUND), "CLOSE");
         return;
     }

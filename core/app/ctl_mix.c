@@ -37,21 +37,48 @@ const qd_fxpage_t QD_FX_PAGES[QD_FX_NPAGE] = {
     /* EvilGenius: the retro rooms. B1 the sends, B2..B4 the send effects (CHORUS, ECHO, ROOM), B5..B9 the rooms on the
      * whole mix (each one's MIX 0: off) */
     {"SENDS", QD_FXG_OVER, UI_FXD_OVER, {QD_FXC_SENDX(2), QD_FXC_SENDX(0), QD_FXC_SENDX(1), QD_FXC_DRY}},
+    /* FX MIX (the second page: FX again, or B1 again): the five rooms' wet levels together, KNOB 1..4 and PRESETS
+     * (TV), so every effect's dry / wet is on the first two pages */
+    {"FX MIX", QD_FXG_OVER, UI_FXD_MIXES, {QD_FXC_ROOMX(0), QD_FXC_ROOMX(1), QD_FXC_ROOMX(2), QD_FXC_ROOMX(3)}},
     {"CHORUS", QD_FXG_CHORUS, UI_FXD_CHORUS, {QD_FXP_CRATE, QD_FXP_CDEPTH, QD_FXP_CWIDTH, QD_FXC_SEND}},
     {"ECHO", QD_FXG_DELAY, UI_FXD_DELAY, {QD_FXC_TIME, QD_FXC_SPREAD, QD_FXP_DFDBK, QD_FXC_SEND}},
     {"ECHO 2", QD_FXG_DELAY, UI_FXD_DELAY2, {QD_FXP_DSYNC, QD_FXP_DMODE, QD_FXP_DTONE, QD_FXP_DWOW}},
     {"ROOM", QD_FXG_REVERB, UI_FXD_REVERB, {QD_FXP_RSIZE, QD_FXP_RDAMP, QD_FXP_RDECAY, QD_FXC_SEND}},
     {"ROOM 2", QD_FXG_REVERB, UI_FXD_REVERB2, {QD_FXP_RPRE, QD_FXP_RMOD, QD_FXP_RLOW, QD_FXP_RWIDTH}},
-    {"CRUSH", QD_FXG_CRUSH, UI_FXD_CRUSH, {QD_FXP_XBITS, QD_FXP_XRATE, QD_FXP_XJIT, QD_FXP_XMIX}},
-    {"ROBOT", QD_FXG_ROBOT, UI_FXD_ROBOT, {QD_FXP_RBFREQ, QD_FXP_RBWAVE, QD_FXP_RBLFO, QD_FXP_RBMIX}},
-    {"WARP", QD_FXG_WARP, UI_FXD_WARP, {QD_FXP_WTIME, QD_FXP_WFB, QD_FXP_WRATE, QD_FXP_WMIX}},
-    {"GLITCH", QD_FXG_GLITCH, UI_FXD_GLITCH, {QD_FXP_GLEN, QD_FXP_GCHNC, QD_FXP_GPTCH, QD_FXP_GMIX}},
-    {"TV", QD_FXG_TV, UI_FXD_TV, {QD_FXP_TVTONE, QD_FXP_TVHUM, QD_FXP_TVDRV, QD_FXP_TVMIX}},
+    {"CRUSH", QD_FXG_CRUSH, UI_FXD_CRUSH, {QD_FXP_XBITS, QD_FXP_XRATE, QD_FXP_XJIT, QD_FXC_ROOMX(0)}},
+    {"ROBOT", QD_FXG_ROBOT, UI_FXD_ROBOT, {QD_FXP_RBFREQ, QD_FXP_RBWAVE, QD_FXP_RBLFO, QD_FXC_ROOMX(1)}},
+    {"WARP", QD_FXG_WARP, UI_FXD_WARP, {QD_FXP_WTIME, QD_FXP_WFB, QD_FXP_WRATE, QD_FXC_ROOMX(2)}},
+    {"GLITCH", QD_FXG_GLITCH, UI_FXD_GLITCH, {QD_FXP_GLEN, QD_FXP_GCHNC, QD_FXP_GPTCH, QD_FXC_ROOMX(3)}},
+    {"TV", QD_FXG_TV, UI_FXD_TV, {QD_FXP_TVTONE, QD_FXP_TVHUM, QD_FXP_TVDRV, QD_FXC_ROOMX(4)}},
 };
 const char *const QD_FX_NAME[QD_NFXG] = {"ECHO", "ROOM", "CHORUS", "MASTER", "SENDS", "ROUTING", "CRUSH", "ROBOT",
                                          "WARP", "GLITCH", "TV"};
 const uint8_t QD_FX_KEY[QD_FX_NKEY] = {QD_FXG_OVER, QD_FXG_CHORUS, QD_FXG_DELAY, QD_FXG_REVERB, QD_FXG_CRUSH,
                                        QD_FXG_ROBOT, QD_FXG_WARP, QD_FXG_GLITCH, QD_FXG_TV};
+
+/* EvilGenius: the FX tower: a page's floor (its black key, B1 the top), and a change of page: the lift rides when the
+ * floor changes */
+int qd_fx_floor(int page)
+{
+    int k;
+    for (k = 0; k < QD_FX_NKEY; k++)
+        if (QD_FX_KEY[k] == QD_FX_PAGES[page].fx)
+            return k;
+    return 0;
+}
+static void fx_goto(qd_app_t *a, int p)
+{
+    qd_ui_t *u = &a->ui;
+    const int f0 = qd_fx_floor(u->fx_page), f1 = qd_fx_floor(p);
+    if (f0 != f1) {
+        static const char *const SAY[QD_FX_NKEY] = {"SENDS", "CHORUS", "ECHO", "ROOM", "CRUSH", "ROBOT", "WARP",
+                                                     "GLITCH", "TEE VEE"};
+        u->fxr_from = (int8_t)f0;
+        u->fxr_ms = a->ms;
+        qd_app_announce(a, SAY[f1], QD_ANN_ROBOT, QD_SFX_NONE);   /* (the lift calls the floor) */
+    }
+    u->fx_page = p;
+}
 
 int qd_fx_cell_id(int c)
 {
@@ -74,9 +101,8 @@ static void panel_open(qd_app_t *a, int kind)
     /* (2026-10-26, the owner: the latch and its selection stay on every page, as on EDIT: the W keys there select, the
      * knobs lock on the selection; the white keys' LEDs show the steps everywhere now, so nothing locks unseen. P1.6h
      * let a selection go on opening the mix; P1.6d the track settings) */
-    u->tk = QD_TK_NONE;
     u->sel_down &= 0xFFu;                               /* (the mix's black keys: none down) */
-    qd_latch_open(a, kind);
+    qd_page_open(a, kind, QD_PO_OVER);
     u->menu_knob = -1;
 }
 
@@ -93,7 +119,7 @@ void qd_trk_button(qd_app_t *a)
 void qd_mix_button(qd_app_t *a)
 {
     if (a->ui.latch == QD_LATCH_MIX) {
-        a->ui.mix_page ^= 1;
+        a->ui.mix_page = (a->ui.mix_page + 1) % QD_MIX_NPAGE;   /* (EvilGenius: a third page, the rooms' MIX) */
         a->ui.menu_knob = -1;
         return;
     }
@@ -103,7 +129,7 @@ void qd_mix_button(qd_app_t *a)
 void qd_fx_button(qd_app_t *a)
 {
     if (a->ui.latch == QD_LATCH_FX) {
-        a->ui.fx_page = (a->ui.fx_page + 1) % QD_FX_NPAGE;
+        fx_goto(a, (a->ui.fx_page + 1) % QD_FX_NPAGE);
         a->ui.menu_knob = -1;
         return;
     }
@@ -113,7 +139,7 @@ void qd_fx_button(qd_app_t *a)
 int qd_fx_open(const qd_app_t *a) { return a->ui.mode == QD_MODE_STEP && a->ui.latch == QD_LATCH_FX; }
 int qd_fx_sends_open(const qd_app_t *a)
 {
-    return a->ui.mode == QD_MODE_STEP && a->ui.latch == QD_LATCH_FX && QD_FX_PAGES[a->ui.fx_page].fx == QD_FXG_OVER;
+    return a->ui.mode == QD_MODE_STEP && a->ui.latch == QD_LATCH_FX && QD_FX_PAGES[a->ui.fx_page].draw == UI_FXD_OVER;
 }
 /* 2026-10-26 (the owner: the sends "should update during playback", as the sound editor's pictures do; "not when
  * locked or while holding a keyboard key"): playing, the selected track's step just heard, nothing held or selected,
@@ -223,7 +249,7 @@ void qd_panel_black(qd_app_t *a, int b, int down)
             if (next < 0 && p > u->fx_page && QD_FX_PAGES[u->fx_page].fx == g)
                 next = p;
         }
-        u->fx_page = QD_FX_PAGES[u->fx_page].fx == g && next >= 0 ? next : first;
+        fx_goto(a, QD_FX_PAGES[u->fx_page].fx == g && next >= 0 ? next : first);
         u->menu_knob = -1;
         return;
     }
@@ -292,20 +318,47 @@ int qd_trk_knob(qd_app_t *a, int knob, int d)
     return 1;
 }
 
+/* EvilGenius: the mix's pages. FADERS: LEVEL PAN ECHO ROOM; SENDS: CHORUS ECHO ROOM and the track's DRY; FX MIX: the
+ * five rooms on the whole mix, each one's MIX (its wet level; 0: off): KNOB 1..4 CRUSH ROBOT WARP GLITCH, PRESETS TV */
+#define MIX_DRY (-2)
+static const int16_t MIX_ID[QD_MIX_NPAGE][4] = {{QD_LK_LEVEL, QD_LK_PAN, QD_LK_DELAY, QD_LK_REVERB},
+                                                {QD_LK_CHORUS, QD_LK_DELAY, QD_LK_REVERB, MIX_DRY},
+                                                {QD_LK_CRUSH, QD_LK_ROBOT, QD_LK_WARP, QD_LK_GLITCH}};
+void qd_room_turn(qd_app_t *a, int k, int d)            /* the selected track's send into room k */
+{
+    const qd_mix_track_t *mt = &a->model.t[a->sel].mix;
+    const int id = QD_LK_CRUSH + k;
+    if (k < 0 || k >= QD_NROOM)
+        return;
+    if (a->ui.nheld) {                                  /* a step held (or the latch's selection): its lock */
+        qd_step_lock_fine(a, id, qd_ctl_acc(a, d, 128));
+        return;
+    }
+    if (qd_auto_on(a) && qd_auto_put(a, id, qd_auto_cur(a, id) + qd_ctl_acc(a, d, 128)))
+        return;                                         /* automation recording */
+    qd_player_live_edit(&a->player, a->sel, id, mt->room[k] + qd_ctl_acc(a, d, 128));
+}
 int qd_mix_knob(qd_app_t *a, int knob, int d)
 {
-    static const int16_t ID[2][4] = {{QD_LK_LEVEL, QD_LK_PAN, QD_LK_DELAY, QD_LK_REVERB},
-                                     {QD_LK_CHORUS, QD_LK_DELAY, QD_LK_REVERB, -1}};
     qd_ui_t *u = &a->ui;
     const qd_mix_track_t *m = &a->model.t[a->sel].mix;
+    const int pg = u->mix_page % QD_MIX_NPAGE;
     int id, v;
     if (knob == QD_K_SELECT) {                          /* the page */
-        u->mix_page = cl(u->mix_page + d, 0, 1);
+        u->mix_page = cl(u->mix_page + d, 0, QD_MIX_NPAGE - 1);
         u->menu_knob = -1;
         return 1;
     }
     if (knob == QD_K_ALGO) {                            /* the track */
         qd_ctl_select_track(a, cl(a->sel + d, 0, QD_NTRACK - 1));
+        return 1;
+    }
+    if (pg == 2) {                                      /* FX MIX: the selected track's sends into the five rooms */
+        const int k = knob == QD_K_PRESETS ? 4 : knob >= QD_K_1 ? knob - QD_K_1 : -1;
+        if (k >= 0) {
+            qd_room_turn(a, k, d);
+            u->menu_knob = k;
+        }
         return 1;
     }
     if (knob == QD_K_PRESETS) {                         /* left: muted, right: heard */
@@ -314,12 +367,18 @@ int qd_mix_knob(qd_app_t *a, int knob, int d)
     }
     if (knob < QD_K_1)
         return 1;
-    id = ID[u->mix_page & 1][knob - QD_K_1];
+    id = MIX_ID[pg][knob - QD_K_1];
+    if (id == MIX_DRY) {                                /* the selected track's DRY (as the effects' SENDS page) */
+        qd_mix_track_t *mt = &a->model.t[a->sel].mix;
+        mt->dry = (uint8_t)cl(mt->dry + qd_ctl_acc(a, d, 128), 0, 127);
+        u->menu_knob = knob - QD_K_1;
+        return 1;
+    }
     if (id < 0)
         return 1;
     u->menu_knob = knob - QD_K_1;
-    qd_step_promote_all(a);
-    if (u->nheld) {                                     /* P1.6d: a step held (or the latch's selection): locks */
+    if (u->nheld) {                                     /* P1.6d: a step held (or the latch's selection): locks (2026-11-13,
+                                                         * owner: a W down under QD_TAP_MS is not held yet) */
         qd_step_lock_fine(a, id, qd_ctl_acc(a, d, 128));
         return 1;
     }
@@ -333,16 +392,18 @@ int qd_mix_knob(qd_app_t *a, int knob, int d)
 /* P1.6d: the lock id a knob turns on the mix / the effects page now (-1 none) */
 int qd_panel_lock_id(const qd_app_t *a, int knob)
 {
-    static const int16_t ID[2][4] = {{QD_LK_LEVEL, QD_LK_PAN, QD_LK_DELAY, QD_LK_REVERB},
-                                     {QD_LK_CHORUS, QD_LK_DELAY, QD_LK_REVERB, -1}};
     const qd_ui_t *u = &a->ui;
     if (knob < QD_K_1)
         return -1;
-    if (u->latch == QD_LATCH_MIX)
-        return ID[u->mix_page & 1][knob - QD_K_1];
+    if (u->latch == QD_LATCH_MIX) {
+        const int id = MIX_ID[u->mix_page % QD_MIX_NPAGE][knob - QD_K_1];
+        return id >= 0 ? id : -1;
+    }
     if (u->latch == QD_LATCH_FX) {
         const qd_fxpage_t *pg = &QD_FX_PAGES[u->fx_page];
         const int c = pg->c[knob - QD_K_1];
+        if (c <= QD_FXC_ROOMX(0) && c >= QD_FXC_ROOMX(4))   /* EvilGenius: a room's send */
+            return QD_LK_CRUSH + (QD_FXC_ROOMX(0) - c);
         if (c == QD_FXC_SEND || (c <= QD_FXC_SENDX(0) && c != QD_FXC_NONE && c > QD_FXC_SENDX(3)))
             return qd_fx_send_id(c == QD_FXC_SEND ? pg->fx : QD_FXC_SENDX(0) - c);
     }
@@ -362,13 +423,18 @@ int qd_fx_knob(qd_app_t *a, int knob, int d)
     const qd_fxpage_t *pg = &QD_FX_PAGES[u->fx_page];
     int c;
     if (knob == QD_K_SELECT) {
-        u->fx_page = (u->fx_page + d % QD_FX_NPAGE + QD_FX_NPAGE) % QD_FX_NPAGE;
+        fx_goto(a, (u->fx_page + d % QD_FX_NPAGE + QD_FX_NPAGE) % QD_FX_NPAGE);
         u->menu_knob = -1;
         return 1;
     }
     if (knob == QD_K_ALGO && !u->fx_bheld) {            /* 2026-11-13 (owner): ALGORITHM the step cursor, as on the
                                                          * Home views (fully left: LIVE; ROUTING's DRY / WET is KNOB 2) */
         qd_step_cursor(a, d);
+        return 1;
+    }
+    if (knob == QD_K_PRESETS && pg->draw == UI_FXD_MIXES) {   /* FX MIX: PRESETS the fifth room, TV */
+        qd_room_turn(a, 4, d);
+        u->menu_knob = 4;
         return 1;
     }
     if (knob < QD_K_1)
@@ -389,11 +455,15 @@ int qd_fx_knob(qd_app_t *a, int knob, int d)
         mt->dry = (uint8_t)cl(mt->dry + qd_ctl_acc(a, d, 128), 0, 127);
         return 1;
     }
+    if (c <= QD_FXC_ROOMX(0) && c >= QD_FXC_ROOMX(4)) {  /* EvilGenius: the selected track's send into a room */
+        qd_room_turn(a, QD_FXC_ROOMX(0) - c, d);
+        return 1;
+    }
     if (c == QD_FXC_SEND || c <= QD_FXC_SENDX(0)) {    /* the selected track's send into this effect (the overview:
                                                          * the cell's) */
         const int fx = c == QD_FXC_SEND ? pg->fx : QD_FXC_SENDX(0) - c;
-        qd_step_promote_all(a);
-        if (u->nheld) {                                 /* P1.6d: a step held (or the latch's selection): locks */
+        if (u->nheld) {                                 /* P1.6d: a step held (or the latch's selection): locks (not a W
+                                                         * down under QD_TAP_MS) */
             qd_step_lock_fine(a, qd_fx_send_id(fx), qd_ctl_acc(a, d, 128));
             return 1;
         }

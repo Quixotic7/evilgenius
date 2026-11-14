@@ -43,11 +43,13 @@ extern "C" {
                                                          * the unit's voices) */
 
 /* a voice's mix values that a lock can set (the lock ids QD_LK_PAN.. in seq/pattern.h, in this order) */
-enum { QD_VMIX_PAN, QD_VMIX_DELAY, QD_VMIX_REVERB, QD_VMIX_CHORUS, QD_VMIX_LEVEL, QD_VMIX_N };   /* (P1.4a: DRIVE is
+enum { QD_VMIX_PAN, QD_VMIX_DELAY, QD_VMIX_REVERB, QD_VMIX_CHORUS, QD_VMIX_LEVEL,
+       QD_VMIX_ROOM,                    /* EvilGenius: .. the five rooms' sends, QD_VMIX_ROOM + 0..4 (QD_LK_CRUSH ..) */
+       QD_VMIX_N = QD_VMIX_ROOM + 5 };   /* (P1.4a: DRIVE is
                                                          * the sound's: QD_QP_DRIVE) */
 typedef struct {
     uint32_t own[(QD_QUAD_NP + 31) / 32];   /* bit i of own[i >> 5]: patch value i is the voice's own */
-    uint8_t mixm;                       /* bit k: mix value k is locked (QD_VMIX_*) */
+    uint16_t mixm;                      /* bit k: mix value k is locked (QD_VMIX_*) */
     int16_t mixv[QD_VMIX_N];            /* pan -64..63, the sends, level 0..127 */
 } qd_vattr_t;
 #define QD_DIP_MAX 16                   /* routing changes that can wait for one dip */
