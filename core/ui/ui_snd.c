@@ -15,6 +15,7 @@
  *   PORT    two platforms and the glide      VOICE the unison's robots    MOD the eight slots
  *   AMP     LEVEL, velocity, DRIVE           CRUSH a sine as stairs       LFO / its WAVE: the shape, the phase */
 #include "quad_voice.h"                 /* (SID TONE's waves, filter modes, LFO shapes, the slots' sources) */
+#include "say.h"                        /* (SAY's random words: the whole word, not the value's eleven letters) */
 static const qd_rgb SNDK[5] = {UI_K1, UI_K2, UI_K3, UI_K4, UI_KALG};
 static const char *const SD_MODE_NAME[6] = {"LOWPASS", "BANDPASS", "HIGHPASS", "NOTCH", "LP+BP", "ALL"};
 
@@ -236,6 +237,40 @@ static void sd_word(const ui_snd_t *v)
         px_hline(s0, SD_TOP + 57, s1 - s0, SNDK[4]);
         px_text(s0 + 1, SD_TOP + 59, v->v[4] == 2 ? "BOUNCE" : "LOOP", SNDK[4], PX_FS, 1);
     }
+}
+
+/* SAY: the villain speaking the word (the SAY word, or WORD's in SAM's voice), the voice as a vocal tract (THROAT's
+ * width at the left, MOUTH's opening at the right), PITCH as the line the syllables (SPEED's spacing) sit on */
+static void sd_say(const ui_snd_t *v)
+{
+    char w[16];
+    const int thr = v->v[3] < 0 ? 0 : v->v[3] > 255 ? 255 : v->v[3], mth = v->v[4] < 0 ? 0 : v->v[4] > 255 ? 255 : v->v[4];
+    const int pit = v->v[2] < 0 ? 0 : v->v[2] > 255 ? 255 : v->v[2], spd = v->v[1] < 20 ? 20 : v->v[1] > 200 ? 200 : v->v[1];
+    const int ty = SD_TOP + 34, ht = 2 + thr * 10 / 255, hm = 1 + mth * 10 / 255;
+    const int py = SD_TOP + 66 - (255 - pit) * 12 / 255, step = 3 + spd * 9 / 200;
+    int x;
+    px_sprite(6, SD_TOP + 3, v->v[0] > 0 ? PXS_GENIUS_TALK : PXS_GENIUS, 0);
+    px_rbox(26, SD_TOP + 2, 90, 18, v->v[0] > 0 ? SNDK[0] : UI_G3, UI_BG);   /* the bubble, its tail */
+    px_pset(25, SD_TOP + 10, v->v[0] > 0 ? SNDK[0] : UI_G3);
+    px_pset(24, SD_TOP + 11, v->v[0] > 0 ? SNDK[0] : UI_G3);
+    if (qd_say_text(v->v[0], w))
+        px_ctext(71, px_text_w(w, PX_FB, 1) <= 84 ? SD_TOP + 7 : SD_TOP + 8, w, SNDK[0], px_text_w(w, PX_FB, 1) <= 84 ? PX_FB : PX_FS, 1);
+    else
+        px_ctext(71, SD_TOP + 8, "OFF: WORD SPEAKS", UI_G2, PX_FS, 1);
+    /* the tract: the throat (KNOB 4) at the left, the mouth (ALGORITHM) at the right, the tongue's line between */
+    px_rect(10, ty - ht, 3, 2 * ht + 1, SNDK[3]);
+    px_line(12, ty - ht, 60, ty - 4, UI_G1);
+    px_line(12, ty + ht, 60, ty + 4, UI_G1);
+    px_hline(60, ty - 4, 30, UI_G1);
+    px_hline(60, ty + 4, 30, UI_G1);
+    px_line(90, ty - 4, 104, ty - hm, UI_G1);
+    px_line(90, ty + 4, 104, ty + hm, UI_G1);
+    px_rect(104, ty - hm, 3, 2 * hm + 1, SNDK[4]);
+    px_dots(14, ty, 88, UI_G3, 3);
+    /* PITCH (KNOB 3) as the line, SPEED (KNOB 2) as the syllables' spacing on it */
+    px_hline(8, py, 104, SNDK[2]);
+    for (x = 8; x < 112; x += step)
+        px_rect(x, py - 3, 2, 3, SNDK[1]);
 }
 
 static void sd_digi(const ui_snd_t *v)
@@ -539,6 +574,7 @@ void ui_snd_draw(const ui_snd_t *v)
     case UI_SD_ADSR: sd_adsr(v); break;
     case UI_SD_CHIP: sd_chipmodel(v); break;
     case UI_SD_WORD: sd_word(v); break;
+    case UI_SD_SAY: sd_say(v); break;
     case UI_SD_DIGI: sd_digi(v); break;
     case UI_SD_PORT: sd_port(v); break;
     case UI_SD_VOICE: sd_voice(v); break;

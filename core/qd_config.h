@@ -65,6 +65,19 @@
 #define QD_XDATA(name)
 #endif
 
+/* EvilGenius: SAM, the speech that renders words live (core/voice/sam/say.c): the words it keeps rendered at once
+ * (slots, each up to QD_SAY_TENTHS tenths of a second at VOX_FS, 4-bit) and its own 22050 Hz buffer of as long. The
+ * FM-1 itself: fewer and shorter (its RAM is tight; not measured there yet); the host and RemoteFM1: room to spare */
+#ifndef QD_SAY_SLOTS
+#ifdef QD_TARGET_FM1
+#define QD_SAY_SLOTS 4
+#define QD_SAY_TENTHS 10
+#else
+#define QD_SAY_SLOTS 24
+#define QD_SAY_TENTHS 20
+#endif
+#endif
+
 #ifdef QD_DEVICE
 #define QD_PROFILE_NAME "device"
 /* ---- the sound */

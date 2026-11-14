@@ -34,6 +34,7 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include "../voice/sam/say.h"
 #include <string.h>
 
 #include "app.h"
@@ -173,6 +174,45 @@ static void t_keys(void)
     qd_app_key(&A, 7, 0, 0);
     run(10, 0);
     printf("  keys: the keybed plays the selected track; OCT -2..+2; TRACKS + white key selects\n");
+}
+
+/* EvilGenius: SAY, SAM speaking live: a track's random word rendered in the app's free time (not the audio), its
+ * voice speaking exactly those samples, the same every render; another voice a word of its own */
+static void t_say(void)
+{
+    int16_t p[QD_QUAD_NP];
+    char w[16];
+    const uint8_t *d, *d2;
+    uint32_t n = 0, n2 = 0;
+    uint8_t first[64];
+    int i, spoke = 0;
+    fresh_keys();
+    A.model.t[0].patch[QD_QP_SAY] = 7;
+    qd_proj_pat(&A.proj, A.seq.cur)->snd[0].patch[QD_QP_SAY] = 7;
+    qd_say_text(7, w);
+    run(40, 0);                                         /* (the free time's look: SAM renders it) */
+    memcpy(p, A.model.t[0].patch, sizeof p);
+    d = qd_say_get(qd_say_key(p), &n);
+    CHECK(d && n > 600 && n <= QD_VOX_FS * QD_SAY_TENTHS / 10, "SAY: SAM rendered track 1's random word \"%s\" (%u "
+          "samples at %u Hz)", w, n, QD_VOX_FS);
+    memcpy(first, d ? d : first, sizeof first);
+    qd_app_key(&A, 7, 1, 100);
+    run(30, 0);
+    for (i = 0; i < A.pool.nvoice; i++)
+        spoke |= qd_pool_sounding(&A.pool, i) && A.pool.v[i].q.vox.on && A.pool.v[i].q.vox.src == d &&
+                 A.pool.v[i].q.vox.len == n;
+    qd_app_key(&A, 7, 0, 0);
+    run(10, 0);
+    CHECK(spoke, "a note on track 1: its voice speaks those samples");
+    qd_say_reset();                                     /* rendered again: the same */
+    qd_say_want(p);
+    d2 = qd_say_get(qd_say_key(p), &n2);
+    CHECK(d2 && n2 == n && !memcmp(d2, first, sizeof first), "SAM renders the same word the same every time");
+    p[QD_QP_SPIT] = 100, p[QD_QP_SSPD] = 110;          /* another voice: a word of its own, longer (slower) */
+    qd_say_want(p);
+    d2 = qd_say_get(qd_say_key(p), &n2);
+    CHECK(d2 && n2 > n, "another voice (PITCH 100, SPEED 110): its own render, longer (%u > %u samples)", n2, n);
+    printf("  say: SAM speaks \"%s\" live, %u samples; slower, %u\n", w, n, n2);
 }
 
 static void t_presets(void)
@@ -1279,6 +1319,7 @@ int main(void)
     }
     qd_text_stats_reset();                              /* P1.3v: the clarity guard (checked at the end) */
     t_keys();
+    t_say();
     t_presets();
     t_screens();
     t_midi();

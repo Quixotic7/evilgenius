@@ -45,13 +45,15 @@ copied into the MPL files.
 | stb_truetype, stb_image, stb_image_write (Sean Barrett), inside plutovg | MIT OR Unlicense | `third_party/plutovg/source/plutovg-stb-*.h` |
 | Inter Tight (The Inter Project Authors), the type | SIL OFL 1.1 (no Reserved Font Name) | `assets/fonts/` (`OFL.txt`); embedded in `core/gfx/fonts_gen.h` |
 | DM Sans (The DM Sans Project Authors) and Unbounded (The Unbounded Project Authors), FIZZ for iOS's PLAY sheet and chip | SIL OFL 1.1 | `ios/FizzKit/Sources/FizzUI/Resources/` (`OFL-DMSans.txt`, `OFL-Unbounded.txt`), bundled in the iOS app |
+| EvilGenius: SAM, the Software Automatic Mouth (`core/voice/sam/`: `sam.c`, `render.c`, `reciter.c`, their headers and tables), Sebastian Macke's C port (github.com/s-macke/SAM) of Don't Ask Software's 1982 program, changed as `core/voice/sam/README.md` lists | **none**: the port has no licence; the original's rights are SoftVoice, Inc.'s. Here by the owner's decision, outside EvilGenius's MPL-2.0 (`say.c`, `say.h`, `sam_names.h` there are EvilGenius's, MPL-2.0) | `core/voice/sam/README.md` |
 | EvilGenius: the SID model (`core/voice/sid/sid.c`, `sid.h`, `sidsynth.c`, `sidsynth.h`), from FM-1 SID (Joakim Eriksson, github.com/joakimeriksson/fm1-sid, its own clean-room model in `src/`); EvilGenius's changes are marked in the files | BSD-2-Clause, Copyright (c) 2026 Joakim Eriksson | `LICENSES/BSD-2-Clause.txt` |
 
 ## Credits (designs and facts, no code)
 
 - **SAM, the Software Automatic Mouth** (Don't Ask Software, 1982; now SoftVoice, Inc.), as Sebastian Macke's C port
   (github.com/s-macke/SAM): EvilGenius's VOX words (`core/voice/sid/eg_vox_data.h`) are rendered with it by
-  `tools/eg/gen_vox.py`. Only the rendered words are here: SAM's code is not part of this tree.
+  `tools/eg/gen_vox.py`, and the firmware speaks with it live (SAY). Its code is in `core/voice/sam/` (see the table
+  above).
 
 - **SLOOP 2.6** (isod89, github.com/isod89/sloop-fm1): the designs of the Clean chain's one-block look-ahead
   limiter and of the stereo chorus's two taps, both written anew in ChoralRoot.

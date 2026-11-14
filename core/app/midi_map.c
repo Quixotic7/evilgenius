@@ -33,6 +33,8 @@ static const uint8_t MM_CC[128] = {
     /* VOX: WORD ROOT START END LOOP, DIGI */
     [15] = M(QD_QP_WORD), [16] = M(QD_QP_ROOT), [17] = M(QD_QP_VSTART), [57] = M(QD_QP_VEND), [58] = M(QD_QP_VLOOP),
     [59] = M(QD_QP_DBITS), [61] = M(QD_QP_DHOLD), [63] = M(QD_QP_DBOOST), [70] = M(QD_QP_DLVL),
+    /* SAY, SAM's live speech: the word, SPEED PITCH THROAT MOUTH */
+    [78] = M(QD_QP_SAY), [81] = M(QD_QP_SSPD), [116] = M(QD_QP_SPIT), [117] = M(QD_QP_STHR), [118] = M(QD_QP_SMTH),
     /* LFO 1 .. 3: SPEED MULT DEPTH DEST, WAVE PHASE TRIG FADE */
     [82] = LF(0, QD_QL_SPEED), [83] = LF(0, QD_QL_MULT), [84] = LF(0, QD_QL_DEPTH), [85] = LF(0, QD_QL_DEST),
     [86] = LF(0, QD_QL_WAVE), [87] = LF(0, QD_QL_PHASE), [88] = LF(0, QD_QL_TRIG), [89] = LF(0, QD_QL_FADE),

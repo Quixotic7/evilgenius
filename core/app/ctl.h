@@ -807,7 +807,7 @@ void qd_snd_fkey(struct qd_app *a, int down);
 void qd_snd_fkey_ms(struct qd_app *a);
 int qd_snd_fpop_key(struct qd_app *a, int b);
 #define QD_SND_START_PAGE 5            /* P1.5l: a fresh start: RATIO (B2), the sound's first page (after PORT, VOICE, MOD) */
-#define QD_SND_NPAGE 22
+#define QD_SND_NPAGE 23
 typedef struct {
     const char *name;
     uint8_t group, draw;

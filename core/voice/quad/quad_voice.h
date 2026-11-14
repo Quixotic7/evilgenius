@@ -53,8 +53,16 @@ enum {
     /* the VOICE page (not lockable): POLY / MONO, UNISON 1..8, its DETUNE and SPREAD, PRIORITY */
     QD_QP_VMODE = QD_QP_MOD0 + 3 * 8,
     QD_QP_UNI, QD_QP_UDET, QD_QP_USPR, QD_QP_VPRIO,
+    /* SAY, SAM's live speech (core/voice/sam/say.c): the word (0 OFF: WORD's; 1..999 a random word from FIZZ's name
+     * generator, each value its own), and the voice SAM speaks with, its own four: SPEED, PITCH, THROAT, MOUTH (at
+     * SAM's defaults WORD's words are the stored ones; else SAM renders them too). Lockable, as every sound value */
+    QD_QP_SAY, QD_QP_SSPD, QD_QP_SPIT, QD_QP_STHR, QD_QP_SMTH,
     QD_QUAD_NP
 };
+#define QD_SAY_SPD0 72                  /* SAM's own voice */
+#define QD_SAY_PIT0 64
+#define QD_SAY_THR0 128
+#define QD_SAY_MTH0 128
 /* (FM TONE's that FIZZ's code names but SID TONE does not have: never a value's id) */
 #define QD_QP_RB1 1000
 #define QD_QP_RB2 1001
@@ -171,6 +179,8 @@ struct qd_quad_voice {
     struct {                            /* VOX: the word playing */
         uint8_t on, dir, nib;
         uint16_t word;
+        const uint8_t *src;             /* the word's 4-bit samples (the stored ones, or SAM's render) and their count */
+        uint32_t len;
         uint32_t pos, lo, hi;           /* Q16 samples of the word */
         uint32_t hold_acc;              /* Q16: samples to the next volume write */
     } vox;
@@ -227,6 +237,7 @@ int qd_quad_dest_pos(int dest);
 /* VOX's vocabulary (eg_vox_data.h): the words' count and names */
 int qd_vox_nwords(void);
 const char *qd_vox_word_name(int w);    /* w 1..; 0: "OFF" */
+const char *qd_vox_word_phon(int w);    /* w 1..: the word in SAM's phonetic alphabet (its render with another voice) */
 
 #ifdef __cplusplus
 }

@@ -13,6 +13,8 @@
 #include "ui.h"
 #include "../seq/demo.h"
 #include "../voice/fx/qd_fx.h"
+#include "../voice/sam/say.h"            /* (EvilGenius: SAM's live words) */
+static void say_sync(qd_app_t *a);         /* (below) */
 #include "midi_map.h"
 
 static void mo_note(void *ctx, int t, int note, int vel, int live);
@@ -33,6 +35,8 @@ void qd_app_init(qd_app_t *a)
     int t;
     memset(a, 0, sizeof *a);
     qd_side_clear(a);                                   /* (the Bluetooth unit's: outside qd_app_t) */
+    qd_say_reset();                                     /* (EvilGenius: SAM's words rendered afresh: a session is a
+                                                         * function of its input) */
     a->master_pot = QD_MASTER_POT_DEFAULT;
     qd_model_init(&a->model);
     qd_pool_init(&a->pool, QD_VOICES);
@@ -177,6 +181,7 @@ void qd_app_knob(qd_app_t *a, int knob, int detents)
         a->mo_knob = 0;
         if (k->mix.dry != dry && a->ui.cc_out)
             mo_cc(a, t, QD_MM_DRY, dry, k->mix.dry);
+        say_sync(a);                                    /* (EvilGenius: a word just turned to speaks at once) */
         qd_ctl_preview_sync(a);
     }
 }
@@ -720,10 +725,50 @@ static void ms_lock2(qd_app_t *a)
 /* P2.10: a gesture closes when quiet (a take: as one). Its level is the pattern's (and the MIDI FX's, the slots')
  * difference from the gesture's before: it reads the model and writes only the undo log, which the audio side never
  * reads, so no lock (on the unit ~2.5 ms: the pattern unpacked and compared twice). After ms_lock2, as it was */
+/* EvilGenius: the words SAM must have rendered before a voice speaks them (say.h): each track's sound's, and each step
+ * of the playing pattern that locks its word or its voice. At most one render a look (SAM's few ms in the free time,
+ * never the audio's); a look every 16 ms */
+static int say_step(qd_app_t *a, const qd_pattern_t *P, int t, int step, const int16_t *tp)
+{
+    static const int ID[6] = {QD_QP_SAY, QD_QP_WORD, QD_QP_SSPD, QD_QP_SPIT, QD_QP_STHR, QD_QP_SMTH};
+    int16_t pp[QD_QUAD_NP];
+    int k;
+    (void)a;
+    memcpy(pp, tp, sizeof pp);
+    for (k = 0; k < 6; k++) {
+        int16_t v;
+        if (qd_lock_get(P, t, step, ID[k], &v))
+            pp[ID[k]] = v;
+    }
+    return qd_say_want(pp);
+}
+static void say_sync(qd_app_t *a)
+{
+    const qd_pattern_t *P = qd_proj_pat(&a->proj, a->seq.cur);
+    int t, k;
+    for (t = 0; t < QD_NTRACK; t++) {
+        const int16_t *tp = a->model.t[t].patch;
+        if (qd_msnd_is(tp))
+            continue;
+        if (qd_say_want(tp))
+            return;
+        for (k = 0; P && k < P->lock_n[t]; k++) {
+            const qd_lock_t *l = &P->lock[P->lock_start[t] + k];
+            if ((l->id == QD_QP_SAY || l->id == QD_QP_WORD || (l->id >= QD_QP_SSPD && l->id <= QD_QP_SMTH)) &&
+                say_step(a, P, t, l->step, tp))
+                return;
+        }
+    }
+}
+
 static void ms_free2(qd_app_t *a)
 {
     if (!(a->ui.rec && a->seq.playing))
         qd_undo_ms(a);
+    if (a->ms - a->say_ms >= 16u) {
+        a->say_ms = a->ms;
+        say_sync(a);
+    }
 }
 static void qd_app_ms(qd_app_t *a)     /* one device millisecond */
 {

@@ -7,8 +7,8 @@ two to a byte. Writes core/voice/sid/eg_vox_data.h.
                                         speech synthesizer (1982), as s-macke/SAM's C port (github.com/s-macke/SAM).
                                         PATH is a `sam` built from your checkout without SDL:
                                           cc -O2 -o sam src/reciter.c src/sam.c src/render.c src/main.c src/debug.c
-                                        (or $SAM_BIN, or `sam` on the PATH). SAM's code is not part of EvilGenius
-                                        (its port carries no licence); only the words it renders are. Each word is
+                                        (or $SAM_BIN, or `sam` on the PATH; core/voice/sam has the same code,
+                                        changed for the firmware: README.md there). Each word is
                                         given in SAM's phonetic alphabet with its stress (PHONETIC below: the reciter's
                                         own guesses miss GENIUS, EVIL, AGENT ..); --sam-text uses the reciter instead.
                                         The voice: --speed 72 --pitch 64 --throat 128 --mouth 128 (SAM's own)
@@ -209,6 +209,10 @@ def main():
         "static const char *const VOX_BANK_NAME[VOX_NBANKS] = {" + ", ".join(f'"{b}"' for b in banks) + "};",
         "static const char *const VOX_WORD_NAME[VOX_NWORDS] = {",
         *[f'    "{w}",' for _, w in WORDS],
+        "};",
+        "/* each in SAM's phonetic alphabet: the firmware's SAM speaks them live in another voice (core/voice/sam) */",
+        "static const char *const VOX_WORD_PHON[VOX_NWORDS] = {",
+        *[f'    "{PHONETIC[w]}",' for _, w in WORDS],
         "};",
         "static const uint8_t VOX_WORD_BANK[VOX_NWORDS] = {" + ", ".join(str(banks.index(b)) for b, _ in WORDS) + "};",
         "static const uint32_t VOX_WORD_OFF[VOX_NWORDS] = {" + ", ".join(map(str, offs)) + "};",

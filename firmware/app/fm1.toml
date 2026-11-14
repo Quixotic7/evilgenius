@@ -11,7 +11,7 @@ o2 = ["fz_port.c", "fz_libc.c", "build/units/*.c"]
 o2_cflags = ["-Os", "-std=gnu11"]
 o2_include = ["fizz_prefix.h"]
 include = ["../../core/app", "../../core/ui", "../../core/gfx", "../../core/seq", "../../core/voice",
-           "../../core/voice/quad", "../../core/voice/sid", "../../core/voice/fx", "../../core/tests", "../../third_party/plutovg/include"]
+           "../../core/voice/quad", "../../core/voice/sid", "../../core/voice/sam", "../../core/voice/fx", "../../core/tests", "../../third_party/plutovg/include"]
 vendored = ["build/"]
 gen = ["tools/gen_units.py {gen} --gfx fb"]     # the drawing: plutovg, fast (core/gfx/qd_gfx_fast.c) or fb (P2.12: fast, into the 8-bit frame)
 # USB only (the owner, 2026-10-23): no Bluetooth, no WiFi. USB audio in (2026-10-27): the computer records FIZZ over

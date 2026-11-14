@@ -837,3 +837,28 @@ wait 1000
 knob K3 3
 wait 100
 shot 159-tools-pop-random B3 RANDOM, KNOB 3 turned: VELOCITY named over the meters
+# SAY: SAM speaking live (the VOX group's second page)
+reset
+tap HOME
+wait 300
+tap EDIT
+wait 300
+tapkey B5
+wait 200
+tapkey B5
+wait 200
+shot 160-snd-say-off B5 twice: SAY, OFF (WORD speaks)
+knob K1 1
+wait 300
+shot 161-snd-say B5 twice, KNOB 1: SAY, a random word, the villain speaking it
+knob K1 4
+wait 300
+shot 162-snd-say-2 KNOB 1 on: another word
+knob K2 12
+knob K3 -10
+knob K4 18
+knob ALGO 25
+wait 300
+shot 163-snd-say-voice SPEED, PITCH, THROAT, MOUTH turned: the tract, the pitch line
+tap HOME
+wait 300

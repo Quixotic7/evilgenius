@@ -14,13 +14,14 @@
 #include "fz_tables.h"
 #include "fz_voice.h"                   /* (clamp, softclip, VOICE_FS, fz_drive) */
 #include "../sid/eg_vox_data.h"         /* (the words: tools/eg/gen_vox.py) */
+#include "../sam/say.h"                 /* (SAY: SAM's live words) */
 
 #define BLK QD_QUAD_CTL
 #define SR 44100
 #define PAL_CLK 985248u
 
 /* ---------------------------------------------------------------- the values: names, ranges, texts --- */
-enum { VK_NUM, VK_SIGN, VK_C64, VK_LIST, VK_NOTE, VK_WORD, VK_ROUTE, VK_DEST };
+enum { VK_NUM, VK_SIGN, VK_C64, VK_LIST, VK_NOTE, VK_WORD, VK_ROUTE, VK_DEST, VK_SAY };
 typedef struct {
     const char *name;
     int16_t min, max, def;
@@ -126,6 +127,11 @@ static val_t val(int i)
     case QD_QP_UDET: return (val_t){"DETUNE", 0, 127, 20, VK_NUM, 0};
     case QD_QP_USPR: return (val_t){"SPREAD", 0, 127, 64, VK_NUM, 0};
     case QD_QP_VPRIO: return (val_t){"PRIO", 0, 2, 1, VK_LIST, L_PRIO};
+    case QD_QP_SAY: return (val_t){"SAY", 0, QD_SAY_MAX, 0, VK_SAY, 0};
+    case QD_QP_SSPD: return (val_t){"SPEED", 20, 200, QD_SAY_SPD0, VK_NUM, 0};
+    case QD_QP_SPIT: return (val_t){"PITCH", 0, 255, QD_SAY_PIT0, VK_NUM, 0};
+    case QD_QP_STHR: return (val_t){"THROAT", 0, 255, QD_SAY_THR0, VK_NUM, 0};
+    case QD_QP_SMTH: return (val_t){"MOUTH", 0, 255, QD_SAY_MTH0, VK_NUM, 0};
     default: return NONE;
     }
 }
@@ -148,6 +154,8 @@ const char *qd_quad_value_name(int i) { return val(i).name; }
 
 int qd_vox_nwords(void) { return (int)VOX_NWORDS; }
 const char *qd_vox_word_name(int w) { return w >= 1 && w <= (int)VOX_NWORDS ? VOX_WORD_NAME[w - 1] : "OFF"; }
+const char *qd_vox_word_phon(int w) { return w >= 1 && w <= (int)VOX_NWORDS ? VOX_WORD_PHON[w - 1] : ""; }
+typedef char vox_fs_is_say_fs[VOX_FS == QD_VOX_FS ? 1 : -1];
 
 static char *itoa_(char *b, int n)
 {
@@ -179,6 +187,11 @@ const char *qd_quad_value_text(int i, int v, char *buf)
         return buf;
     case VK_WORD:
         strncpy(buf, qd_vox_word_name(v), 11);
+        buf[11] = 0;
+        return buf;
+    case VK_SAY:                                        /* (the word itself; a view shows eleven characters) */
+        if (!qd_say_text(v, buf))
+            strcpy(buf, "OFF");
         buf[11] = 0;
         return buf;
     case VK_SIGN:
@@ -296,7 +309,7 @@ const char *qd_quad_preset_name(int k) { return PRESET[k < 0 ? 0 : k >= QD_QUAD_
 
 /* ---------------------------------------------------------------- packing --- */
 #define MAGIC 'S'
-#define VERSION 1
+#define VERSION 2                       /* (2: SAY and its voice; 1 had none: they take their defaults) */
 #define TAG_O (QD_QUAD_BLOB - 4)
 static const uint8_t MS_TAG[4] = {'M', 'I', 'D', 'I'};
 
@@ -379,10 +392,11 @@ void qd_quad_pack5(const int16_t *p, uint8_t *blob)
 }
 int qd_quad_unpack(const uint8_t *b, int n, int16_t *p)
 {
-    int i, o = 2;
+    int i, o = 2, np;
     defaults(p);
-    if (!b || n < QD_QUAD_BLOB || b[0] != MAGIC || b[1] != VERSION)
+    if (!b || n < QD_QUAD_BLOB || b[0] != MAGIC || (b[1] != VERSION && b[1] != 1))
         return 0;
+    np = b[1] == 1 ? QD_QP_SAY : QD_QUAD_NP;            /* (version 1: no SAY, no voice: their defaults) */
     if (!memcmp(b + TAG_O, MS_TAG, 4)) {
         int k;
         for (k = 0; k < QD_MSND_N; k++)
@@ -395,7 +409,7 @@ int qd_quad_unpack(const uint8_t *b, int n, int16_t *p)
         }
         return 1;
     }
-    for (i = 0; i < QD_QUAD_NP; i++) {
+    for (i = 0; i < np; i++) {
         const val_t r = val(i);
         int x = b[o++];
         if (r.max - r.min > 255)
@@ -604,18 +618,28 @@ void qd_quad_voice_init(qd_quad_voice_t *v, uint32_t idx)
 
 static void vox_start(qd_quad_voice_t *v)
 {
-    const int w = v->patch[QD_QP_WORD];
+    const int16_t *p = v->patch;
+    const int w = p[QD_QP_WORD], say = p[QD_QP_SAY];
+    const uint8_t *src = 0;
+    uint32_t len = 0;
     v->vox.on = 0;
-    if (w < 1 || w > (int)VOX_NWORDS)
-        return;
+    if (say > 0 || (w >= 1 && w <= (int)VOX_NWORDS && !qd_say_default_voice(p)))
+        src = qd_say_get(qd_say_key(p), &len);          /* SAM's live render (the app made it: qd_say_want) */
+    if (!src || !len) {                                 /* not rendered (yet): the stored word, or silence */
+        if (say > 0 || w < 1 || w > (int)VOX_NWORDS)
+            return;
+        src = VOX_DATA + VOX_WORD_OFF[w - 1];
+        len = VOX_WORD_LEN[w - 1];
+    }
     {
-        const uint32_t len = VOX_WORD_LEN[w - 1];
-        uint32_t lo = len * (uint32_t)v->patch[QD_QP_VSTART] / 127u, hi = len * (uint32_t)v->patch[QD_QP_VEND] / 127u;
+        uint32_t lo = len * (uint32_t)p[QD_QP_VSTART] / 127u, hi = len * (uint32_t)p[QD_QP_VEND] / 127u;
         if (hi > len)
             hi = len;
         if (hi <= lo + 8u)
             hi = lo + 8u < len ? lo + 8u : len;
-        v->vox.word = (uint16_t)(w - 1);
+        v->vox.word = (uint16_t)(w > 0 ? w - 1 : 0);
+        v->vox.src = src;
+        v->vox.len = len;
         v->vox.lo = lo << 16;
         v->vox.hi = hi << 16;
         v->vox.pos = v->vox.lo;
@@ -910,12 +934,12 @@ static void registers(qd_quad_voice_t *v, const int32_t *d, int *vox_only)
 static uint32_t vox_nib(const qd_quad_voice_t *v, int32_t wpos)
 {
     const int16_t *p = v->patch;
-    const uint32_t len = VOX_WORD_LEN[v->vox.word];
+    const uint32_t len = v->vox.len;
     int32_t i = (int32_t)(v->vox.pos >> 16) + (int32_t)(((int64_t)wpos * (int32_t)len) >> 16);
     uint32_t b, nib;
     int bits = clamp(p[QD_QP_DBITS], 1, 4), x;
     i = i < 0 ? 0 : i >= (int32_t)len ? (int32_t)len - 1 : i;
-    b = VOX_DATA[VOX_WORD_OFF[v->vox.word] + (uint32_t)i / 2u];
+    b = v->vox.src[(uint32_t)i / 2u];
     nib = i & 1 ? b & 15u : b >> 4;
     if (bits < 4)
         nib = (nib & (0xFu << (4 - bits)) & 0xFu) | (1u << (3 - bits));

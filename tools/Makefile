@@ -40,8 +40,11 @@ CR_TAG ?= v0.25.1
 CRB := $(B)/cr-$(CR_TAG)
 PY ?= python3
 
+# EvilGenius: SAM, the Software Automatic Mouth (core/voice/sam: s-macke/SAM's C port, its globals prefixed; README.md
+# there), built quietly (1980s C, its warnings are not ours); say.c is EvilGenius's, with the warnings on
+SAM_SRC := $(ROOT)/core/voice/sam/sam.c $(ROOT)/core/voice/sam/render.c $(ROOT)/core/voice/sam/reciter.c
 VOICE_SRC := $(ROOT)/core/voice/quad/quad_voice.c $(ROOT)/core/voice/sid/sid.c $(ROOT)/core/voice/pool.c $(ROOT)/core/voice/mix.c \
-             $(ROOT)/core/voice/fx/qd_fx.c
+             $(ROOT)/core/voice/fx/qd_fx.c $(SAM_SRC) $(ROOT)/core/voice/sam/say.c
 APP_SRC := $(ROOT)/core/app/app.c $(ROOT)/core/app/ctl.c $(ROOT)/core/app/ctl_step.c $(ROOT)/core/app/ctl_rec.c \
            $(ROOT)/core/app/ctl_leds.c $(ROOT)/core/app/ctl_latch.c $(ROOT)/core/app/ctl_preview.c \
            $(ROOT)/core/app/view.c
@@ -55,7 +58,8 @@ CORE_SRC := $(APP_SRC) $(UI_SRC) $(ROOT)/core/gfx/qd_gfx_$(GFX_FILE).c \
 PVG_SRC := $(wildcard $(PVG)/source/*.c)
 DEV_PVG_SRC := $(if $(filter fast fb,$(GFX)),,$(PVG_SRC))     # (what the unit links of plutovg: tools/budget/budget.py)
 INC := -I$(ROOT)/core/app -I$(ROOT)/core/ui -I$(ROOT)/core/gfx -I$(ROOT)/core/seq -I$(ROOT)/core/voice \
-       -I$(ROOT)/core/voice/quad -I$(ROOT)/core/voice/sid -I$(ROOT)/core/voice/fx -I$(ROOT)/core/tests -I$(PVG)/include
+       -I$(ROOT)/core/voice/quad -I$(ROOT)/core/voice/sid -I$(ROOT)/core/voice/fx -I$(ROOT)/core/voice/sam -I$(ROOT)/core/tests \
+       -I$(PVG)/include
 DEFS := -DSID_COMB_CONST -DPLUTOVG_BUILD -DPLUTOVG_BUILD_STATIC -DPLUTOVG_DISABLE_FONT_FACE_CACHE_LOAD
 HDRS := $(ROOT)/core/gfx/qd_fb_pal.h $(ROOT)/core/ui/px_art.h $(ROOT)/core/qd_config.h $(ROOT)/core/gfx/qd_arena.c $(ROOT)/core/gfx/qd_gfx_rec.c $(wildcard $(ROOT)/core/*/*.h) $(wildcard $(ROOT)/core/voice/*/*.h) $(wildcard $(ROOT)/core/voice/*/*.c) \
         $(wildcard $(ROOT)/core/store/*) $(ROOT)/core/seq/names.c $(ROOT)/core/seq/mfx.c $(ROOT)/core/app/view_labels.c $(ROOT)/core/app/ctl_snd.c $(ROOT)/core/app/ctl_mix.c $(ROOT)/core/app/ctl_lib.c $(ROOT)/core/app/ctl_shift.c $(ROOT)/core/app/ctl_presets.c $(ROOT)/core/app/ctl_type.c $(ROOT)/core/app/undo.c $(ROOT)/core/app/fizz_sx.c $(ROOT)/core/app/midi_map.c $(ROOT)/core/app/persist.c $(ROOT)/core/ui/ui_lib.c $(ROOT)/core/ui/ui_presets.c $(ROOT)/core/ui/ui_type.c $(ROOT)/core/ui/ui_snd.c $(ROOT)/core/ui/ui_mfx.c $(ROOT)/core/app/ctl_mfx.c $(ROOT)/core/ui/ui_ape.c $(ROOT)/core/ui/ui_geek.c $(ROOT)/core/ui/ui_tools.c $(ROOT)/core/ui/ui_ov.c $(ROOT)/core/app/ctl_tools.c $(ROOT)/core/seq/tools.c \
@@ -69,7 +73,11 @@ SAN_ENGINE := -O2 -g -fsanitize=address,signed-integer-overflow -fno-sanitize-re
 T := $(ROOT)/core/tests
 
 vpath %.c $(ROOT)/core/app $(ROOT)/core/ui $(ROOT)/core/gfx $(ROOT)/core/seq $(ROOT)/core/voice \
-          $(ROOT)/core/voice/quad $(ROOT)/core/voice/sid $(ROOT)/core/voice/fx .
+          $(ROOT)/core/voice/quad $(ROOT)/core/voice/sid $(ROOT)/core/voice/fx $(ROOT)/core/voice/sam .
+# (SAM's own files: no warnings, and no sanitizers: its 6502-derived code is not ours to fix)
+SAM_OBJS := $(addprefix $(B)/,$(notdir $(SAM_SRC:.c=.o))) $(addprefix $(B)/san/,$(notdir $(SAM_SRC:.c=.o)))
+$(SAM_OBJS): WARN := -std=gnu99 -w $(PROFILE) $(GFX_DEF)
+$(addprefix $(B)/san/,$(notdir $(SAM_SRC:.c=.o))): SAN := -O1 -g
 
 all: render_frames render_audio
 

@@ -234,6 +234,7 @@ typedef struct qd_app {
     uint32_t seed_fix;                 /* P2.4: qd_app_seed's (0: the clock's) */
     uint32_t free_ms;                  /* P2.6c: qd_app_tick_free's ms so far */
     uint32_t snd_gen, snd_ms;          /* P2.6c: qd_app_sounds' last edit_gen and ms */
+    uint32_t say_ms;                   /* EvilGenius: SAY's last look at the words SAM must have rendered */
     uint32_t edit_gen;                 /* P2.6c: bumped by every input (and a take, the tracks' sounds into the pattern):
                                         * persist.c's looks hash a pattern again only after it moved */
     uint32_t frame_hash;               /* P2.4: qd_app_frame_changed's last frame .. */

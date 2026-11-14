@@ -741,7 +741,7 @@ void ui_menu_draw(const ui_menu_t *v);
 enum { UI_SD_ALGO, UI_SD_TONE, UI_SD_OFS, UI_SD_OPENV, UI_SD_TRIG, UI_SD_KEYS, UI_SD_FILTER, UI_SD_ADSR, UI_SD_BAND,
        UI_SD_DRIVE, UI_SD_LFO, UI_SD_LFOSHAPE, UI_SD_PORT, UI_SD_CRUSH, UI_SD_VOICE,   /* (E3: CRUSH: a sine as stairs) */
        UI_SD_MOD,                       /* (E4: the eight slots as rows) */
-       UI_SD_OSC, UI_SD_ENV, UI_SD_CHIP, UI_SD_WORD, UI_SD_DIGI };   /* EvilGenius: SID TONE's own pages */
+       UI_SD_OSC, UI_SD_ENV, UI_SD_CHIP, UI_SD_WORD, UI_SD_DIGI, UI_SD_SAY };   /* EvilGenius: SID TONE's own pages */
 typedef struct ui_snd {
     const char *name;                   /* the page's ("RATIO", "ENV A") */
     int npg, ipg;                       /* its group's pages, this one's place (the dots in the head) */
