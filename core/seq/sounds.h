@@ -77,13 +77,14 @@ void qd_sound_autoname(const int16_t *patch, int variant, char *out);   /* out: 
 int qd_sound_ideas(const int16_t *patch, char (*out)[QD_SOUND_NAME], int max);
 
 /* ---- P1.5t (PLAN.md "The sound system, redesigned"): THE PRESETS. A preset is a sound with an id:
- *   FACTORY   ids 1..QD_NFACTORY, compiled in, read only: INIT, the 16 FM TONE sounds (quad_voice.h's presets 1..16),
+ *   FACTORY   ids 1..QD_NFACTORY, compiled in, read only: INIT, the first 16 sounds (quad_voice.h's presets 1..16),
  *             the six drums (above); id k = the pool's old number k
  *   MINE      ids QD_PRESET_MINE0.. (each MY preset keeps its own: persist.h's library holds them, 256 places)
  * A pool sound and a track's sound remember the preset they came from (0: none known).
  * THE KINDS (the browser's filters B2..B8): the auto-names' classifier, in seven: BASS KEYS PLUCK PAD LEAD DRUMS FX
  * (a BELL is KEYS; KICK SNARE CLAP HAT are DRUMS; NOISE, a strongly detuned or fed-back sound is FX) */
-#define QD_NFACTORY 23
+#define QD_NFACTORY (QD_QUAD_NPRESET + 6)   /* (0.2: INIT and the first set, the six kit drums, the second set) */
+#define QD_NPOOL0 23                    /* the demo's pool: the first QD_NPOOL0 factory sounds (0.1's whole set) */
 #define QD_PRESET_MINE0 0x100
 enum { QD_PK_BASS, QD_PK_KEYS, QD_PK_PLUCK, QD_PK_PAD, QD_PK_LEAD, QD_PK_DRUMS, QD_PK_FX, QD_NPK };
 int qd_preset_kind(const int16_t *patch);

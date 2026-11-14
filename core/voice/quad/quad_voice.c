@@ -41,7 +41,9 @@ static const char *const L_PSLOPE[2] = {"TIME", "RATE"};
 static const char *const L_VLOOP[3] = {"OFF", "FWD", "BOUNCE"};
 static const char *const L_DHOLD[8] = {"2K", "3K", "4K", "6K", "8K", "11K", "16K", "22K"};
 static const char *const L_MULT[10] = {"FREE", "1/32", "1/16", "1/8", "1/4", "1/2", "1 BAR", "2 BAR", "4 BAR", "8 BAR"};
-static const char *const L_LWAVE[QD_LW_N] = {"TRI", "SINE", "SAW", "SQR", "S&H", "EXP", "RAMP"};
+static const char *const L_LWAVE[QD_LW_N] = {"TRI", "SINE", "SAW", "SQR", "S&H", "EXP", "RAMP", "ARP OCT", "ARP 5TH",
+                                             "ARP MAJ", "ARP MIN", "ARP SUS", "ARP 7", "ARP MI7", "ARP MA7",
+                                             "ARP DIM"};   /* (seven letters: the editor's value) */
 static const char *const L_LTRIG[QD_LT_N] = {"FREE", "TRIG", "HOLD", "ONE", "HALF"};
 static const char *const L_MSRC[QD_MS_N] = {"OFF", "VEL", "KEY", "MW", "AT", "PB", "BR", "RAND", "F ENV"};
 static const char *const L_VMODE[2] = {"POLY", "MONO"};
@@ -231,7 +233,7 @@ const char *qd_quad_value_text(int i, int v, char *buf)
 int qd_quad_lockable(int id) { return id >= 0 && id < QD_QUAD_NP && (id < QD_QP_VMODE || id > QD_QP_VPRIO); }
 
 /* ---------------------------------------------------------------- the presets --- */
-typedef struct { uint8_t id; int16_t v; } kv_t;
+typedef struct __attribute__((packed)) { uint8_t id; int16_t v; } kv_t;   /* (three bytes a value: the unit's flash) */
 #define LF(k, f) QD_QP_LFO(k, QD_QL_##f)
 static const kv_t P_SAWLEAD[] = {{QD_QP_FTYPE, QD_QF_LP}, {QD_QP_FREQ, 1100}, {QD_QP_RESO, 6}, {QD_QP_W2, QD_SW_SAW},
                                  {QD_QP_F2, 70}, {QD_QP_EDEC, 9}, {QD_QP_ESUS, 10}, {QD_QP_EREL, 6},
@@ -264,7 +266,7 @@ static const kv_t P_CHOIR[] = {{QD_QP_W1, QD_SW_TRI}, {QD_QP_W2, QD_SW_TRI}, {QD
                                {LF(0, DEST), QD_D_PITCH}, {LF(0, SPEED), 66}, {LF(0, DEPTH), 66}};
 static const kv_t P_WOBBLE[] = {{QD_QP_W2, QD_SW_SAW}, {QD_QP_C2, -12}, {QD_QP_FTYPE, QD_QF_LP}, {QD_QP_FREQ, 350},
                                 {QD_QP_RESO, 12}, {QD_QP_ESUS, 14}, {LF(0, DEST), QD_D_CUT}, {LF(0, MULT), 3},
-                                {LF(0, DEPTH), 110}, {LF(0, TRIG), QD_LT_TRIG}};
+                                {LF(0, DEPTH), 110}, {LF(0, TRIG), QD_LT_TRIG}, {QD_QP_LEVEL, 85}};
 static const kv_t P_WIND[] = {{QD_QP_W1, QD_SW_NOI}, {QD_QP_FTYPE, QD_QF_BP}, {QD_QP_FREQ, 600}, {QD_QP_RESO, 14},
                               {QD_QP_EATK, 9}, {QD_QP_ESUS, 14}, {QD_QP_EREL, 11}, {LF(0, DEST), QD_D_CUT},
                               {LF(0, SPEED), 25}, {LF(0, DEPTH), 110}};
@@ -274,20 +276,235 @@ static const kv_t P_ALERT[] = {{QD_QP_W1, QD_SW_PUL}, {QD_QP_C1, -24}, {QD_QP_PW
 static const kv_t P_COUNT[] = {{QD_QP_W1, QD_SW_OFF}, {QD_QP_WORD, 27}, {QD_QP_DHOLD, 3}, {QD_QP_EREL, 0}};
 static const kv_t P_LAUGH[] = {{QD_QP_W1, QD_SW_OFF}, {QD_QP_WORD, 44}, {QD_QP_VLOOP, 1}, {QD_QP_DBITS, 3},
                                {QD_QP_EREL, 0}, {LF(0, DEST), QD_D_VOXP}, {LF(0, SPEED), 60}, {LF(0, DEPTH), 68}};
+/* ---- 0.2: the second set. Written with these (an oscillator's wave and coarse; the three envelopes, 2 and 3 with
+ * their LINK off: an oscillator's own level and length; the filter and its envelope; an LFO by SPEED or by MULT; a
+ * modulation slot). An ARP wave's SPEED 127 is a note a PAL frame, 119 two, 111 three; its DEPTH 65 the chord up, 63
+ * down, +-30 two octaves, +-50 three */
+#define OSC(n, w, c) {QD_QP_W1 + 5 * ((n) - 1), QD_SW_##w}, {QD_QP_C1 + 5 * ((n) - 1), c}
+#define AMP(a, d, s_, r) {QD_QP_EATK, a}, {QD_QP_EDEC, d}, {QD_QP_ESUS, s_}, {QD_QP_EREL, r}
+#define EN2(a, d, s_, r) {QD_QP_E2LINK, 0}, {QD_QP_E2A, a}, {QD_QP_E2D, d}, {QD_QP_E2S, s_}, {QD_QP_E2R, r}
+#define EN3(a, d, s_, r) {QD_QP_E3LINK, 0}, {QD_QP_E3A, a}, {QD_QP_E3D, d}, {QD_QP_E3S, s_}, {QD_QP_E3R, r}
+#define FLT(t, f, r) {QD_QP_FTYPE, QD_QF_##t}, {QD_QP_FREQ, f}, {QD_QP_RESO, r}
+#define FEN(a, d, s_, r) {QD_QP_FATK, a}, {QD_QP_FDEC, d}, {QD_QP_FSUS, s_}, {QD_QP_FREL, r}
+#define LFO(k, dst, wav, trg, spd, dep)                                                                               \
+    {LF(k, DEST), QD_D_##dst}, {LF(k, WAVE), QD_LW_##wav}, {LF(k, TRIG), QD_LT_##trg}, {LF(k, SPEED), spd},           \
+        {LF(k, DEPTH), dep}
+#define LFM(k, dst, wav, trg, mul, dep)                                                                               \
+    {LF(k, DEST), QD_D_##dst}, {LF(k, WAVE), QD_LW_##wav}, {LF(k, TRIG), QD_LT_##trg}, {LF(k, MULT), mul},            \
+        {LF(k, DEPTH), dep}
+#define MOD(k, src, dst, dep)                                                                                         \
+    {QD_QP_MOD(k, QD_QM_SRC), QD_MS_##src}, {QD_QP_MOD(k, QD_QM_DST), QD_D_##dst}, {QD_QP_MOD(k, QD_QM_DEPTH), dep}
+#define VIB(k) LFO(k, PITCH, SINE, TRIG, 86, 65), {LF(k, FADE), 6}   /* a vibrato that comes in */
+#define WORD(w) {QD_QP_W1, QD_SW_OFF}, {QD_QP_WORD, w}, {QD_QP_EREL, 0}
+/* BASS */
+static const kv_t N_BUNKER[] = {{QD_QP_W1, QD_SW_PUL}, {QD_QP_PW1, 50}, LFO(0, PW1, TRI, FREE, 52, 76), FLT(LP, 640, 8),
+                                MOD(0, FENV, CUT, 28), FEN(0, 26, 0, 20), AMP(0, 8, 7, 3), {QD_QP_LEVEL, 110}};
+static const kv_t N_ACID[] = {FLT(LP, 560, 15), MOD(0, FENV, CUT, 36), MOD(1, VEL, CUT, 24), FEN(0, 22, 0, 16),
+                              AMP(0, 9, 9, 2), {QD_QP_VMODE, 1}, {QD_QP_PORT, QD_PORT_LEGATO}, {QD_QP_PTIM, 30}};
+static const kv_t N_TRISUB[] = {OSC(1, TRI, 0), OSC(2, SAW, 0), EN2(0, 5, 0, 0), FLT(LP, 700, 2), {QD_QP_FROUTE, 2},
+                                AMP(0, 8, 13, 4), {QD_QP_LEVEL, 115}};
+static const kv_t N_OCTRUN[] = {{QD_QP_W1, QD_SW_PUL}, {QD_QP_PW1, 34}, LFM(0, PITCH, AOCT, TRIG, 2, 65),
+                                FLT(LP, 760, 6), MOD(0, FENV, CUT, 20), FEN(0, 30, 20, 20), AMP(0, 8, 10, 3)};
+static const kv_t N_RUBBER[] = {{QD_QP_CHIP, 1}, {QD_QP_W1, QD_SW_PS}, {QD_QP_PW1, 70}, FLT(LP, 90, 11),
+                                MOD(0, FENV, CUT, 22), FEN(0, 18, 0, 14), AMP(0, 7, 8, 3), {QD_QP_LEVEL, 120}};
+static const kv_t N_SYNCBASS[] = {OSC(1, SAW, 7), {QD_QP_M1, 1}, LFO(0, P1, EXP, ONE, 70, 96), FLT(LP, 900, 4),
+                                  AMP(0, 8, 9, 3), {QD_QP_LEVEL, 127}};
+static const kv_t N_TRIPLE[] = {OSC(2, SAW, 0), OSC(3, SAW, -12), {QD_QP_DETUNE, 46}, FLT(LP, 720, 5),
+                                MOD(0, FENV, CUT, 18), FEN(0, 34, 30, 24), AMP(0, 9, 11, 4), {QD_QP_LEVEL, 75}};
+static const kv_t N_DIRTY[] = {{QD_QP_W1, QD_SW_PUL}, {QD_QP_PW1, 50}, OSC(2, PUL, -12), {QD_QP_PW2, 20},
+                               {QD_QP_DRIVE, 70}, {QD_QP_BITS, 30}, FLT(LP, 820, 10), MOD(0, FENV, CUT, 24),
+                               FEN(0, 24, 10, 16), AMP(0, 7, 9, 2), {QD_QP_LEVEL, 75}};
+static const kv_t N_FIFTH[] = {LFO(0, PITCH, A5TH, TRIG, 127, 65), {QD_QP_DRIVE, 40}, FLT(LP, 800, 6),
+                               AMP(0, 8, 10, 3), {QD_QP_LEVEL, 120}};
+/* LEAD */
+static const kv_t N_HERO[] = {{QD_QP_W1, QD_SW_PUL}, {QD_QP_PW1, 40}, LFO(0, PW1, TRI, FREE, 58, 80), VIB(1),
+                              AMP(0, 7, 11, 5)};
+static const kv_t N_GLIDE[] = {OSC(2, SAW, 0), {QD_QP_DETUNE, 24}, FLT(LP, 1250, 5), {QD_QP_VMODE, 1},
+                               {QD_QP_PORT, QD_PORT_ON}, {QD_QP_PTIM, 45}, VIB(0), AMP(0, 8, 12, 4), {QD_QP_LEVEL, 90}};
+static const kv_t N_SCREAM[] = {OSC(1, SAW, 12), {QD_QP_M1, 1}, LFO(0, P1, TRI, FREE, 38, 88), MOD(0, MW, P1, 60),
+                                AMP(0, 8, 12, 6), {QD_QP_LEVEL, 115}};
+static const kv_t N_RINGSOLO[] = {{QD_QP_W1, QD_SW_TRI}, {QD_QP_M1, 2}, {QD_QP_C3, 7}, OSC(2, PUL, 0), {QD_QP_PW2, 30},
+                                  EN2(0, 8, 7, 5), VIB(0), AMP(0, 8, 13, 5)};
+static const kv_t N_FLUTE[] = {{QD_QP_W1, QD_SW_TRI}, OSC(2, NOI, 24), EN2(0, 3, 0, 0), VIB(0), AMP(3, 8, 12, 5),
+                               {QD_QP_LEVEL, 115}};
+static const kv_t N_BRASS[] = {{QD_QP_CHIP, 1}, OSC(2, SAW, 0), {QD_QP_DETUNE, 14}, FLT(LP, 60, 3),
+                               MOD(0, FENV, CUT, 40), FEN(34, 50, 70, 30), AMP(2, 8, 12, 5), {QD_QP_LEVEL, 90}};
+static const kv_t N_POWER5[] = {OSC(2, SAW, 7), OSC(3, PUL, -12), {QD_QP_PW3, 40}, {QD_QP_DETUNE, 10},
+                                FLT(LP, 1150, 4), {QD_QP_DRIVE, 30}, AMP(0, 8, 12, 5), {QD_QP_LEVEL, 70}};
+static const kv_t N_SQUELCH[] = {{QD_QP_W1, QD_SW_PUL}, MOD(0, FENV, PW1, -55), FEN(0, 36, 0, 30), VIB(0),
+                                 AMP(0, 8, 12, 5)};
+static const kv_t N_MAJ50[] = {{QD_QP_W1, QD_SW_PUL}, {QD_QP_PW1, 48}, LFO(0, PITCH, AMAJ, TRIG, 127, 65),
+                               LFO(1, PW1, TRI, FREE, 50, 76), AMP(0, 8, 11, 5)};
+static const kv_t N_MIN50[] = {{QD_QP_W1, QD_SW_PUL}, {QD_QP_PW1, 30}, LFO(0, PITCH, AMIN, TRIG, 127, 65),
+                               LFO(1, PW1, TRI, FREE, 44, 74), AMP(0, 8, 11, 5)};
+static const kv_t N_DUET[] = {{QD_QP_W1, QD_SW_TRI}, OSC(2, PUL, 12), {QD_QP_PW2, 28}, LFM(0, P2, AMAJ, TRIG, 2, 65),
+                              EN2(0, 8, 9, 5), AMP(0, 8, 12, 5)};
+/* KEYS, PLUCK */
+static const kv_t N_CLAVI[] = {{QD_QP_W1, QD_SW_PUL}, {QD_QP_PW1, 10}, FLT(LP, 900, 6), MOD(0, FENV, CUT, 40),
+                               MOD(1, VEL, CUT, 20), FEN(0, 24, 0, 18), AMP(0, 7, 0, 4), {QD_QP_LEVEL, 120}};
+static const kv_t N_MARIMBA[] = {{QD_QP_W1, QD_SW_TRI}, OSC(2, TRI, 24), EN2(0, 2, 0, 1), AMP(0, 6, 0, 6),
+                                 {QD_QP_VEL, 90}, {QD_QP_LEVEL, 120}};
+static const kv_t N_HARPSI[] = {{QD_QP_W1, QD_SW_PUL}, {QD_QP_PW1, 8}, OSC(2, SAW, 12), EN2(0, 7, 0, 5),
+                                AMP(0, 9, 0, 6), {QD_QP_LEVEL, 95}};
+static const kv_t N_EPIANO[] = {{QD_QP_W1, QD_SW_TRI}, OSC(2, PUL, 0), {QD_QP_PW2, 24}, EN2(0, 7, 2, 6),
+                                {QD_QP_DETUNE, 12}, LFO(0, PAN, SINE, FREE, 62, 84), AMP(0, 10, 3, 7), {QD_QP_VEL, 100},
+                                {QD_QP_LEVEL, 110}};
+static const kv_t N_FPLUCK[] = {OSC(2, PUL, 0), {QD_QP_PW2, 50}, {QD_QP_DETUNE, 18}, FLT(LP, 480, 10),
+                                MOD(0, FENV, CUT, 55), FEN(0, 22, 0, 22), AMP(0, 8, 0, 7), {QD_QP_LEVEL, 85}};
+static const kv_t N_CHIME[] = {OSC(1, TRI, 12), {QD_QP_M1, 2}, {QD_QP_C3, 26}, OSC(2, TRI, 24), EN2(0, 5, 0, 5),
+                               AMP(0, 10, 0, 10), {QD_QP_LEVEL, 115}};
+static const kv_t N_MBOX[] = {OSC(1, TRI, 12), OSC(2, TRI, 31), EN2(0, 4, 0, 3), AMP(0, 8, 0, 8), {QD_QP_VEL, 100},
+                              {QD_QP_LEVEL, 120}};
+static const kv_t N_SYNCPL[] = {OSC(1, PUL, 5), {QD_QP_PW1, 40}, {QD_QP_M1, 1}, LFO(0, P1, EXP, ONE, 74, 104),
+                                AMP(0, 7, 0, 6)};
+static const kv_t N_LADDER[] = {{QD_QP_W1, QD_SW_PUL}, {QD_QP_PW1, 30}, LFM(0, PITCH, AOCT, TRIG, 1, 114),
+                                FLT(LP, 1300, 6), AMP(0, 9, 0, 8)};
+static const kv_t N_CASCADE[] = {OSC(2, PUL, 12), {QD_QP_PW2, 30}, EN2(0, 6, 0, 4), LFM(0, PITCH, AMIN7, TRIG, 2, 34),
+                                 FLT(LP, 1100, 7), MOD(0, FENV, CUT, 25), FEN(0, 45, 20, 30), AMP(0, 10, 6, 8), {QD_QP_LEVEL, 85}};
+static const kv_t N_DOM7[] = {OSC(2, SAW, 0), {QD_QP_DETUNE, 20}, LFO(0, PITCH, ADOM7, TRIG, 127, 65),
+                              FLT(LP, 1000, 8), MOD(0, FENV, CUT, 35), FEN(0, 30, 0, 20), AMP(0, 7, 0, 6), {QD_QP_LEVEL, 90}};
+/* PAD */
+static const kv_t N_STRINGS[] = {{QD_QP_W1, QD_SW_PUL}, {QD_QP_PW1, 40}, OSC(2, PUL, 0), {QD_QP_PW2, 70},
+                                 OSC(3, PUL, 12), {QD_QP_PW3, 30}, {QD_QP_DETUNE, 40}, LFO(0, PWALL, TRI, FREE, 48, 78),
+                                 LFO(1, PW2, SINE, FREE, 37, 74), FLT(LP, 1350, 2), AMP(9, 8, 13, 10),
+                                 {QD_QP_LEVEL, 55}};
+static const kv_t N_CATHEDRAL[] = {{QD_QP_W1, QD_SW_TRI}, OSC(2, SAW, -12), OSC(3, PUL, 12), {QD_QP_DETUNE, 20},
+                                   EN2(10, 8, 10, 10), FLT(LP, 1000, 4), LFO(0, CUT, SINE, FREE, 28, 72),
+                                   AMP(10, 8, 14, 11), {QD_QP_LEVEL, 75}};
+static const kv_t N_GLASSPAD[] = {{QD_QP_W1, QD_SW_TRI}, {QD_QP_M1, 2}, {QD_QP_C3, 12}, OSC(2, TRI, 0), {QD_QP_F2, 70},
+                                  LFO(0, P3, SINE, FREE, 25, 65), AMP(9, 8, 13, 11)};
+static const kv_t N_NOTCH[] = {OSC(2, SAW, 0), OSC(3, SAW, 0), {QD_QP_DETUNE, 60}, FLT(NOTCH, 1000, 8),
+                               LFO(0, CUT, TRI, FREE, 24, 90), AMP(8, 8, 13, 10), {QD_QP_LEVEL, 75}};
+static const kv_t N_HOLLOW[] = {{QD_QP_W1, QD_SW_PUL}, OSC(2, TRI, -12), OSC(3, PUL, 0), {QD_QP_PW3, 56},
+                                {QD_QP_DETUNE, 25}, FLT(BP, 1100, 3), {QD_QP_FROUTE, 5}, LFO(0, PAN, SINE, FREE, 40, 90),
+                                AMP(9, 8, 13, 10), {QD_QP_LEVEL, 90}};
+static const kv_t N_DARK[] = {OSC(1, SAW, -12), OSC(2, SAW, -12), OSC(3, PUL, -24), {QD_QP_PW3, 50},
+                              {QD_QP_DETUNE, 35}, FLT(LP, 420, 11), MOD(0, FENV, CUT, 40), FEN(100, 90, 60, 70),
+                              AMP(11, 8, 14, 11), {QD_QP_LEVEL, 75}};
+static const kv_t N_SHIMMER[] = {OSC(1, TRI, 12), OSC(2, PUL, 0), {QD_QP_PW2, 40}, LFO(0, P1, ASUS, FREE, 111, 94),
+                                 LFO(1, PW2, TRI, FREE, 45, 78), AMP(9, 8, 13, 10), {QD_QP_LEVEL, 85}};
+static const kv_t N_DREAM[] = {{QD_QP_W1, QD_SW_TRI}, OSC(2, TRI, 12), EN2(8, 8, 8, 10),
+                               LFM(0, PITCH, AMAJ7, FREE, 2, 65), AMP(6, 9, 12, 10), {QD_QP_LEVEL, 110}};
+/* DRUMS (made to be played at C4) */
+static const kv_t N_SQKICK[] = {OSC(1, PUL, -24), LFO(0, PITCH, EXP, ONE, 76, 112), OSC(2, NOI, 12), EN2(0, 1, 0, 0),
+                                AMP(0, 7, 0, 5), {QD_QP_LEVEL, 120}, {QD_QP_HR, 3}};
+static const kv_t N_TRITOM[] = {OSC(1, TRI, -12), LFO(0, PITCH, EXP, ONE, 70, 84), OSC(2, NOI, 0), EN2(0, 2, 0, 1),
+                                AMP(0, 8, 0, 7), {QD_QP_LEVEL, 127}, {QD_QP_HR, 3}};
+static const kv_t N_SYNTOM[] = {OSC(1, PUL, -12), LFO(0, PITCH, EXP, ONE, 62, 100), LFO(1, PW1, RAMP, ONE, 62, 90),
+                                AMP(0, 8, 0, 8), {QD_QP_HR, 3}};
+static const kv_t N_PSNARE[] = {OSC(1, NOI, 18), OSC(2, PUL, -5), EN2(0, 4, 0, 3), LFO(0, P2, EXP, ONE, 80, 96),
+                                FLT(HP, 600, 0), {QD_QP_FROUTE, 1}, AMP(0, 6, 0, 6), {QD_QP_LEVEL, 115}, {QD_QP_HR, 3}};
+static const kv_t N_RIM[] = {OSC(1, TRI, 19), {QD_QP_M1, 2}, {QD_QP_C3, 24}, {QD_QP_F3, 100}, OSC(2, PUL, 12),
+                             EN2(0, 1, 0, 1), AMP(0, 3, 0, 3), {QD_QP_LEVEL, 127}, {QD_QP_HR, 3}};
+static const kv_t N_COWBELL[] = {OSC(1, PUL, 14), OSC(2, PUL, 20), {QD_QP_F2, 80}, FLT(BP, 1050, 6), AMP(0, 6, 0, 6),
+                                 {QD_QP_LEVEL, 115}, {QD_QP_HR, 3}};
+static const kv_t N_MHAT[] = {OSC(1, TRI, 29), {QD_QP_M1, 2}, {QD_QP_C3, 22}, {QD_QP_F3, 100}, OSC(2, NOI, 24),
+                              EN2(0, 2, 0, 2), FLT(HP, 1700, 4), AMP(0, 3, 0, 2), {QD_QP_LEVEL, 120}, {QD_QP_HR, 3}};
+static const kv_t N_SHAKER[] = {OSC(1, NOI, 24), FLT(HP, 1500, 3), AMP(3, 3, 0, 3), {QD_QP_LEVEL, 110}};
+static const kv_t N_CRASH[] = {OSC(1, NOI, 24), OSC(2, TRI, 23), {QD_QP_M2, 2}, EN2(0, 9, 0, 9), FLT(HP, 1400, 5),
+                               AMP(0, 10, 0, 10), {QD_QP_HR, 3}};
+static const kv_t N_BLIP[] = {OSC(1, PUL, 24), AMP(0, 2, 0, 1), {QD_QP_HR, 3}, {QD_QP_LEVEL, 120}};
+/* FX */
+static const kv_t N_LASER[] = {OSC(1, PUL, 12), {QD_QP_PW1, 30}, LFO(0, PITCH, SAW, TRIG, 104, 112), AMP(0, 8, 10, 6)};
+static const kv_t N_SIREN[] = {{QD_QP_W1, QD_SW_PUL}, {QD_QP_PW1, 50}, OSC(2, PUL, 0), {QD_QP_F2, 72},
+                               LFO(0, PITCH, TRI, FREE, 52, 76), FLT(LP, 1200, 8), AMP(2, 8, 14, 6), {QD_QP_LEVEL, 50}};
+static const kv_t N_DATABANK[] = {OSC(1, PUL, 12), LFM(0, PITCH, SH, TRIG, 1, 104), LFM(1, PW1, SH, TRIG, 2, 90),
+                                  AMP(0, 8, 13, 2)};
+static const kv_t N_EXPLODE[] = {OSC(1, NOI, -6), OSC(2, NOI, 6), LFO(0, PITCH, EXP, ONE, 48, 100), FLT(LP, 500, 6),
+                                 LFO(1, CUT, EXP, ONE, 44, 110), {QD_QP_DRIVE, 60}, AMP(0, 11, 0, 11),
+                                 {QD_QP_LEVEL, 105}};
+static const kv_t N_RISER[] = {OSC(1, NOI, 12), OSC(2, SAW, 0), OSC(3, SAW, 0), {QD_QP_DETUNE, 80}, FLT(BP, 1000, 13),
+                               LFO(0, CUT, RAMP, ONE, 30, 96), LFO(1, PITCH, RAMP, ONE, 30, 96), AMP(8, 8, 15, 5), {QD_QP_LEVEL, 85}};
+static const kv_t N_PWRDOWN[] = {OSC(2, PUL, -12), {QD_QP_PW2, 50}, LFO(0, PITCH, SAW, ONE, 36, 124),
+                                 LFO(1, SRR, RAMP, ONE, 36, 100), AMP(0, 8, 13, 6), {QD_QP_LEVEL, 80}};
+static const kv_t N_STATIC[] = {OSC(1, NOI, 24), FLT(BP, 1300, 12), LFO(0, CUT, SH, FREE, 100, 100),
+                                LFO(1, LEVEL, SH, FREE, 108, 90), AMP(0, 8, 14, 3)};
+static const kv_t N_MODEM[] = {{QD_QP_W1, QD_SW_PUL}, OSC(2, PUL, 7), LFM(0, P1, SH, TRIG, 1, 90),
+                               LFM(1, P2, SH, TRIG, 1, 84), {LF(1, PHASE), 64}, {QD_QP_BITS, 40}, AMP(0, 8, 14, 2), {QD_QP_LEVEL, 60}};
+static const kv_t N_PANIC[] = {OSC(1, PUL, 12), {QD_QP_PW1, 20}, LFO(0, PITCH, ADIM, TRIG, 119, 14), AMP(0, 8, 13, 3)};
+static const kv_t N_LIFTUP[] = {OSC(1, PUL, -12), {QD_QP_PW1, 40}, LFO(0, PITCH, A5TH, ONE, 111, 114),
+                                AMP(0, 8, 12, 4)};
+static const kv_t N_LIFTDN[] = {OSC(1, PUL, -12), {QD_QP_PW1, 40}, LFO(0, PITCH, A5TH, ONE, 111, 14),
+                                AMP(0, 8, 12, 4)};
+/* VOX */
+static const kv_t N_EVIL[] = {WORD(42)};
+static const kv_t N_GENIUS[] = {WORD(43)};
+static const kv_t N_DESTROY[] = {WORD(21), FLT(LP, 900, 10), {QD_QP_DRIVE, 50}, {QD_QP_DBITS, 3}};
+static const kv_t N_CHANT[] = {WORD(29), {QD_QP_VLOOP, 2}, {QD_QP_DBITS, 2}, {QD_QP_VSTART, 10}, {QD_QP_VEND, 70},
+                               LFM(0, VOXP, SQR, TRIG, 3, 76)};
+static const kv_t N_OBEY[] = {OSC(1, PUL, -24), {QD_QP_PW1, 20}, {QD_QP_ESUS, 15}, {QD_QP_WORD, 51}, FLT(LP, 700, 8),
+                              {QD_QP_FROUTE, 9}, {QD_QP_LEVEL, 85}};
+static const kv_t N_FOOLS[] = {WORD(50), {QD_QP_ROOT, 72}, {QD_QP_DHOLD, 3}};
+static const kv_t N_VOWEL[] = {WORD(47), {QD_QP_VSTART, 38}, {QD_QP_VEND, 46}, {QD_QP_VLOOP, 1},
+                               LFO(0, WPOS, TRI, FREE, 40, 80), FLT(BP, 1100, 8)};
+static const kv_t N_SAMSAYS[] = {{QD_QP_W1, QD_SW_OFF}, {QD_QP_SAY, 77}, {QD_QP_EREL, 0}};
+static const kv_t N_DEEPSAM[] = {{QD_QP_W1, QD_SW_OFF}, {QD_QP_SAY, 303}, {QD_QP_EREL, 0}, {QD_QP_SPIT, 96},
+                                 {QD_QP_STHR, 190}, {QD_QP_SSPD, 90}};
+static const kv_t N_GLITCH[] = {WORD(20), {QD_QP_VLOOP, 1}, {QD_QP_DBITS, 2}, LFM(0, WPOS, SH, TRIG, 2, 110)};
+static const kv_t N_WELCOME[] = {WORD(45)};
+static const kv_t N_DENIED[] = {WORD(15), {QD_QP_ROOT, 67}, FLT(BP, 1000, 9)};
 #undef LF
+/* a preset: its values over the defaults, its kind (sounds.h's QD_PK_*: 0 BASS, KEYS, PLUCK, PAD, LEAD, DRUMS, 6 FX)
+ * and the sends it loads with (chorus, echo, room) */
+enum { K_BASS, K_KEYS, K_PLUCK, K_PAD, K_LEAD, K_DRUMS, K_FX };
 static const struct {
     const char *name;
     const kv_t *kv;
-    int n;
+    uint8_t n, kind, send[3];
 } PRESET[QD_QUAD_NPRESET] = {
-#define P(nm, a) {nm, a, (int)(sizeof(a) / sizeof(a[0]))}
-    {"INIT", 0, 0},
-    P("SAW LEAD", P_SAWLEAD), P("PWM BASS", P_PWMBASS), P("SYNC LEAD", P_SYNC), P("RING BELL", P_BELL),
-    P("RESO PAD", P_PAD), P("P+S ORGAN", P_ORGAN), P("BP SWEEP", P_BPSWEEP), P("ZAP", P_ZAP),
-    P("BUZZ BASS", P_BUZZ), P("CHIP CHOIR", P_CHOIR), P("WOBBLE", P_WOBBLE), P("WIND", P_WIND),
-    P("INTRUDER", P_INTRUDER), P("ALERT", P_ALERT), P("COUNTDOWN", P_COUNT), P("HA HA HA", P_LAUGH),
+#define P(nm, a, kind, c, d, r) {nm, a, (uint8_t)(sizeof(a) / sizeof(a[0])), kind, {c, d, r}}
+    {"INIT", 0, 0, K_LEAD, {0, 0, 20}},
+    /* (1..16: the first set; their sends as 0.1 had them) */
+    P("SAW LEAD", P_SAWLEAD, K_LEAD, 30, 20, 40), P("PWM BASS", P_PWMBASS, K_BASS, 20, 35, 60),
+    P("SYNC LEAD", P_SYNC, K_LEAD, 0, 10, 10), P("RING BELL", P_BELL, K_KEYS, 20, 30, 40),
+    P("RESO PAD", P_PAD, K_PAD, 25, 20, 40), P("P+S ORGAN", P_ORGAN, K_KEYS, 50, 25, 70),
+    P("BP SWEEP", P_BPSWEEP, K_LEAD, 35, 25, 50), P("ZAP", P_ZAP, K_DRUMS, 25, 40, 40),
+    P("BUZZ BASS", P_BUZZ, K_BASS, 20, 30, 50), P("CHIP CHOIR", P_CHOIR, K_PAD, 0, 15, 10),
+    P("WOBBLE", P_WOBBLE, K_BASS, 15, 20, 25), P("WIND", P_WIND, K_FX, 55, 15, 65),
+    P("INTRUDER", P_INTRUDER, K_FX, 15, 25, 40), P("ALERT", P_ALERT, K_FX, 50, 30, 80),
+    P("COUNTDOWN", P_COUNT, K_FX, 25, 30, 40), P("HA HA HA", P_LAUGH, K_FX, 20, 30, 50),
+    /* (17..: the second set) */
+    P("BUNKER BASS", N_BUNKER, K_BASS, 0, 0, 10), P("ACID 6581", N_ACID, K_BASS, 0, 20, 10),
+    P("TRI SUB", N_TRISUB, K_BASS, 0, 0, 5), P("OCTAVE RUN", N_OCTRUN, K_BASS, 0, 15, 10),
+    P("RUBBER 8580", N_RUBBER, K_BASS, 0, 0, 10), P("SYNC BASS", N_SYNCBASS, K_BASS, 0, 10, 10),
+    P("TRIPLE SAW", N_TRIPLE, K_BASS, 20, 0, 15), P("DIRTY PULSE", N_DIRTY, K_BASS, 0, 0, 10),
+    P("FIFTH DRIVE", N_FIFTH, K_BASS, 0, 10, 15),
+    P("HERO LEAD", N_HERO, K_LEAD, 10, 35, 25), P("GLIDE SAW", N_GLIDE, K_LEAD, 15, 30, 25),
+    P("SCREAMER", N_SCREAM, K_LEAD, 0, 30, 20), P("RING SOLO", N_RINGSOLO, K_LEAD, 10, 30, 30),
+    P("TRI FLUTE", N_FLUTE, K_LEAD, 10, 20, 45), P("BRASS 8580", N_BRASS, K_LEAD, 20, 15, 35),
+    P("POWER FIFTH", N_POWER5, K_LEAD, 10, 25, 25), P("PW SQUELCH", N_SQUELCH, K_LEAD, 10, 30, 20),
+    P("MAJOR 50HZ", N_MAJ50, K_LEAD, 0, 30, 25), P("MINOR 50HZ", N_MIN50, K_LEAD, 0, 30, 25),
+    P("DUET ARP", N_DUET, K_LEAD, 15, 35, 30),
+    P("CLAVI PULSE", N_CLAVI, K_KEYS, 10, 15, 15), P("TRI MARIMBA", N_MARIMBA, K_PLUCK, 0, 15, 35),
+    P("HARPSI", N_HARPSI, K_KEYS, 10, 10, 35), P("E PIANO", N_EPIANO, K_KEYS, 35, 10, 30),
+    P("FILTER PLUCK", N_FPLUCK, K_PLUCK, 20, 35, 30), P("GLASS CHIME", N_CHIME, K_KEYS, 20, 30, 55),
+    P("MUSIC BOX", N_MBOX, K_PLUCK, 0, 25, 50), P("SYNC PLUCK", N_SYNCPL, K_PLUCK, 10, 40, 25),
+    P("OCT LADDER", N_LADDER, K_PLUCK, 20, 40, 30), P("MIN7 CASCADE", N_CASCADE, K_KEYS, 20, 35, 40),
+    P("DOM7 STAB", N_DOM7, K_PLUCK, 15, 30, 30),
+    P("PWM STRINGS", N_STRINGS, K_PAD, 60, 20, 55), P("CATHEDRAL", N_CATHEDRAL, K_PAD, 40, 20, 80),
+    P("GLASS PAD", N_GLASSPAD, K_PAD, 50, 30, 70), P("NOTCH DRIFT", N_NOTCH, K_PAD, 30, 25, 50),
+    P("HOLLOW PAD", N_HOLLOW, K_PAD, 40, 20, 60), P("DARK TOWER", N_DARK, K_PAD, 20, 20, 70),
+    P("SUS SHIMMER", N_SHIMMER, K_PAD, 40, 30, 60), P("MAJ7 DREAM", N_DREAM, K_PAD, 30, 45, 60),
+    P("SQUARE KICK", N_SQKICK, K_DRUMS, 0, 0, 5), P("TRI TOM", N_TRITOM, K_DRUMS, 0, 0, 20),
+    P("SYN TOM", N_SYNTOM, K_DRUMS, 0, 10, 25), P("PULSE SNARE", N_PSNARE, K_DRUMS, 0, 0, 20),
+    P("RIMSHOT", N_RIM, K_DRUMS, 0, 0, 15), P("COWBELL", N_COWBELL, K_DRUMS, 0, 0, 15),
+    P("METAL HAT", N_MHAT, K_DRUMS, 0, 0, 5), P("SHAKER", N_SHAKER, K_DRUMS, 0, 0, 10),
+    P("CRASH", N_CRASH, K_DRUMS, 0, 0, 35), P("BLIP", N_BLIP, K_DRUMS, 0, 20, 15),
+    P("LASER GUN", N_LASER, K_FX, 0, 35, 25), P("TOWER SIREN", N_SIREN, K_FX, 20, 20, 40),
+    P("DATA BANK", N_DATABANK, K_FX, 0, 30, 25), P("EXPLOSION", N_EXPLODE, K_FX, 0, 10, 45),
+    P("RISER", N_RISER, K_FX, 20, 30, 50), P("POWER DOWN", N_PWRDOWN, K_FX, 0, 20, 30),
+    P("RADIO STATIC", N_STATIC, K_FX, 0, 10, 20), P("MODEM", N_MODEM, K_FX, 0, 15, 15),
+    P("DIM PANIC", N_PANIC, K_FX, 0, 20, 25), P("LIFT UP", N_LIFTUP, K_FX, 0, 25, 25),
+    P("LIFT DOWN", N_LIFTDN, K_FX, 0, 25, 25),
+    P("EVIL", N_EVIL, K_FX, 0, 20, 35), P("GENIUS", N_GENIUS, K_FX, 0, 20, 35),
+    P("DESTROY", N_DESTROY, K_FX, 0, 25, 40), P("ROBOT CHANT", N_CHANT, K_FX, 20, 20, 30),
+    P("OBEY", N_OBEY, K_FX, 20, 20, 50), P("FOOLS", N_FOOLS, K_FX, 0, 30, 45),
+    P("VOWEL MORPH", N_VOWEL, K_LEAD, 30, 25, 40), P("SAM SAYS", N_SAMSAYS, K_FX, 0, 20, 30),
+    P("DEEP SAM", N_DEEPSAM, K_FX, 0, 20, 40), P("GLITCH DATA", N_GLITCH, K_FX, 0, 30, 20),
+    P("WELCOME", N_WELCOME, K_FX, 0, 20, 35), P("DENIED", N_DENIED, K_FX, 0, 25, 35),
 #undef P
 };
+typedef char preset_count_ok[sizeof PRESET / sizeof PRESET[0] == QD_QUAD_NPRESET ? 1 : -1];
 
 static void defaults(int16_t *p)
 {
@@ -296,10 +513,11 @@ static void defaults(int16_t *p)
         p[i] = val(i).def;
 }
 
+static int preset_k(int k) { return k < 0 ? 0 : k >= QD_QUAD_NPRESET ? QD_QUAD_NPRESET - 1 : k; }
 void qd_quad_preset_patch(int k, int16_t *p)
 {
     int i;
-    k = k < 0 ? 0 : k >= QD_QUAD_NPRESET ? QD_QUAD_NPRESET - 1 : k;
+    k = preset_k(k);
     defaults(p);
     for (i = 0; i < PRESET[k].n; i++) {
         const val_t v = val(PRESET[k].kv[i].id);
@@ -307,7 +525,9 @@ void qd_quad_preset_patch(int k, int16_t *p)
         p[PRESET[k].kv[i].id] = (int16_t)(x < v.min ? v.min : x > v.max ? v.max : x);
     }
 }
-const char *qd_quad_preset_name(int k) { return PRESET[k < 0 ? 0 : k >= QD_QUAD_NPRESET ? QD_QUAD_NPRESET - 1 : k].name; }
+const char *qd_quad_preset_name(int k) { return PRESET[preset_k(k)].name; }
+int qd_quad_preset_kind(int k) { return PRESET[preset_k(k)].kind; }
+const uint8_t *qd_quad_preset_sends(int k) { return PRESET[preset_k(k)].send; }
 
 /* ---------------------------------------------------------------- packing --- */
 #define MAGIC 'S'
@@ -502,16 +722,57 @@ static uint32_t rnd(uint32_t *s)
     return *s;
 }
 
-/* an LFO's step a block: FREE its SPEED (0.05 .. 51 Hz), a division the tempo's */
+/* the ARP waves (quad_voice.h): a chord's notes, played up */
+static const uint8_t ARP_CHORD[QD_LW_N - QD_LW_ARP0][5] = {   /* (their count, then the semitones) */
+    {2, 0, 12, 0, 0}, {2, 0, 7, 0, 0},  {3, 0, 4, 7, 0},  {3, 0, 3, 7, 0}, {3, 0, 5, 7, 0},
+    {4, 0, 4, 7, 10}, {4, 0, 3, 7, 10}, {4, 0, 4, 7, 11}, {4, 0, 3, 6, 9}};
+int qd_quad_arp_chord(int w, const uint8_t **notes)
+{
+    if (w < QD_LW_ARP0 || w >= QD_LW_N)
+        return 0;
+    if (notes)
+        *notes = ARP_CHORD[w - QD_LW_ARP0] + 1;
+    return ARP_CHORD[w - QD_LW_ARP0][0];
+}
+static int arp_pitch(int dest) { return dest == QD_D_PITCH || (dest >= QD_D_P1 && dest <= QD_D_P3); }
+/* LFO k's arpeggio: its steps a cycle (0: not an ARP wave): the chord, on a pitch over DEPTH's octaves */
+static int arp_steps(const int16_t *p, int k)
+{
+    const int n = qd_quad_arp_chord(p[QD_QP_LFO(k, QD_QL_WAVE)], 0);
+    int dep = p[QD_QP_LFO(k, QD_QL_DEPTH)] - 64;
+    if (!n || !arp_pitch(p[QD_QP_LFO(k, QD_QL_DEST)]))
+        return n;
+    dep = dep < 0 ? -dep : dep;
+    return n * (dep >= 43 ? 3 : dep >= 22 ? 2 : 1);
+}
+/* .. its semitones at phase ph (the notes up; DEPTH under 64: down) */
+static int arp_semis(const int16_t *p, int k, uint32_t ph)
+{
+    const uint8_t *c = 0;
+    const int n = qd_quad_arp_chord(p[QD_QP_LFO(k, QD_QL_WAVE)], &c), steps = arp_steps(p, k);
+    int i = (int)(((uint64_t)ph * (uint32_t)steps) >> 32);
+    if (!n)
+        return 0;
+    if (p[QD_QP_LFO(k, QD_QL_DEPTH)] < 64)
+        i = steps - 1 - i;
+    return c[i % n] + 12 * (i / n);
+}
+
+/* an LFO's step a block: FREE its SPEED (0.05 .. 51 Hz), a division the tempo's. An ARP wave: the rate is a step's
+ * (FREE: SPEED in PAL frames, 50.12 Hz the frame), the cycle its steps */
 static uint32_t lfo_inc(const int16_t *p, int k, int bpm)
 {
     static const float QUARTERS[10] = {0.f, 0.125f, 0.25f, 0.5f, 1.f, 2.f, 4.f, 8.f, 16.f, 32.f};
-    const int mu = p[QD_QP_LFO(k, QD_QL_MULT)];
+    const int mu = p[QD_QP_LFO(k, QD_QL_MULT)], steps = arp_steps(p, k);
     float hz;
     if (mu > 0 && mu < 10)
         hz = (float)(bpm > 0 ? bpm : 120) / 60.f / QUARTERS[mu];
+    else if (steps)
+        hz = ((float)PAL_CLK / 19656.f) / (float)(1 + (127 - p[QD_QP_LFO(k, QD_QL_SPEED)]) / 8);
     else
         hz = 0.05f * ex2((float)p[QD_QP_LFO(k, QD_QL_SPEED)] * (10.f / 127.f));
+    if (steps)
+        hz /= (float)steps;
     return (uint32_t)(hz * ((float)BLK / (float)SR) * 4294967296.f);
 }
 
@@ -693,7 +954,8 @@ void qd_quad_voice_start(qd_quad_voice_t *v, const int16_t *patch, qd_quad_owner
     }
     for (k = 0; k < 3; k++) {                           /* HOLD: the FREE LFO's value now, held */
         const int w = v->patch[QD_QP_LFO(k, QD_QL_WAVE)];
-        v->lhold[k] = lfo_shape(w, o->quad_lfo.ph[k] + v->lph[k], (int32_t)(o->quad_lfo.rnd[k] >> 17) - 16384);
+        v->lhold[k] = w >= QD_LW_ARP0 ? arp_semis(v->patch, k, o->quad_lfo.ph[k] + v->lph[k])
+                                      : lfo_shape(w, o->quad_lfo.ph[k] + v->lph[k], (int32_t)(o->quad_lfo.rnd[k] >> 17) - 16384);
     }
     v->lage = 0;
     v->fenv = 0;
@@ -796,9 +1058,11 @@ static void modulate(qd_quad_voice_t *v, int32_t *d)
         const int w = p[QD_QP_LFO(k, QD_QL_WAVE)], tr = p[QD_QP_LFO(k, QD_QL_TRIG)];
         const int fade = p[QD_QP_LFO(k, QD_QL_FADE)] - 64;
         int32_t x, f = 32767;
+        uint32_t aph = v->lph[k];                       /* (an ARP wave's phase) */
         v->nx_lw[k] = 0;
         if (tr == QD_LT_FREE) {
-            x = lfo_shape(w, o->quad_lfo.ph[k] + v->lph[k], (int32_t)(o->quad_lfo.rnd[k] >> 17) - 16384);
+            aph += o->quad_lfo.ph[k];
+            x = lfo_shape(w, aph, (int32_t)(o->quad_lfo.rnd[k] >> 17) - 16384);
         } else if (tr == QD_LT_HOLD) {
             x = v->lhold[k];
         } else {
@@ -812,6 +1076,18 @@ static void modulate(qd_quad_voice_t *v, int32_t *d)
                     v->lstage[k] = 1, v->lph[k] = end ? end - 1u : 0xFFFFFFFFu;
             }
             x = lfo_shape(w, v->lph[k], v->lsh[k]);
+            aph = v->lph[k];
+        }
+        if (w >= QD_LW_ARP0) {                          /* ARP: on a pitch the chord's semitones exactly (a pitch's
+                                                         * Q15 is 24 semitones), no fade; else a staircase */
+            const int semis = tr == QD_LT_HOLD ? v->lhold[k] : arp_semis(p, k, aph);
+            if (arp_pitch(dest)) {
+                x = depth ? (semis * 32768 + 12) / 24 : 0;
+                v->nx_lw[k] = (int16_t)clamp(x, -32767, 32767);
+                d[dest] += x;
+                continue;
+            }
+            x = semis * 2730;
         }
         if (fade) {                                     /* in (under 64) or out (over), over |fade| x 8 blocks */
             const int32_t n = (fade < 0 ? -fade : fade) * 8, a = (int32_t)(v->lage < (uint32_t)n ? v->lage : (uint32_t)n);

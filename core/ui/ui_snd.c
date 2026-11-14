@@ -436,7 +436,13 @@ static int32_t lfo_wave(int w, float u)                 /* -1000..1000 */
     case QD_LW_SQR: return t < 0.5f ? 1000 : -1000;
     case QD_LW_SH: return (int32_t)(((((uint32_t)(u * 4.f + 7.f) * 2654435761u) >> 21) & 2047u) - 1024u);
     case QD_LW_EXP: return (int32_t)((1.f - t) * (1.f - t) * (1.f - t) * 2000.f - 1000.f);
-    default: return (int32_t)((2.f * t - 1.f) * 1000.f);
+    default: {
+        const uint8_t *c = 0;                           /* an ARP wave: its chord's stairs */
+        const int n = qd_quad_arp_chord(w, &c);
+        if (n)
+            return (int32_t)c[(int)(t * (float)n) % n] * 2000 / 12 - 1000;
+        return (int32_t)((2.f * t - 1.f) * 1000.f);
+    }
     }
 }
 

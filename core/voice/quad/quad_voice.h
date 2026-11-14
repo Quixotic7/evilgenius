@@ -22,7 +22,10 @@ extern "C" {
 #define QD_QUAD_BLOB 128                /* a packed sound: 'S', version, the values (value - min, a byte; FREQ two), the
                                          * MIDI sound's tag at 124..127 */
 #define QD_QUAD_BLOB5 96                /* (FIZZ's older SysEx size: the first 96 bytes) */
-#define QD_QUAD_NPRESET 17              /* 0 INIT, 1..16 the factory sounds */
+#define QD_QUAD_NPRESET0 17             /* 0 INIT, 1..16 the first set (0.1's) .. */
+#define QD_QUAD_NPRESET 89              /* .. and 17.. the second (0.2: sounds.h puts the six kit drums between them) */
+/* preset k's factory id (sounds.h: 1..17 INIT and the first set, 18..23 the kit, 24.. the second set) */
+#define QD_QUAD_PRESET_ID(k) ((k) < QD_QUAD_NPRESET0 ? (k) + 1 : (k) + 7)
 
 /* the sound's values (the p-lock ids). Ranges in qd_quad_value_range; values shown "+-" are stored centred on 64 */
 enum {
@@ -112,7 +115,15 @@ enum { QD_SW_OFF, QD_SW_TRI, QD_SW_SAW, QD_SW_PUL, QD_SW_NOI, QD_SW_TS, QD_SW_PT
  * WAVE, PHASE 0..127, TRIG (FREE, TRIG, HOLD, ONE, HALF), DEPTH (64 none) */
 enum { QD_QL_SPEED, QD_QL_MULT, QD_QL_FADE, QD_QL_DEST, QD_QL_WAVE, QD_QL_PHASE, QD_QL_TRIG, QD_QL_DEPTH };
 #define QD_QP_LFO(k, f) (QD_QP_LFO0 + (k) * 8 + (f))
-enum { QD_LW_TRI, QD_LW_SINE, QD_LW_SAW, QD_LW_SQR, QD_LW_SH, QD_LW_EXP, QD_LW_RAMP, QD_LW_N };
+/* (0.2) the ARP waves: the LFO is a C64 player's arpeggio, a chord's notes one after another on the one voice. On a
+ * pitch (PITCH, PITCH 1..3) the steps are the chord's semitones exactly, whatever DEPTH: its sign is the direction
+ * (over 64 up, under down) and its size the range (1..21 the chord, 22..42 two octaves of it, 43.. three). SPEED is a
+ * step's length in PAL frames (127: one frame, 50 Hz; a frame more every 8 below, to 16), MULT a step's length in the
+ * tempo's divisions. On another destination an ARP wave is a staircase, DEPTH as ever */
+enum { QD_LW_TRI, QD_LW_SINE, QD_LW_SAW, QD_LW_SQR, QD_LW_SH, QD_LW_EXP, QD_LW_RAMP,
+       QD_LW_ARP0, QD_LW_AOCT = QD_LW_ARP0, QD_LW_A5TH, QD_LW_AMAJ, QD_LW_AMIN, QD_LW_ASUS, QD_LW_ADOM7, QD_LW_AMIN7,
+       QD_LW_AMAJ7, QD_LW_ADIM, QD_LW_N };
+int qd_quad_arp_chord(int wave, const uint8_t **notes);   /* an ARP wave's notes (semitones) and their count; 0: not one */
 enum { QD_LT_FREE, QD_LT_TRIG, QD_LT_HOLD, QD_LT_ONE, QD_LT_HALF, QD_LT_N };
 /* the modulation destinations (LFO DEST, a slot's DST): a value of the patch, or the voice's own (pitch, pan ..) */
 enum { QD_D_OFF, QD_D_PITCH, QD_D_CUT, QD_D_RES, QD_D_PW1, QD_D_PW2, QD_D_PW3, QD_D_PWALL, QD_D_P1, QD_D_P2, QD_D_P3,
@@ -172,7 +183,7 @@ struct qd_quad_voice {
     uint8_t hr_left, gated, model;      /* hard restart blocks left; the gate as the chip has it; its model */
     uint8_t lstage[3];                  /* the LFOs: 0 running, 1 stopped (ONE / HALF done) */
     uint32_t lph[3];                    /* their phases (32-bit: a cycle) */
-    int32_t lhold[3], lsh[3];           /* HOLD's value; S&H's current value */
+    int32_t lhold[3], lsh[3];           /* HOLD's value (an ARP wave: its semitones); S&H's current value */
     uint32_t lage;                      /* blocks since the note (the fades) */
     int32_t fenv;                       /* the filter envelope (Q15) and its stage (0 attack .. 3 release, 4 done) */
     uint8_t fstage;
@@ -216,6 +227,8 @@ void qd_quad_dist(qd_dist_t *st, int drive, int32_t *b, int n);
 /* ---- patches */
 void qd_quad_preset_patch(int k, int16_t *p);
 const char *qd_quad_preset_name(int k);
+int qd_quad_preset_kind(int k);         /* its kind (sounds.h QD_PK_*) */
+const uint8_t *qd_quad_preset_sends(int k);   /* the sends it loads with: chorus, echo, room */
 void qd_quad_pack(const int16_t *p, uint8_t *blob);
 void qd_quad_pack5(const int16_t *p, uint8_t *blob);
 int qd_quad_unpack(const uint8_t *blob, int n, int16_t *p);

@@ -1,10 +1,10 @@
 {
-  "commit": "f6591dc7f211244ee51ed6ba39cb93caf50d5a03",
+  "commit": "988a54e4776d1a8c09250826b422cc928b2be21d",
   "dirty": true,
   "files": {
     "app.wasm": {
-      "bytes": 675601,
-      "sha256": "92b9259a0839f579b984a41785fb74562ef8e4774fcaaf9a281c7a58c9d3db1f"
+      "bytes": 681722,
+      "sha256": "c0b919335b4e807162f66ef35f1d11e2f1fc3c1c4468cbb3dc107dcc0fe6317c"
     },
     "worklet.js": {
       "bytes": 5001,

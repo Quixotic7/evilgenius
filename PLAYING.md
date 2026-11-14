@@ -879,8 +879,13 @@ Three things, one job each:
 - **The track's sound** is what a track plays. It is saved with its pattern and edited in EDIT. It remembers the
   preset it came from; once you edit it, a **\*** follows its name ("LEAD 4 \*").
 - **The Preset Library** (champagne) holds every preset, shared by every project:
-  - **FACTORY**, built in and read only: INIT, the 16 FM TONE sounds and the six drums (KICK, SNARE, CLAP, GHOST,
-    HAT, OPEN HAT);
+  - **FACTORY**, built in and read only, 95 of them: INIT, the first sixteen sounds and the six drums of the kit
+    (KICK, SNARE, CLAP, GHOST, HAT, OPEN HAT), then the second set (0.2), in the kinds' order: nine basses (BUNKER
+    BASS .. FIFTH DRIVE), eleven leads (HERO LEAD .. DUET ARP), eleven keys and plucks (CLAVI PULSE .. DOM7 STAB),
+    eight pads (PWM STRINGS .. MAJ7 DREAM), ten drums made to be played at C4 (SQUARE KICK .. BLIP), eleven effects
+    (LASER GUN .. LIFT DOWN) and twelve VOX sounds (EVIL .. DENIED). The kinds' filters (B2..B8) find them; the VOX
+    sounds are under FX. Thirteen use the ARP waves (the LFOs, below): MAJOR 50HZ, MINOR 50HZ, FIFTH DRIVE, OCTAVE RUN,
+    DUET ARP, OCT LADDER, MIN7 CASCADE, DOM7 STAB, SUS SHIMMER, MAJ7 DREAM, DIM PANIC, LIFT UP and LIFT DOWN;
   - **MY PRESETS**, the ones you saved or imported, up to 256.
   - Every preset carries **tags**, one or several of BASS, KEYS, PLUCK, PAD, LEAD, DRUMS, FX (P1.5v). A saved or
     imported preset starts with the one read from the sound; you can change any preset's tags, the factory ones' too
@@ -901,8 +906,8 @@ Three things, one job each:
   the right for where you are in the list, and "7/31" at the top.
 - **A preset carries its mix** (P1.5x): its pan and its chorus / delay / reverb sends. Browsing plays them too (the
   track's pan and sends while you turn; its level stays); **LOAD** keeps them on the track; **CANCEL** gives the
-  track its own pan and sends back exactly. The factory FM TONE presets carry ChoralRoot's sends (EP: chorus 30, delay
-  20, reverb 40); INIT and the drums the default kit's reverb 20. A step's sound lock (the pool) is the sound only: the
+  track its own pan and sends back exactly. The factory presets carry sends chosen for the sound (a pad more room, a bass
+  nearly none); INIT and the kit's drums the default kit's reverb 20. A step's sound lock (the pool) is the sound only: the
   track's pan and sends stay.
 - **SELECT** jumps ten. **The white keys play the chosen preset** in the track's scale.
 - **F2 = LOAD**: the preset replaces the track's sound and the browser closes ("LOADED").
@@ -976,6 +981,20 @@ F1 / F2 show the ten before / after; B11 removes the sound lock.
   play notes). On the LFO page **KNOB 4 is DEST**, the destination, through ChoralRoot's list (NONE, the LFO 1
   values, ALGO, the ratios, HARM .. FREQ, RESO .. DRIVE, PAN, the sends ...); its name is big in the picture with an
   arrow from the wave to it. ALGORITHM does nothing on the LFO pages.
+- **The ARP waves** (0.2): after RAMP, WAVE goes on to ARP OCT, ARP 5TH, ARP MAJ, ARP MIN, ARP SUS, ARP 7, ARP MI7,
+  ARP MA7 and ARP DIM. The LFO is then a C64 player's arpeggio: the one voice plays the chord's notes one after
+  another, so a single note sounds as a chord and takes one voice of the eight.
+  - **DEST** PITCH arpeggiates the whole sound; PITCH 1, 2 or 3 one oscillator, the others holding the note. The
+    steps are the chord's semitones exactly.
+  - **DEPTH** is the direction and the range, not an amount: over 0 the notes go up, under 0 down; 1 to 21 the chord,
+    22 to 42 two octaves of it, 43 and more three. At 0 there is no arpeggio.
+  - **SPEED** (MULT on FREE) is a step's length in PAL frames, the C64's 50 Hz: 127 is a note a frame (the buzzing
+    chord of the old games), and every 8 below that is a frame more, down to 16 frames a note at 0.
+  - **MULT** on a division makes a step that long instead: 1/16 is a note a sixteenth, in time with the pattern.
+  - **TRIG**: TRIG starts the chord again with every note; FREE keeps every note of the track in step with each other;
+    ONE runs through the notes once and stays on the last (a run up or down); HOLD keeps the note the chord was on
+    when the key went down.
+  - On any other destination an ARP wave is a staircase of the chord's intervals, with DEPTH as for the other waves.
 - **Hold an LFO key and turn a knob** on any page to **map** it: the first click makes that value the LFO's
   destination, and turning sets the depth (up or down from 0; on from where it was if it already was the
   destination). While the key is held a picture shows "LFO n" over the value's name and the depth as a bar from the

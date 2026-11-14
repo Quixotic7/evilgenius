@@ -357,6 +357,11 @@ tour: $(B)/tour.o $(CORE_OBJ) $(PVG_OBJ)
 	$(CC) -o $@ $^ -lm
 $(B)/tour.o: eg/tour.c $(HDRS) | $(B)
 	$(CC) $(OPT) $(WARN) $(INC) $(DEFS) -c $< -o $@
+# every factory preset on one voice, measured and written out (tools/eg/presets.c): make presets; ./presets OUT_DIR
+presets: $(B)/presets.o $(CORE_OBJ) $(PVG_OBJ)
+	$(CC) -o $@ $^ -lm
+$(B)/presets.o: eg/presets.c $(HDRS) | $(B)
+	$(CC) $(OPT) $(WARN) $(INC) $(DEFS) -c $< -o $@
 # the retro rooms alone on a test signal (tools/eg/fxtest.c): make fxtest; ./fxtest OUT_DIR
 fxtest: $(B)/fxtest.o $(CORE_OBJ) $(PVG_OBJ)
 	$(CC) -o $@ $^ -lm

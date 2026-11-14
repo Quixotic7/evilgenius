@@ -12,6 +12,16 @@ EVILGENIUS began as FIZZ 0.12.0-beta.17 with another engine and another face; FI
 
 <!-- The next release's notes, for testers, in plain language. firmware/release.py moves them. -->
 
+- **72 more factory sounds**, 95 in all: nine basses, eleven leads, eleven keys and plucks, eight pads, ten drums
+  (made to be played at C4), eleven effects and twelve VOX sounds, after the first set and the kit. Each loads with
+  sends chosen for it. The demo's pool and your saved projects keep the sounds they had.
+- **PAL arpeggios.** An LFO's WAVE goes on past RAMP to nine ARP waves (OCT, 5TH, MAJ, MIN, SUS, 7, MI7, MA7, DIM):
+  with DEST on PITCH the one voice plays the chord's notes one after another, as C64 music does, so a chord costs one
+  voice. SPEED is a note's length in PAL frames (127: a note a frame, 50 Hz), or MULT makes it a division of the
+  tempo; DEPTH over 0 runs up, under 0 down, and further out covers two and three octaves. PITCH 1..3 arpeggiates
+  one oscillator over the others. Thirteen of the new sounds use it (MAJOR 50HZ, OCTAVE RUN, LIFT UP ..).
+- WOBBLE no longer clips at full velocity (its LEVEL is 85).
+
 ## 0.1.0-beta.1 (2026-11-14)
 
 The first release. EVILGENIUS is a six-track SID groovebox that talks: FIZZ's sequencer and controls, a C64 SID for

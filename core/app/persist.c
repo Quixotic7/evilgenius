@@ -995,10 +995,13 @@ static void lib_read(qd_app_t *a)
     ps->id_next = 0;
     {
         const int len = qd_store_get(&ps->lib_st, QD_RKEY(QD_RK_FTAG, 0, 0), pr_buf, sizeof pr_buf);
-        if (len >= 2 + QD_NFACTORY && pr_buf[0] == 'F' && (pr_buf[1] == 1 || pr_buf[1] == 2))
-            memcpy(ps->ftags, pr_buf + 2, QD_NFACTORY);
-        if (len == 2 + QD_NFACTORY + 2 && pr_buf[1] == 2)
-            memcpy(&ps->id_next, pr_buf + 2 + QD_NFACTORY, 2);
+        /* (0.2: the record is as long as the set was when it was written: 0.1's 23 tags, then more) */
+        const int nt = len - 2 - (len >= 4 && pr_buf[1] == 2 ? 2 : 0);
+        if (nt >= QD_NPOOL0 && nt <= QD_NFACTORY && pr_buf[0] == 'F' && (pr_buf[1] == 1 || pr_buf[1] == 2)) {
+            memcpy(ps->ftags, pr_buf + 2, (size_t)nt);
+            if (pr_buf[1] == 2)
+                memcpy(&ps->id_next, pr_buf + 2 + nt, 2);
+        }
     }
 }
 
@@ -2900,7 +2903,7 @@ static void snd_load(void *ctx, int key, qd_sound_t *dst)
         len = qd_store_get(st, item_key(a, it), b, sizeof b);
     if (len > 0 && len != (int)QDS_DELETED)
         snd_from_rec(a, key, dst, b, (uint32_t)len);
-    else if (key < QD_SK_LIB && !a->proj.pool_empty && key <= QD_NFACTORY) {
+    else if (key < QD_SK_LIB && !a->proj.pool_empty && key <= QD_NPOOL0) {
         dst->preset = (uint16_t)key;                    /* (the factory's: a reference to it, with the owner's tags) */
         pool_cache(a, dst);
     }

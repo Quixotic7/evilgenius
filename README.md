@@ -26,6 +26,8 @@ cabinets). The art and the spoken lines are original.
   micro-timing, slides and functions per step; MIDI effects per track.
 - **Eight effects** as floors of a tower: CHORUS, ECHO, ROOM, CRUSH, ROBOT, WARP, GLITCH, TV, with a send per track
   into each.
+- **95 factory sounds**: basses, leads, keys, pads, drums, effects and speech, and **PAL arpeggios**: an LFO wave
+  that plays a chord's notes one a frame on a single voice, as C64 music does.
 - **USB and Bluetooth MIDI, USB audio** to the computer; four projects and 128 presets of your own on the unit.
 
 ## Build and test
