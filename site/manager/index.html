@@ -1,0 +1,125 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: MPL-2.0 -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EVILGENIUS manager: back up an FM-1, move its presets</title>
+<meta name="description" content="Back up and restore an M-VAVE FM-1 running EVILGENIUS, and export and import its presets, from the browser over USB.">
+<link rel="stylesheet" href="../css/eg.css">
+<style>
+/* the manager's own: the console that follows the page down, the scene in it, the lists */
+.console { position: sticky; top: 0; z-index: 2; background: var(--black); display: flex; gap: calc(var(--px) * 4); align-items: center; }
+.console .scene { display: flex; align-items: flex-end; gap: calc(var(--px) * 2); flex: none; min-width: 84px; justify-content: center; }
+.console .says { flex: 1; min-width: 0; }
+.console .status { margin: 0 0 8px; overflow-wrap: anywhere; }
+.console #alert { min-height: 0; margin: 8px 0 0; }
+.console .bar { max-width: none; }
+.plan h3 { margin-top: 0; }
+.plan ul { margin-bottom: 0.6em; }
+#presets td:first-child, #presets th:first-child { width: 4.5em; color: var(--grey); }
+#presets td:last-child { text-align: right; }
+#presets .key { padding: var(--px) calc(var(--px) * 2); box-shadow: none; }
+.name { color: var(--white); }
+@media (max-width: 640px) { .console .scene { min-width: 0; } .console .scene .prop { display: none; } }
+</style>
+<script type="module" src="../js/px.js"></script>
+<script type="module" src="./manager.js"></script>
+</head>
+<body>
+<div class="screen">
+  <header class="head">
+    <a href="../" aria-label="EVILGENIUS, home"><px-text font="big" scale="3" color="lightred" shadow="red">EVIL</px-text> <px-text font="big" scale="3" color="white" shadow="darkgrey">GENIUS</px-text></a>
+    <span class="where"><px-text font="small" scale="3" color="lightblue">MANAGER</px-text></span>
+    <nav class="nav" aria-label="Pages">
+      <a href="../"><px-text font="small" scale="2" color="white">HOME</px-text></a>
+      <a href="../try/"><px-text font="small" scale="2" color="white">TRY</px-text></a>
+      <a href="../install/"><px-text font="small" scale="2" color="white">INSTALL</px-text></a>
+      <a href="./" aria-current="page"><px-text font="small" scale="2" color="white">MANAGER</px-text></a>
+    </nav>
+  </header>
+  <hr class="rule">
+
+  <main>
+    <h1><px-text font="big" scale="3" color="yellow">THE CABINET</px-text></h1>
+    <p style="margin-top:16px">This page copies what an FM-1 running EVILGENIUS keeps: its projects and MY PRESETS. Save them to a file, put a file back, and move presets between units. It needs <strong>Chrome or Edge on a computer</strong> (Web MIDI) and the FM-1's <strong>USB cable</strong>. Nothing is installed, and nothing leaves this computer.</p>
+    <div id="nomidi" class="box bad" hidden>
+      <p><strong>This browser cannot talk to the FM-1.</strong> It has no Web MIDI. Open this page in Chrome or Edge on a computer.</p>
+    </div>
+
+    <div id="console" class="box lit console">
+      <div class="scene" aria-hidden="true">
+        <px-sprite id="actor" name="AGENT_STAND" scale="3"></px-sprite>
+        <px-sprite id="prop" class="prop" name="CABINET" scale="3"></px-sprite>
+      </div>
+      <div class="says">
+        <p id="status" class="status" role="status" aria-live="polite">Not connected.</p>
+        <div class="bar" role="progressbar" aria-label="Progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="bar"><i id="barfill"></i></div>
+        <p id="alert" class="status err" role="alert"></p>
+      </div>
+    </div>
+
+    <h2><px-text font="big" scale="2" color="lightblue">1 CONNECT</px-text></h2>
+    <div class="box">
+      <p>Plug the FM-1 into this computer with a USB <strong>data</strong> cable and switch it on. Close other tabs and apps that use MIDI. The browser asks once for permission to use MIDI devices: allow it. Bluetooth is not used here.</p>
+      <div class="keys">
+        <button id="connect" class="key go" type="button"><px-sprite name="TERMINAL" scale="2"></px-sprite><px-text font="big" scale="2" color="white">CONNECT</px-text></button>
+        <button id="disconnect" class="key plain hide" type="button"><px-text font="big" scale="2" color="white">DISCONNECT</px-text></button>
+      </div>
+      <p id="unit" class="dim">No FM-1 yet.</p>
+    </div>
+
+    <h2><px-text font="big" scale="2" color="lightblue">2 BACK UP AND RESTORE</px-text></h2>
+    <div class="box">
+      <p>A backup is the FM-1's whole store in one <code>.egbak</code> file: every project and all of MY PRESETS. Restoring a backup <strong>replaces everything</strong> in the store with what the file holds. Stop the FM-1 before either, and leave it alone until it is done.</p>
+      <div class="keys">
+        <button id="backup" class="key" type="button" disabled><px-sprite name="ICON_DISK" scale="2"></px-sprite><px-text font="big" scale="2" color="white">BACK UP</px-text></button>
+        <button id="restore" class="key plain" type="button" disabled><px-text font="big" scale="2" color="white">RESTORE A BACKUP</px-text></button>
+        <input id="restorefile" class="hide" type="file" accept=".egbak,.bin" aria-label="A backup file to restore" tabindex="-1">
+      </div>
+      <div id="restoreplan" class="box bad plan" hidden>
+        <h3><px-text font="big" scale="2" color="lightred">RESTORE THIS?</px-text></h3>
+        <p id="restoretext"></p>
+        <ul id="restorelist"></ul>
+        <p>Everything on the FM-1 now is replaced: its projects and MY PRESETS. It takes up to a minute. <strong>Do not unplug the FM-1 while it writes.</strong></p>
+        <div class="keys">
+          <button id="restorego" class="key warn" type="button"><px-text font="big" scale="2" color="white">RESTORE NOW</px-text></button>
+          <button id="restoreno" class="key plain" type="button"><px-text font="big" scale="2" color="white">CANCEL</px-text></button>
+        </div>
+      </div>
+    </div>
+
+    <h2><px-text font="big" scale="2" color="lightblue">3 MY PRESETS</px-text></h2>
+    <div class="box">
+      <p>A preset travels as a small <code>.egsnd</code> file, or several in one <code>.egsnds</code> file. Imported presets go into the free places of MY PRESETS; nothing there is replaced.</p>
+      <div class="keys">
+        <button id="exportall" class="key" type="button" disabled><px-sprite name="DOC" scale="2"></px-sprite><px-text font="big" scale="2" color="white">EXPORT ALL</px-text></button>
+        <button id="import" class="key plain" type="button" disabled><px-text font="big" scale="2" color="white">IMPORT PRESETS</px-text></button>
+        <input id="importfile" class="hide" type="file" accept=".egsnd,.egsnds,.json" multiple aria-label="Preset files to import" tabindex="-1">
+      </div>
+      <div id="importplan" class="box lit plan" hidden>
+        <h3><px-text font="big" scale="2" color="yellow">IMPORT THESE?</px-text></h3>
+        <p id="importtext"></p>
+        <ul id="importlist"></ul>
+        <p>This EVILGENIUS takes presets only as part of its store. So the page reads the store, saves it to your downloads as a backup, adds the presets, and writes the store back: the same as a restore, about a minute in all. Stop the FM-1 first; anything on it not yet saved is lost. <strong>Do not unplug the FM-1 while it writes.</strong></p>
+        <div class="keys">
+          <button id="importgo" class="key go" type="button"><px-text font="big" scale="2" color="white">IMPORT NOW</px-text></button>
+          <button id="importno" class="key plain" type="button"><px-text font="big" scale="2" color="white">CANCEL</px-text></button>
+        </div>
+      </div>
+      <p id="presetnote" class="dim">Connect an FM-1 to see its presets.</p>
+      <table id="presets" hidden>
+        <caption class="px-sr">MY PRESETS on the FM-1</caption>
+        <thead><tr><th scope="col">Place</th><th scope="col">Name</th><th scope="col">Tags</th><th scope="col"><span class="px-sr">Export</span></th></tr></thead>
+        <tbody id="presetrows"></tbody>
+      </table>
+    </div>
+  </main>
+
+  <footer class="foot">
+    <hr class="rule">
+    <p>A backup is the file <code>firmware/tools/fizz_xdata.py backup</code> writes, so either tool reads the other's. The link is adapted from FIZZ's manager and <a href="https://github.com/charlesvestal/fm1-base">fm1-base</a>'s installer (MPL-2.0). EVILGENIUS is <a href="https://github.com/Quixotic7/evilgenius">open source</a>, MPL-2.0. Not affiliated with M-VAVE.</p>
+  </footer>
+</div>
+</body>
+</html>

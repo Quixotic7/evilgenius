@@ -166,10 +166,10 @@ class SimUnit {
   constructor({ name = "FM-1", id = "FM-1_4500", image = makeImage(), drop = 0, silent = false, semantic = null } = {}) {
     Object.assign(this, { name, id, image, drop, silent, semantic, playing: false, seen: 0, frames: [], restores: 0, onRead: null, waiting: null, sent: 0 });
     this.input = { name, state: "connected", onmidimessage: null, open: async () => {} };
-    this.output = { name, state: "connected", open: async () => {}, send: (b) => { if (this.output.state !== "connected") throw new Error("gone"); this.sent++; setTimeout(() => this.take(Array.from(b)), 0); } };
+    this.output = { name, state: "connected", open: async () => {}, send: (b) => { if (this.output.state !== "connected") throw new Error("gone"); this.sent++; setImmediate(() => this.take(Array.from(b))); } };
   }
   unplug() { this.input.state = this.output.state = "disconnected"; }
-  out(bytes) { setTimeout(() => { if (this.input.onmidimessage && this.input.state === "connected") this.input.onmidimessage({ data: Uint8Array.from(bytes) }); }, 0); }
+  out(bytes) { setImmediate(() => { if (this.input.onmidimessage && this.input.state === "connected") this.input.onmidimessage({ data: Uint8Array.from(bytes) }); }); }
   take(p) {
     if (this.silent) return;
     this.seen++;
@@ -193,7 +193,7 @@ class SimUnit {
     for (let k = 0; k < 20; k++) {
       const got = new Promise((r) => { this.waiting = r; });
       this.out(W.readRequest(addr, 512, k & 0xFF));
-      const a = await Promise.race([got, sleep(60).then(() => null)]);
+      const a = await Promise.race([got, sleep(12).then(() => null)]);
       if (a && a.addr === addr && a.data.length === 512) { this.waiting = null; return a.data; }
     }
     this.waiting = null;

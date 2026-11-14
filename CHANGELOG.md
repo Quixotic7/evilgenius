@@ -40,6 +40,8 @@ every voice, SAM for the words, and the screen of a C64 game about a villain's t
 - **Waking the unit does nothing else**: the button or knob that wakes it from the title screen only wakes it.
 - **OVERVIEW (SEL) is easy to read**: a step is a solid bar in its track's colour on black, an empty step only its
   floor. (The cells were the C64's blue, which the red and light blue tracks sank into.)
+- **The manager** (the site's MANAGER page) backs the unit's store up to a file and restores it, and exports and
+  imports MY PRESETS, over USB from Chrome or Edge.
 - **One package, with Bluetooth**: USB and Bluetooth MIDI, USB audio to the computer, four projects, 128 presets of
   your own. The step view draws in 28 ms a frame on the unit with a pattern playing.
 
