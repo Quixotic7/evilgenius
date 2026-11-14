@@ -1,7 +1,7 @@
 {
-  "what": "A groovebox around one engine, ChoralRoot's FM TONE: eight tracks, p-locks and preset sound locks, conditions, ratchets, chords, and MIDI FX for generative patterns and for reworking the ones you have. Bluetooth MIDI, and recording over USB audio.",
+  "what": "EVILGENIUS is a SID Chip Groovebox for the MVave FM-1. 6 tracks, SID Chips, Speech Synthesis, Advanced Sequencing. Full P-Lock sound locks",
   "author": "Quixotic7",
   "kinds": ["groove"],
-  "play": "https://quixotic7.github.io/FIZZ/",
-  "editor": "https://quixotic7.github.io/FIZZ/manager/"
+  "play": "",
+  "editor": ""
 }
