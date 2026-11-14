@@ -1,8 +1,6 @@
-# FIZZ
+# EVILGENIUS
 
-FIZZ is a step sequencer for FM TONE, ChoralRoot's FM synth voice, made for the M-VAVE FM-1. It has eight tracks
-sharing 16 voices, track defaults with per-step overrides, p-locks, a pool of 128 sounds, pages with their own start
-and end, conditions, chance, ratchets and chords of up to six notes.
+EVILGENIUS is a SID Chip Groovebox for the MVave FM-1. 6 tracks, SID Chips, Speech Synthesis, Advanced Sequencing. Full P-Lock sound locks. 
 
 **Phase 1** (now) runs on the Mac as an [FM1VST](https://github.com/Quixotic7/FM1VST) core. The real FM-1 is its panel
 through RemoteFM1: the keys, the knobs and the screen are the unit's, and the sound comes from the Mac. Phase 2 will be
