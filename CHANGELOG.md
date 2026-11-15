@@ -19,6 +19,14 @@ EVILGENIUS began as FIZZ 0.12.0-beta.17 with another engine and another face; FI
   onto a value to route it; LIVE changes the track as you go; SEND TO TRACK / PUT TRACK BACK try a sound on a track
   without keeping it; SAVE AS NEW, REPLACE, REVERT, EXPORT; the computer's keys play the track. Works with this
   firmware and the releases before it (0.1.0 and later).
+- **The web manager works with EVILGENIUS in RemoteFM1.** Backup, restore and MY PRESETS' export and import now
+  work against the player (the app and remotefm1.com) as they do against an FM-1 over USB: the manager finds it,
+  reads its store, and puts a backup back.
+- **One backup file for both.** The player now keeps its store exactly as the FM-1 does (4 projects, 128 MY
+  PRESETS), so a backup of your FM-1 restores in RemoteFM1 and a backup of RemoteFM1 restores on your FM-1.
+- **The player starts with an empty store, once.** Projects and presets saved in RemoteFM1 with 0.1.1 and before are
+  in the old layout and are cleared at the first start of 0.1.2. Nothing changes on the FM-1 itself.
+
 ## 0.1.1 (2026-11-15)
 
 - **The same firmware as 0.1.0**, released again so that RemoteFM1 takes it: its nightly update read 0.1.0 as older

@@ -31,8 +31,9 @@ extern "C" {
 
 struct qd_app;
 
-#if QD_PKG_BLE
-#define QD_NPROJ 4                     /* (2026-10-27: the Bluetooth package's, qd_config.h QD_PKG_BLE) */
+#if QD_STORE_BLE
+#define QD_NPROJ 4                     /* (2026-10-27: the Bluetooth package's, qd_config.h QD_PKG_BLE; 2026-11-15: its
+                                        * store's, QD_STORE_BLE: the .rfm1's too) */
 #define QD_NLIB 128
 #else
 #define QD_NPROJ 8
@@ -43,13 +44,13 @@ struct qd_app;
 #define QD_SAVE_LOOK_MS 50u            /* how often the app looks for changes */
 #define QD_QUIET_MS 10000u             /* §7 rule 1: erases (GC, blank sectors ahead) after this long untouched, stopped,
                                         * nothing sounding (ChoralRoot's ST_AHEAD_IDLE_MS) */
-#ifdef QD_DEVICE
+#if QD_STORE_BLE || defined(QD_DEVICE)
 /* P2.4: the unit's data region (0x97000..0xDFFFF: 73 sectors), from its first byte: the LIBRARY's 22 sectors (256 MY
  * PRESETS, a page each, and the factory tags: 257 pages of 300, two sectors kept blank), then the projects' 51
  * (765 pages, 10 kept blank for a full pattern's record: 615 for the eight projects, which keep their sounds by
  * reference; the owner's projects today take 51 pages, a full one of 64 dense patterns ~835: the store refuses what
  * does not fit, counted, and says so) */
-#if QD_PKG_BLE
+#if QD_STORE_BLE
 /* 2026-10-27, THE BLUETOOTH PACKAGE (qd_config.h QD_PKG_BLE): 4 projects and 128 MY PRESETS. The region's first 24
  * sectors (0x97000..0xAEFFF) are not the store: the package's second firmware data blob is there (the port's). Then
  * the LIBRARY's 11 sectors from 24 x 4096 (flash 0xAF000..0xB9FFF: 128 MY PRESETS and the factory tags, 129 pages of
@@ -62,7 +63,11 @@ struct qd_app;
  *   USB package        "Z2FS"  LIBRARY 0x97000, 22 sectors; projects 0xAD000, 51; its backup 0x97000..0xDFFFF (73)
  *   Bluetooth package  "Z2FB"  LIBRARY 0xAF000, 11 sectors; projects 0xBA000, 38; its backup 0xAF000..0xDFFFF (49)
  * (offsets from 0x97000 here: the USB package's LIBRARY 0, projects 22 x 4096). The Bluetooth package's backup (the
- * port's FZBI, firmware/tools/fizz_xdata.py backup) covers its store region only, not the blob before it */
+ * port's FZBI, firmware/tools/fizz_xdata.py backup) covers its store region only, not the blob before it.
+ * 2026-11-15 (0.1.2): the same store in a host build with QD_STORE_BLE (FM1VST's glue, the .rfm1): its flash's offsets
+ * from QD_FLASH_REGION as the unit's are from its data region (core_quadrille.c), so the image is the unit's, byte for
+ * byte, and the backup / restore commands (core/glue/qd_bulk.h) give and take the unit's file */
+#define QD_FLASH_REGION 0x97000u       /* (the FM-1's data region's first byte, fm1-base plat.h PLAT_DATA_LO) */
 #define QD_FLASH_LIB (24u * 4096u)
 #define QD_FLASH_LIB_SEC 11
 #define QD_FLASH_LIB_RESERVE 2
@@ -148,6 +153,10 @@ typedef struct {
     uint8_t erase_hold;                /* (the Bluetooth package) the port: a computer linked over Bluetooth, the stores'
                                         * erases wait unless one is down to its last blank sector (persist.c) .. */
     uint32_t erases_held;              /* .. steps an erase waited so */
+#endif
+#if QD_STORE_BLE && !QD_PKG_BLE
+    uint8_t set_ble_off;               /* (2026-11-15: the .rfm1, the Bluetooth package's store) the settings record's
+                                        * BLUETOOTH OFF bit as a unit's restored image has it, written back as it was */
 #endif
 #if QD_PAT_RAM < QD_NPAT && !defined(QD_TARGET_FM1)
     /* P2.1: with no flash attached, at the device's sizes on the host (the tests, the tools), the patterns out of RAM
