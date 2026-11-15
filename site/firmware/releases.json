@@ -1,7 +1,44 @@
 {
   "name": "EVILGENIUS",
-  "latest": "0.1.0-beta.4",
+  "latest": "0.1.0",
   "releases": [
+    {
+      "version": "0.1.0",
+      "date": "2026-11-15",
+      "channel": "stable",
+      "identity": "FM-1_45000100",
+      "source": "898050cb868e9ec1bfb2bc29f2b1b42bbdb1e1e9",
+      "fm1base": "934e40d846d84e76e9c428d37b74bccb6192c823",
+      "notes": "- **The first stable release.** The same firmware as 0.1.0-beta.4, now out of beta.\n- **EVILGENIUS in RemoteFM1.** Each release now carries `evilgenius-VERSION.rfm1`, and RemoteFM1 (the app,\n  remotefm1.com and FM1VST) picks it up at its next nightly update. It plays in RemoteFM1's on-screen FM-1 in\n  EVILGENIUS's own colours: a deep indigo faceplate, violet keys, maroon knobs and green LEDs, with no background\n  picture.",
+      "packages": [
+        {
+          "name": "evilgenius",
+          "kind": "ble",
+          "label": "8 voices across both cores, USB and Bluetooth MIDI, USB audio; 4 projects, 128 MY presets",
+          "projects": 4,
+          "presets": 128,
+          "fwsc": {
+            "path": "0.1.0/evilgenius.fwsc",
+            "bytes": 1042154,
+            "sha256": "0313b51c4e04b6ce7a133a7995f7ceae517a1b7c63d8b01fcf7814bfda2c6ae6"
+          },
+          "data": {
+            "path": "0.1.0/evilgenius-xdata.bin",
+            "bytes": 51288,
+            "sha256": "a228be4b9cebfb3b1bf4ab0abe49e6c493021da9d328eda0b022ef4e4654ff01",
+            "crc32": 1680457261,
+            "at": 946176
+          },
+          "data2": {
+            "path": "0.1.0/evilgenius-xdata2.bin",
+            "bytes": 92560,
+            "sha256": "21574898b708ecd1e50e086295a2dd30e8ccd3947664a8ecaf642b005b01282e",
+            "crc32": 1781928672,
+            "at": 618496
+          }
+        }
+      ]
+    },
     {
       "version": "0.1.0-beta.4",
       "date": "2026-11-15",
