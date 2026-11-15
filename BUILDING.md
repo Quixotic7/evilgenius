@@ -44,8 +44,10 @@ the tag runs `.github/workflows/release.yml`:
   and `LICENSES.zip`;
 - **build**: The Firmware Hub's shared workflow `zvenson/fm1-build@v1` builds both packages from the tag with
   `firmware/hub_build.sh`, signs them and adds them to the draft;
-- **publish**: checks the draft's files (the attestations, `SHA256SUMS`, `releases.json`), then publishes the
-  release. A beta is a pre-release.
+- **rfm1** (a stable tag only): builds `evilgenius-VERSION.rfm1` for RemoteFM1 (see "The .rfm1" below) and adds it to
+  the draft;
+- **publish**: checks the draft's files (the attestations, `SHA256SUMS`, `releases.json`, and a stable release's
+  `.rfm1`), then publishes the release. A beta is a pre-release.
 
 The release carries five files, with the version in their names, and fm1-build's `SHA256SUMS`:
 
@@ -69,6 +71,24 @@ When the build job can't fetch the toolchain, re-run the failed jobs later; the 
 down, upload the five committed files from `site/firmware/VERSION/` to the draft by hand, renamed as in the table, with their
 `SHA256SUMS`, and publish the draft. The files are the same bytes, but they have no attestation. The hub then lists
 that release without "Built from source on GitHub", and `gh attestation verify` finds nothing.
+
+### The .rfm1
+
+RemoteFM1 (the app, remotefm1.com and FM1VST) runs EvilGenius from an `.rfm1`. RemoteFM1FW's nightly author sync
+(03:20 UTC, its `docs/AUTHOR-RFM1.md`) takes the `.rfm1` attached to EvilGenius's newest **stable** release, checks it
+and serves it from its release `current`; the site re-hosts it at 04:17 UTC. It skips pre-releases, so a beta's
+`.rfm1` would never be taken: the release workflow builds one for stable tags only.
+
+The `rfm1` job builds it with `charlesvestal/fm1-base` at a pinned commit newer than `firmware/fm1-base` (the unit's
+build pins an older one; `--rfm1` needs the newer), `tools/build.py firmware/app --rfm1 --release VERSION`, then adds
+the skin from `RemoteFM1Metadata.json` and checks the file with FM1VST's `tools/rfm1_skin.py` and
+`tools/rfm1_check.py` at the commit RemoteFM1FW's sync uses. The file is not signed by fm1-build. A run from the
+Actions tab builds it too, as the artifact `rfm1`. Locally:
+
+```bash
+python3 ../fm1-base/tools/build.py firmware/app --rfm1 --release VERSION
+python3 FM1VST/tools/rfm1_skin.py add firmware/app/build/evilgenius-VERSION.rfm1 -o evilgenius-VERSION.rfm1 --metadata RemoteFM1Metadata.json
+```
 
 ## Signed builds
 

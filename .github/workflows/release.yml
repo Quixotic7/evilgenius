@@ -12,11 +12,17 @@
 #                                             the committed files before anything is signed), attests evilgenius-*
 #                                             (evilgenius-V.fwsc, the package the hub installs, and its two data
 #                                             blobs) and uploads them with its SHA256SUMS to the draft
+#                                    rfm1:    a stable tag only (vX.Y.Z): the app as an .rfm1 for RemoteFM1
+#                                             (evilgenius-V.rfm1: fm1-base's build.py --rfm1 at a pinned newer
+#                                             commit, the skin from RemoteFM1Metadata.json, FM1VST's rfm1_check.py)
+#                                             into the draft. RemoteFM1FW's nightly author sync (03:20 UTC; its
+#                                             docs/AUTHOR-RFM1.md) takes it from the newest stable release; it
+#                                             skips pre-releases, so a beta gets none
 #                                    publish: the draft's files checked (signed by fm1-build v1 at its reviewed
 #                                             tag object, for this tag and commit; SHA256SUMS; releases.json), then
 #                                             the release published (a pre-release for a beta)
 #   workflow_dispatch              -> build only: fm1-build signs the build of the branch, no release; the files are
-#                                     the run's artifact "packages"
+#                                     the run's artifact "packages"; the .rfm1 the artifact "rfm1"
 # The install page needs nothing from here: Pages serves main's committed site/firmware/, the same bytes as the
 # signed files (publish checks it). The signed files are never rebuilt, replaced or uploaded by hand afterwards.
 name: Release
@@ -101,14 +107,21 @@ jobs:
       - name: Release notes (firmware/release.py --notes, then the signed-build text)
         env:
           V: ${{ steps.version.outputs.version }}
+          PRE: ${{ steps.version.outputs.prerelease }}
         run: |
           set -euo pipefail
           {
             python3 firmware/release.py --notes "$V"
             sed -e "s/@VERSION@/$V/g" -e "s|@REPO@|$GITHUB_REPOSITORY|g" <<'EOT'
 
-          `SHA256SUMS` lists the package, `evilgenius-@VERSION@.fwsc`, and its two data files. GitHub built and signed each file from this tag's source (The Firmware Hub's shared workflow); check one with `gh attestation verify fizz-@VERSION@.fwsc --repo @REPO@ --signer-workflow zvenson/fm1-build/.github/workflows/build.yml`. The packages hold three JieLi AC79 SDK files (Apache-2.0), the Bluetooth one JieLi's Bluetooth libraries too; `LICENSE`, `LICENSING.md` and `LICENSES.zip` carry every licence. Installing firmware is at your own risk.
+          `SHA256SUMS` lists the package, `evilgenius-@VERSION@.fwsc`, and its two data files. GitHub built and signed each file from this tag's source (The Firmware Hub's shared workflow); check one with `gh attestation verify evilgenius-@VERSION@.fwsc --repo @REPO@ --signer-workflow zvenson/fm1-build/.github/workflows/build.yml`. The packages hold three JieLi AC79 SDK files (Apache-2.0), the Bluetooth one JieLi's Bluetooth libraries too; `LICENSE`, `LICENSING.md` and `LICENSES.zip` carry every licence. Installing firmware is at your own risk.
           EOT
+            if [ "$PRE" = false ]; then
+              sed -e "s/@VERSION@/$V/g" <<'EOT'
+
+          `evilgenius-@VERSION@.rfm1` is the same firmware for RemoteFM1 (the app, the site and FM1VST), built from this tag on GitHub without the hub's signature; RemoteFM1 picks it up at its next nightly sync.
+          EOT
+            fi
           } > release-body.md
           cat release-body.md
 
@@ -149,9 +162,97 @@ jobs:
       # builds on JieLi's BT libraries and SDK sources, which are never in git
       sdk: true
 
+  # the .rfm1 for RemoteFM1 (BUILDING.md "The .rfm1"): a stable tag (RemoteFM1FW's sync takes no pre-release) or a run
+  # from the Actions tab (the artifact "rfm1" only). firmware/fm1-base is pinned where the unit's build needs it, which
+  # is older than --rfm1 needs: so fm1-base at a newer fixed commit, as BUILDING.md's local build uses ../fm1-base
+  rfm1:
+    needs: draft
+    if: ${{ !failure() && !cancelled() && (github.event_name == 'workflow_dispatch' || needs.draft.outputs.prerelease == 'false') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write                 # the .rfm1 into the draft release (a tag only)
+    env:
+      FM1_BASE_REF: c8e05997ce970875038156d2bbd69e712eac1543   # charlesvestal/fm1-base main, 2026-11-13
+      FM1VST_REF: 5634390f8f9e2b6607664d2e5faa47edcb0fc6cf     # RemoteFM1FW's author sync checks with this one
+      EMSDK_REF: 35659964bc2762fffec0d257997fb61475f765b7      # emsdk's tag 6.0.13
+      EMSDK_VERSION: 6.0.13
+      PILLOW_VERSION: 11.1.0          # hub_build.sh's (the fonts)
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: fm1-base for the .rfm1 (pinned)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: charlesvestal/fm1-base
+          ref: ${{ env.FM1_BASE_REF }}
+          path: fm1-base-rfm1
+          submodules: recursive
+          persist-credentials: false
+
+      - name: FM1VST's .rfm1 tools (pinned)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Quixotic7/FM1VST
+          ref: ${{ env.FM1VST_REF }}
+          path: fm1vst
+          sparse-checkout: tools
+          persist-credentials: false
+
+      - name: Version
+        id: version
+        run: firmware/hub_build.sh --version | tee -a "$GITHUB_OUTPUT"
+
+      - name: Python with Pillow (Raqm), Emscripten
+        run: |
+          set -euo pipefail
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends libfribidi0 libraqm0
+          python3 -m venv "$RUNNER_TEMP/py"
+          "$RUNNER_TEMP/py/bin/pip" install --disable-pip-version-check -q "Pillow==$PILLOW_VERSION"
+          "$RUNNER_TEMP/py/bin/python" -c "from PIL import features; assert features.check('raqm'), 'Pillow without raqm'"
+          echo "$RUNNER_TEMP/py/bin" >> "$GITHUB_PATH"
+          git clone -q https://github.com/emscripten-core/emsdk.git "$RUNNER_TEMP/emsdk"
+          git -C "$RUNNER_TEMP/emsdk" checkout -q "$EMSDK_REF"
+          "$RUNNER_TEMP/emsdk/emsdk" install "$EMSDK_VERSION"
+          "$RUNNER_TEMP/emsdk/emsdk" activate "$EMSDK_VERSION"
+
+      - name: Build, skin and check the .rfm1
+        env:
+          V: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          set +u; source "$RUNNER_TEMP/emsdk/emsdk_env.sh" >/dev/null; set -u
+          emcc --version | head -1
+          python3 fm1-base-rfm1/tools/build.py firmware/app --rfm1 --release "$V"
+          mkdir rfm1-out
+          python3 -I fm1vst/tools/rfm1_skin.py add "firmware/app/build/evilgenius-$V.rfm1" \
+              -o "rfm1-out/evilgenius-$V.rfm1" --metadata RemoteFM1Metadata.json
+          python3 -I fm1vst/tools/rfm1_skin.py show "rfm1-out/evilgenius-$V.rfm1"
+          python3 -I fm1vst/tools/rfm1_check.py "rfm1-out/evilgenius-$V.rfm1" | tee rfm1-check.txt
+          # the sync takes it only when the manifest's version is the tag's (fm1-base upper-cases a -suffix)
+          grep -qF ": ok: evilgenius ${V^^} (" rfm1-check.txt || { echo "::error::the .rfm1's manifest is not evilgenius $V"; exit 1; }
+          (cd rfm1-out && sha256sum "evilgenius-$V.rfm1" | tee -a "$GITHUB_STEP_SUMMARY")
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: rfm1
+          path: rfm1-out/
+          if-no-files-found: error
+
+      - name: Into the draft release
+        if: github.event_name == 'push' && github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          V: ${{ steps.version.outputs.version }}
+        run: gh release upload "$GITHUB_REF_NAME" "rfm1-out/evilgenius-$V.rfm1" --repo "$GITHUB_REPOSITORY" --clobber
+
   publish:
-    needs: [draft, build]
-    if: github.event_name == 'push' && github.ref_type == 'tag'
+    needs: [draft, build, rfm1]
+    # (rfm1 is skipped for a beta: publish runs unless something failed)
+    if: ${{ !failure() && !cancelled() && github.event_name == 'push' && github.ref_type == 'tag' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -174,7 +275,7 @@ jobs:
           set -euo pipefail
           mkdir signed
           gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --dir signed \
-              --pattern 'evilgenius-*' --pattern SHA256SUMS
+              --pattern 'evilgenius-*.fwsc' --pattern 'evilgenius-*.bin' --pattern SHA256SUMS
           n=3                         # evilgenius-V.fwsc, evilgenius-xdata-V.bin, evilgenius-xdata2-V.bin
           ls -l signed
           files=(signed/evilgenius-*)
@@ -189,6 +290,13 @@ jobs:
                 --source-ref "$GITHUB_REF" --source-digest "$GITHUB_SHA" --deny-self-hosted-runners
           done
           firmware/hub_build.sh --check signed "$VERSION"
+
+      - name: A stable release carries its .rfm1
+        if: needs.draft.outputs.prerelease == 'false'
+        run: |
+          set -euo pipefail
+          gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' \
+              | grep -qxF "evilgenius-$VERSION.rfm1" || { echo "::error::the draft has no evilgenius-$VERSION.rfm1"; exit 1; }
 
       - name: Publish the release
         run: |
