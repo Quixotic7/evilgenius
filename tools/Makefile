@@ -389,4 +389,4 @@ fxtest: $(B)/fxtest.o $(CORE_OBJ) $(PVG_OBJ)
 $(B)/fxtest.o: eg/fxtest.c $(HDRS) | $(B)
 	$(CC) $(OPT) $(WARN) $(INC) $(DEFS) -c $< -o $@
 
-.PHONY: all frames strips audio values values-check test test-host test-dev test-pace test-dev-fast test-dev8 test-dev-fast8 test-dev-fb8 test-dev-ble test-dev16 test-dev-run budget-pvg budget-16 abi midimon remote budget budget-gate budget-ratchet
+.PHONY: all frames strips audio values values-check test test-host test-host-ble test-host-ble-run test-dev test-pace test-dev-fast test-dev8 test-dev-fast8 test-dev-fb8 test-dev-ble test-dev16 test-dev-run budget-pvg budget-16 abi midimon remote budget budget-gate budget-ratchet
