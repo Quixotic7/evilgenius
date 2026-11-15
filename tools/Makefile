@@ -215,6 +215,9 @@ $(B)/test_sysex: $(T)/test_sysex.c $(SAN_OBJ) $(HDRS)
 	$(CC) $(SAN) $(WARN) $(DEFS) $(INC) -o $@ $(T)/test_sysex.c $(SAN_OBJ) -lm
 $(B)/test_persist: $(T)/test_persist.c $(SAN_OBJ) $(HDRS)
 	$(CC) $(SAN) $(WARN) $(DEFS) $(INC) -o $@ $(T)/test_persist.c $(SAN_OBJ) -lm
+# 0.1.2: the store's backup and restore away from the unit (core/glue/qd_bulk.c: FM1VST's glue, the .rfm1)
+$(B)/test_bulk: $(T)/test_bulk.c $(ROOT)/core/glue/qd_bulk.c $(ROOT)/core/glue/qd_bulk.h $(SAN_OBJ) $(HDRS)
+	$(CC) $(SAN) $(WARN) $(DEFS) $(INC) -I$(ROOT)/core/glue -o $@ $(T)/test_bulk.c $(ROOT)/core/glue/qd_bulk.c $(SAN_OBJ) -lm
 $(B)/test_store: $(T)/test_store.c $(ROOT)/core/store/store.c $(ROOT)/core/store/store.h | $(B)
 	$(CC) $(SAN) $(WARN) -o $@ $(T)/test_store.c $(ROOT)/core/store/store.c
 $(B)/test_arena: $(T)/test_arena.c $(ROOT)/core/gfx/qd_arena.c $(ROOT)/core/gfx/qd_arena.h | $(B)
@@ -223,15 +226,15 @@ $(B)/test_arena: $(T)/test_arena.c $(ROOT)/core/gfx/qd_arena.c $(ROOT)/core/gfx/
 DNSND_DIR ?= $(abspath $(ROOT)/../DigitonePresets)
 TESTS := $(B)/test_quad $(B)/test_fz_dsp $(B)/test_pool $(B)/test_seq $(B)/test_app $(B)/test_ctl $(B)/test_quad_bitexact $(B)/test_fx_bitexact \
          $(B)/test_store $(B)/test_persist $(B)/test_sysex $(B)/test_mfx $(B)/test_tools $(B)/test_midi
-TESTS += $(B)/test_fx_packed
-test: test-host test-dev test-dev16 test-dev-fast test-dev-fb8 test-dev-ble test-gfx-fast budget-ratchet values-check stats-names-check
+TESTS += $(B)/test_fx_packed $(B)/test_bulk
+test: test-host test-dev test-dev16 test-dev-fast test-dev-fb8 test-dev-ble test-host-ble test-gfx-fast budget-ratchet values-check stats-names-check
 	@echo "make test: all passed (host and device sizes, the device's drawing too)"
 
 # P2.0: the same tests at the device's sizes (core/qd_config.h QD_DEVICE), built into build/dev; the timelines into
 # core/tests/out/dev (the goldens are the same: the sizes change nothing a pattern sounds like). The bit-exact tests
 # compare the voice and the effects with ChoralRoot's code: no size of theirs differs, they run once (test-host)
 DEV_TESTS := $(B)/test_quad $(B)/test_pool $(B)/test_seq $(B)/test_mfx $(B)/test_app $(B)/test_ctl $(B)/test_store \
-             $(B)/test_persist $(B)/test_sysex $(B)/test_arena $(B)/test_tools $(B)/test_midi
+             $(B)/test_persist $(B)/test_sysex $(B)/test_arena $(B)/test_tools $(B)/test_midi $(B)/test_bulk
 test-dev:
 	$(MAKE) PROFILE=-DQD_DEVICE B=build/dev OUT=$(abspath $(OUT))/dev test-dev-run
 # P2.4: the same at the device's sizes with the unit's drawing (GFX=fast), into build/dev-fast
@@ -259,6 +262,19 @@ test-dev-fb8:
 test-dev-ble:
 	$(MAKE) PROFILE="-DQD_DEVICE -DQD_VOICES_DEV=8 -DQD_PKG_BLE=1" GFX=fb B=build/dev-ble OUT=$(abspath $(OUT))/dev-ble \
 	    SEQ_GOLD=$(T)/seq_goldens8 test-dev-run
+# 0.1.2: the host's sizes with the Bluetooth package's store (qd_config.h QD_STORE_BLE), as FM1VST's glue builds the
+# .rfm1: 4 projects, 128 MY presets, the unit's layout and magic; the backup and restore (test_bulk) on it
+HOST_BLE_TESTS := $(B)/test_bulk $(B)/test_store $(B)/test_app $(B)/test_tools $(B)/test_sysex
+test-host-ble:
+	$(MAKE) PROFILE="-DQD_STORE_BLE=1" B=build/host-sble test-host-ble-run
+test-host-ble-run: $(HOST_BLE_TESTS)
+	@echo "---- the host's sizes, the Bluetooth package's store (QD_STORE_BLE)"
+	$(B)/test_bulk
+	$(B)/test_store
+	$(B)/test_app
+	$(B)/test_tools
+	$(B)/test_sysex
+	@echo "make test-host-ble: all passed"
 # P2.6i: each pacing option (core/qd_config.h) built at the unit's profile and its screens rendered (the parts that show
 # it), into build/pace-*/ and OUT/pace-*/: it builds, it draws, and test_app passes with it (t_fb_bands: the changed
 # bands only, against every band drawn) (the defaults are today's frames: make test)
@@ -287,6 +303,7 @@ test-dev-run: $(DEV_TESTS)
 	$(B)/test_arena
 	$(B)/test_tools
 	$(B)/test_midi
+	$(B)/test_bulk
 	@echo "make test-dev: all passed (device sizes)"
 
 test-host: $(TESTS)
@@ -302,6 +319,7 @@ test-host: $(TESTS)
 	$(B)/test_midi
 	$(PY) grids_map.py --check
 	$(B)/test_store
+	$(B)/test_bulk
 	$(B)/test_persist
 	$(B)/test_sysex
 	@if [ -d "$(DNSND_DIR)" ]; then node test_sysex_dnsnd.mjs "$(DNSND_DIR)" $(B)/test_sysex; else echo "test_sysex_dnsnd: no $(DNSND_DIR) (skipped)"; fi
