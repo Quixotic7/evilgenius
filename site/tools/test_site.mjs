@@ -38,6 +38,14 @@ for (const page of PAGES) {
   check(unknown.length === 0, `${page}: ${sprites.length} sprites${unknown.length ? ": unknown " + unknown.join(", ") : ""}`);
 }
 
+// the manager's modules with no DOM load in Node, each import there (a published module that fails to load is a blank page)
+for (const m of ["egwire.js", "egstore.js", "egfiles.js", "eglink.js", "egsysex.js", "egvalues.js", "egsound.js", "eglive.js", "eghelp.js",
+  "egsim.js", "egsimdata.js", "egedit.js", "eglibrary.js"]) {
+  let ok = true;
+  try { await import(pathToFileURL(path.join(SITE, "manager", m))); } catch (e) { ok = false; console.log(`  ${e.message}`); }
+  check(ok, `manager/${m}: loads`);
+}
+
 const build = JSON.parse(fs.readFileSync(path.join(SITE, "try/build.json"), "utf8"));
 for (const [name, f] of Object.entries(build.files)) {
   const b = fs.readFileSync(path.join(SITE, "try", name));

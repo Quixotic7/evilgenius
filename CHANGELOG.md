@@ -12,6 +12,13 @@ EVILGENIUS began as FIZZ 0.12.0-beta.17 with another engine and another face; FI
 
 <!-- The next release's notes, for testers, in plain language. firmware/release.py moves them. -->
 
+- **The manager edits sounds** ([the manager](https://quixotic7.github.io/evilgenius/manager/), Chrome or Edge over
+  USB). LIBRARY lists MY PRESETS and the factory's, found by name and tag: EDIT, LOAD ON FM-1 (the unit's own browser
+  opens on it), EXPORT, and for MY PRESETS RENAME, TAGS, UP / DOWN and DELETE. EDIT shows every value of a sound
+  (read from a track, a preset, a file or INIT): drag, scroll or type a value; drag LFO 1..3 or a modulation source
+  onto a value to route it; LIVE changes the track as you go; SEND TO TRACK / PUT TRACK BACK try a sound on a track
+  without keeping it; SAVE AS NEW, REPLACE, REVERT, EXPORT; the computer's keys play the track. Works with this
+  firmware and the releases before it (0.1.0 and later).
 ## 0.1.1 (2026-11-15)
 
 - **The same firmware as 0.1.0**, released again so that RemoteFM1 takes it: its nightly update read 0.1.0 as older

@@ -99,19 +99,19 @@ render_audio: $(B)/render_audio.o $(CORE_OBJ) $(PVG_OBJ)
 $(B)/tick_bench: $(B)/tick_bench.o $(CORE_OBJ) $(PVG_OBJ)
 	$(CC) -o $@ $^ -lm
 
-# Manager P2: FIZZ's 110 sound values for the web manager's sound editor, from the core (tools/gen_values.c):
-# make values writes site/manager/fizzvalues.js; values-check (in make test) fails when it is not the core's
+# Manager: EvilGenius's SID TONE sound values for the web manager's sound editor, from the core (tools/gen_values.c):
+# make values writes site/manager/egvalues.js; values-check (in make test) fails when it is not the core's
 $(B)/gen_values: $(B)/gen_values.o $(CORE_OBJ) $(PVG_OBJ)
 	$(CC) -o $@ $^ -lm
 values: $(B)/gen_values
-	$(B)/gen_values > $(ROOT)/site/manager/fizzvalues.js
+	$(B)/gen_values > $(ROOT)/site/manager/egvalues.js
 stats-names:
 	python3 $(ROOT)/tools/gen_stats_names.py
 stats-names-check:
 	@python3 $(ROOT)/tools/gen_stats_names.py --check
 values-check: $(B)/gen_values
-	@$(B)/gen_values | cmp -s - $(ROOT)/site/manager/fizzvalues.js || { echo "site/manager/fizzvalues.js is not the core's: make -C tools values"; exit 1; }
-	@echo "values-check: site/manager/fizzvalues.js is the core's"
+	@$(B)/gen_values | cmp -s - $(ROOT)/site/manager/egvalues.js || { echo "site/manager/egvalues.js is not the core's: make -C tools values"; exit 1; }
+	@echo "values-check: site/manager/egvalues.js is the core's"
 # P2.1: a flash image as the core reads it, a line a project / pattern / pool sound / MY preset (tools/flash_dump.c)
 $(B)/flash_dump: $(B)/flash_dump.o $(CORE_OBJ) $(PVG_OBJ)
 	$(CC) -o $@ $^ -lm

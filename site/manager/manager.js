@@ -1,15 +1,24 @@
 // SPDX-License-Identifier: MPL-2.0
 // This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0. If a copy of the MPL was not
 // distributed with this file, You can obtain one at https://mozilla.org/MPL/2.0/.
-// EvilGenius's manager page: connect, back up and restore the store, export and import MY PRESETS. The work is in
-// eglink.js (the unit), egstore.js (the store image), egfiles.js (the files); this file is the page.
+// EvilGenius's manager page: connect, back up and restore the store, export and import MY PRESETS (CABINET), the
+// unit's sounds (LIBRARY: eglibrary.js), a sound edited, live on a track if asked (EDIT: egedit.js). The work is in
+// eglink.js (the unit), egstore.js (the store image), egfiles.js (the files), egsysex.js / egsound.js (the unit's
+// own SysEx, its sounds); this file is the page.
+//   ?sim   a simulated FM-1 (egsim.js) instead of Web MIDI: the page without a unit (the preview, headless checks)
 //
-// What the page can do is what the unit's port answers today: the store read (FZBI, FZBR) and written whole (FZSR).
-// EvilGenius's own SysEx (LIST, DUMP, STORE6: core/app/fizz_sx.c) does not reach the core on the unit, so the presets
-// are read out of the store's image, and imported by writing the store back with them added (plan()'s text says so).
+// The store is read (FZBI, FZBR) and written whole (FZSR) by the port; the presets are read out of the store's image,
+// and imported by writing the store back with them added (plan()'s text says so). EvilGenius's own SysEx (core/app/
+// fizz_sx.c: STATUS, LIST, DUMP, STORE6, PARAM ..) reaches the core since 0.1.0 (app.c's gate): egsysex.js and
+// eglink.js speak it, egsound.js reads and packs its sounds; the page's tabs that use it come next.
 import { findUnit } from "./eglink.js";
 import { LAYOUT, LIB_BYTES, readImage, readLibrary, addPresets, tagNames } from "./egstore.js";
 import { backupName, soundName, soundsName, soundFile, soundsFile, readSounds } from "./egfiles.js";
+import { mountEdit } from "./egedit.js";
+import { mountLibrary } from "./eglibrary.js";
+
+const SIM = new URLSearchParams(location.search).has("sim");
+let sim = null;
 
 const $ = (id) => document.getElementById(id);
 const still = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -59,7 +68,7 @@ function bar(f) {
 
 function keys() {
   const on = !!link && !working;
-  $("connect").disabled = working || !navigator.requestMIDIAccess;
+  $("connect").disabled = working || (!navigator.requestMIDIAccess && !SIM);
   $("connect").classList.toggle("hide", !!link);
   $("disconnect").classList.toggle("hide", !link);
   $("disconnect").disabled = working;
@@ -68,6 +77,8 @@ function keys() {
   $("import").disabled = !on;
   $("exportall").disabled = !on || !lib || !lib.presets.length;
   for (const b of document.querySelectorAll("#presetrows button, #restorego, #importgo, #restoreno, #importno")) b.disabled = !on;
+  if (edit) edit.render();
+  if (library) library.render();
 }
 // one job at a time; while the unit's store is being written, leaving the page asks first
 async function job(fn, { writes = false } = {}) {
@@ -110,6 +121,8 @@ const from = () => ({ firmware: link ? link.id : "", store: lib ? lib.magic : ""
 function gone() {
   if (link) link.close();
   link = null; lib = null; toRestore = null; toImport = null;
+  if (edit) edit.gone();
+  if (library) library.clear();
   $("unit").textContent = "No FM-1 yet.";
   $("restoreplan").hidden = true; $("importplan").hidden = true;
   showPresets();
@@ -154,7 +167,8 @@ async function readPresets(text = "Reading MY PRESETS") {
 }
 
 async function connect() {
-  if (!navigator.requestMIDIAccess) { refuse("this browser has no Web MIDI. Open this page in Chrome or Edge on a computer"); return; }
+  if (SIM) { sim = sim || new (await import("./egsim.js")).SimUnit({ log }); window.__sim = sim; access = sim.access; }
+  if (!access && !navigator.requestMIDIAccess) { refuse("this browser has no Web MIDI. Open this page in Chrome or Edge on a computer"); return; }
   say("Asking the browser for MIDI", "busy");
   try { access = access || await navigator.requestMIDIAccess({ sysex: true }); }
   catch (_) { refuse("the browser did not allow MIDI. Allow MIDI devices for this page (the lock in the address bar), then press CONNECT again"); return; }
@@ -169,7 +183,8 @@ async function connect() {
       throw new Error(`this EVILGENIUS keeps its store somewhere this page does not know (0x${info.lo.toString(16)}, ${info.size} bytes). Reload the page; if it stays, the page is older than the firmware`);
     const version = await link.version();
     await readPresets();
-    $("unit").textContent = `${version || "EVILGENIUS"} on an FM-1 (${link.id}), MIDI port "${link.port}". Store ${lib.magic || "empty"}.`;
+    $("unit").textContent = `${version || "EVILGENIUS"} on an FM-1 (${link.id}), MIDI port "${link.port}"${SIM ? " (SIMULATED)" : ""}. Store ${lib.magic || "empty"}.`;
+    await library.load({ quiet: true }).catch((e) => log(`LIST: ${e.message}`));
     say(`Connected. ${plural(lib.presets.length, "preset")} in MY PRESETS.`, "ok");
   } catch (e) {
     const lost = e && e.code === "lost";
@@ -282,8 +297,41 @@ async function importNow() {
     (made.skipped.length ? ` ${plural(made.skipped.length, "sound")} already there.` : "") + ` The store from before is in your downloads: ${safety}.`, "ok");
 }
 
+// ---- the tabs
+let edit = null, library = null;
+const ctx = { $, log, say, refuse, link: () => link, busy: () => working, job: (fn) => job(fn), download };
+library = mountLibrary({ ...ctx, edit: (snd, origin) => { edit.open(snd, origin); tab("edit"); } });
+edit = mountEdit({ ...ctx, onSaved: () => { library.load({ quiet: true }).catch(() => {}); } });
+const TABS = ["cabinet", "library", "edit"];
+function tab(name) {
+  for (const t of TABS) {
+    $(`t-${t}`).setAttribute("aria-selected", String(t === name));
+    $(`tab-${t}`).hidden = t !== name;
+  }
+  edit.shown(name === "edit");
+  try { sessionStorage.setItem("eg-tab", name); } catch (_) { /* (no storage: the first tab) */ }
+}
+for (const t of TABS) $(`t-${t}`).addEventListener("click", () => tab(t));
+$("tab-edit").parentElement.querySelector(".tabs").addEventListener("keydown", (e) => {
+  const k = TABS.indexOf(document.activeElement.id.slice(2));
+  if (k < 0 || (e.key !== "ArrowRight" && e.key !== "ArrowLeft")) return;
+  const n = TABS[(k + (e.key === "ArrowRight" ? 1 : TABS.length - 1)) % TABS.length];
+  tab(n); $(`t-${n}`).focus();
+});
+try { const t = sessionStorage.getItem("eg-tab"); if (TABS.includes(t)) tab(t); } catch (_) { /* (none) */ }
+// the console follows the page down: EDIT's strip of sources sits under it
+if (window.ResizeObserver) new ResizeObserver(() => document.documentElement.style.setProperty("--consoleh", `${$("console").offsetHeight}px`)).observe($("console"));
+// EDIT's read-back: the track followed while the unit changes it (one request a second at most, never during a job)
+let polling = false;
+setInterval(async () => {
+  if (polling || working || !link) return;
+  polling = true;
+  try { await edit.poll(); } catch (e) { if (e.code === "lost") { gone(); refuse("the FM-1 was unplugged"); } else log(`read-back: ${e.message}`); }
+  finally { polling = false; }
+}, 1000);
+
 // ---- the keys
-if (!navigator.requestMIDIAccess) {
+if (!navigator.requestMIDIAccess && !SIM) {
   $("nomidi").hidden = false;
   say("This browser has no Web MIDI.");
 }

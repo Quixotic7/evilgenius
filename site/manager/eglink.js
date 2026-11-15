@@ -17,10 +17,22 @@
 //   link.library(onProgress)     -> MY PRESETS' sectors (egstore.js LIB_BYTES), read while the store did not change
 //   link.restore(image, {onProgress, onPhase}) -> {ok: true} | throws {code: "fzer", fzer, written}
 //   link.close(); link.lost
+// EvilGenius's own SysEx (egsysex.js: FIZZ's protocol under 7D 45 47; the unit answers it since 0.1.0, app.c's gate):
+//   link.status() -> parseStatus | null          link.list({factory, pool}) -> [entries] (every part; read again if short)
+//   link.dump(source, slot) -> a DUMP frame | null  link.dumpAll(source, total, onProgress) -> [frames]
+//   link.dumpTrack(slot) -> a track's DUMP frame | null (slot 1..6, 0 the selected one)
+//   link.store(frame) -> {kind: "store", status, slot, pool} | {kind: "error", ..}   (a STORE6: storeSound)
+//   link.tags / rename / remove / swap / poolRef / users / projects / project / flush / param / browse -> the ACK
+//     ({status, statusName, a, b}) or the reply asked for; {old: true} when this EVILGENIUS has no such command
+//   link.note(ch, n, vel)  a note (no reply)
 // Every failure is an Error with a code: "lost" (unplugged), "timeout", "nobulk", "changed", "fzer", "badreq".
 import { HS_QUERY, CHUNK, PULL, FZER, crc32, rd32, bulkFrame, parseBulk, parseRequest, response, parseIdentity,
   firmwareName, egIdentityRequest, parseEgIdentity } from "./egwire.js";
 import { LIB_BYTES } from "./egstore.js";
+import { CMD, CMD1, parseReply, parseList, parseDump, statusRequest, flushRequest, listRequest, dumpRequest, tagsRequest,
+  renameRequest, deleteRequest, swapRequest, poolRefRequest, usersRequest, projectsRequest, projectRequest, paramRequest,
+  browseRequest } from "./egsysex.js";
+const MORE = Symbol("more");
 
 export const GAP_MS = 3;
 const PORT_RE = /fm-?1|evil\s*genius|felucca/i;            // never ask other gear who it is
@@ -126,12 +138,124 @@ export class EgLink {
       while (now() < end) {
         const p = await this.io.read(end - now());
         if (!p) { if (this.lost) throw err("lost", "the FM-1 was unplugged"); break; }
+        this.lastRx = now();
         const r = match(p);
         if (r !== undefined) return r;
       }
     }
     return null;
   }
+  // a request whose answer comes in parts: onFrame gives MORE (another part: the wait starts again), the result, or
+  // undefined (not it); a quiet `timeout` with parts read: partial() (what was read), none: sent again
+  async askMany(bytes, onFrame, { timeout = 1500, tries = 2, partial = null } = {}) {
+    for (let t = 0; t < tries; t++) {
+      await this.send(bytes);
+      let got = false, end = now() + timeout;
+      while (now() < end) {
+        const p = await this.io.read(end - now());
+        if (!p) { if (this.lost) throw err("lost", "the FM-1 was unplugged"); break; }
+        this.lastRx = now();
+        const r = onFrame(p);
+        if (r === MORE) { got = true; end = now() + timeout; continue; }
+        if (r !== undefined) return r;
+      }
+      if (got && partial) return partial();
+    }
+    return partial ? partial() : null;
+  }
+
+  // ---- EvilGenius's own SysEx (egsysex.js). One command at a time, in the link's turn
+  // (a quiet link is woken by a STATUS first: the first frame after a pause is the one most often lost, FIZZ's finding)
+  async wake1() { if (!this.lastRx || now() - this.lastRx > 1000) await this.status1(); }
+  async status1() {
+    const r = await this.ask(statusRequest(), (p) => { const x = parseReply(p); return x && x.kind === "status" ? x : undefined; }, { timeout: 800, tries: 3 });
+    return r || null;
+  }
+  status() { return this.turn(() => { this.io.drain(); return this.status1(); }); }
+  // one command and its reply: `want` (its ACK by default), or the unit's error for that command ({old}: BAD COMMAND)
+  cmd(f, cmd, { want = (r) => r.kind === "ack" && r.command === cmd, timeout = 15000, tries = 1, wake = true } = {}) {
+    return this.turn(async () => {
+      this.io.drain();
+      if (wake) await this.wake1();
+      return this.ask(f, (p) => {
+        const r = parseReply(p);
+        if (!r) return undefined;
+        if (want(r)) return r;
+        if (r.kind === "ack" && r.command === cmd) return r;
+        return r.kind === "error" && r.command === cmd ? { status: r.status, statusName: r.statusName, old: r.status === 7 } : undefined;
+      }, { timeout, tries });
+    });
+  }
+  // every row of LIST (its parts); a part lost: read again, twice at most, then the rows read
+  list({ factory = false, pool = false } = {}) {
+    return this.turn(async () => {
+      let short = null;
+      for (let k = 0; k < 3; k++) {
+        this.io.drain();
+        const rows = [];
+        const r = await this.askMany(listRequest({ factory, pool }), (p) => {
+          const l = parseList(p);
+          if (!l) return undefined;
+          rows.push(...l.entries);
+          return l.last ? { rows, total: l.total } : MORE;
+        }, { partial: () => ({ rows, total: -1 }) });
+        if (r && r.rows.length === r.total) return r.rows;
+        if (r) { short = r.rows; this.log(`LIST: ${r.rows.length} of ${r.total} rows: read again`); }
+      }
+      return short || [];
+    });
+  }
+  dump(source, slot) {
+    return this.turn(() => { this.io.drain(); return this.ask(dumpRequest({ source, slot }), (p) => {
+      const d = parseDump(p);
+      if (d && (d.slot === slot || (source === "factory" && d.slot === 0))) return d.frame;
+      const r = parseReply(p);
+      return r && r.kind === "error" && r.command === CMD.DUMP ? null : undefined;
+    }, { timeout: 1000, tries: 3 }); });
+  }
+  // every preset of a source (DUMP slot 0), as many as LIST counted, paced by the unit's reply ring
+  dumpAll(source, total, onProgress = () => {}) {
+    if (!total) return Promise.resolve([]);
+    return this.turn(() => {
+      this.io.drain();
+      const out = [];
+      return this.askMany(dumpRequest({ source, slot: 0 }), (p) => {
+        const d = parseDump(p);
+        if (!d || (source !== "factory" && d.source !== source)) return undefined;
+        out.push(d.frame);
+        onProgress(out.length, total);
+        return out.length >= total ? out : MORE;
+      }, { timeout: 4000, tries: 1, partial: () => out });
+    });
+  }
+  dumpTrack(slot = 0) {
+    return this.turn(() => { this.io.drain(); return this.ask(dumpRequest({ source: "track", slot }), (p) => {
+      const d = parseDump(p);
+      if (d && d.source === "track" && (!slot || d.track === slot - 1)) return d.frame;
+      const r = parseReply(p);
+      return r && r.kind === "error" && r.command === CMD.DUMP ? null : undefined;
+    }, { timeout: 800, tries: 2 }); });
+  }
+  store(f) {
+    return this.cmd(f, CMD.STORE6, { want: (r) => r.kind === "store", timeout: 15000, tries: 1 });   // (over a used place: a job on the unit)
+  }
+  flush() { return this.cmd(flushRequest(), CMD1.FLUSH, { want: (r) => r.kind === "status" }); }
+  tags(source, slot, tags) { return this.cmd(tagsRequest({ source, slot, tags }), CMD1.TAGS, { timeout: 4000 }); }
+  rename(source, slot, name) { return this.cmd(renameRequest({ source, slot, name }), CMD1.RENAME, { timeout: 4000 }); }
+  remove(source, slot, { confirm = false } = {}) { return this.cmd(deleteRequest({ source, slot, confirm }), CMD1.DELETE); }
+  swap(source, a, b) { return this.cmd(swapRequest({ source, a, b }), CMD1.SWAP, { timeout: source === "mine" ? 4000 : 15000 }); }
+  poolRef(slot, id) { return this.cmd(poolRefRequest({ slot, id }), CMD1.POOLREF, { timeout: id ? 4000 : 15000 }); }
+  users(source, slot) { return this.cmd(usersRequest({ source, slot }), CMD1.USERS, { want: (r) => r.kind === "users", timeout: 5000, tries: 2 }); }
+  async projects() {
+    const r = await this.cmd(projectsRequest(), CMD1.PROJECTS, { want: (x) => x.kind === "projects", timeout: 800, tries: 3 }).catch((e) => { if (e.code === "lost") throw e; return null; });
+    return r && r.kind === "projects" ? r : null;
+  }
+  project(op, p, q = 0) { return this.cmd(projectRequest({ op, p, q }), CMD1.PROJECT, { timeout: 30000 }); }
+  // a value of a track's sound, as a knob turned on the unit; with its ACK (the unit holds one frame: one at a time;
+  // a value set sent again is harmless)
+  param(track, id, value) { return this.cmd(paramRequest({ track, id, value, ack: true }), CMD.PARAM, { timeout: 1000, tries: 2, wake: false }); }
+  browse(track, id) { return this.cmd(browseRequest({ track, id }), CMD.BROWSE, { timeout: 3000 }); }
+  note(ch, n, vel) { this.io.send(vel ? [0x90 | (ch & 15), n & 127, vel & 127] : [0x80 | (ch & 15), n & 127, 0]); }
 
   version() {
     return this.turn(() => { this.io.drain(); return this.ask(egIdentityRequest(), (p) => parseEgIdentity(p) ?? undefined, { timeout: 400, tries: 2 }); });

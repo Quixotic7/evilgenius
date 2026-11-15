@@ -1,13 +1,25 @@
 // SPDX-License-Identifier: MPL-2.0
 // EvilGenius's manager without hardware: the page's modules (site/manager/egwire.js, egstore.js, egfiles.js,
 // eglink.js) against frames captured from a real FM-1 and from fm1-base's Python codec, a store image built here, and
-// a simulated FM-1 that speaks the port's protocol (firmware/app/app.c app_usb_cmd: FZBI, FZBR, FZSR and its pulls).
+// a simulated FM-1 that speaks the port's protocol (firmware/app/app.c app_usb_cmd: FZBI, FZBR, FZSR and its pulls);
+// EvilGenius's own SysEx (egsysex.js, egsound.js) against replies captured from the unit (tools/eg/fixtures/
+// sysex_frames.json: STATUS, PROJECTS, LIST with the factory's, a track's and a factory preset's DUMP, a refused PARAM)
+// and the same simulated FM-1 answering it.
 //
 //   node tools/eg/manager_test.mjs
 import * as W from "../../site/manager/egwire.js";
 import * as S from "../../site/manager/egstore.js";
 import * as F from "../../site/manager/egfiles.js";
 import { findUnit, EgLink, Port } from "../../site/manager/eglink.js";
+import * as X from "../../site/manager/egsysex.js";
+import * as N from "../../site/manager/egsound.js";
+import { VALUES, DESTS, DEST_ID } from "../../site/manager/egvalues.js";
+import { readFileSync } from "node:fs";
+import { SimUnit as EgSim } from "../../site/manager/egsim.js";
+import { Live, plan, destOf, unroute, PADS } from "../../site/manager/eglive.js";
+import { filterRows } from "../../site/manager/eglibrary.js";
+import { help } from "../../site/manager/eghelp.js";
+const FX = JSON.parse(readFileSync(new URL("./fixtures/sysex_frames.json", import.meta.url)));
 
 let fails = 0, checks = 0;
 const check = (ok, msg) => { checks++; if (!ok) { fails++; console.log(`  FAIL ${msg}`); } };
@@ -177,6 +189,7 @@ class SimUnit {
     this.frames.push(p);
     if (same(p, W.HS_QUERY)) { this.out(W.identityFrame(this.id)); return; }
     if (this.semantic && same(p, W.egIdentityRequest())) { this.out(W.egFrame(0x41, [1, ...[...this.semantic].map((c) => c.charCodeAt(0))])); return; }
+    if (this.sem && this.answer(p)) return;
     const a = W.parseResponse(p);
     if (a) { if (this.waiting) this.waiting(a); return; }
     const b = W.parseBulk(p);
@@ -188,6 +201,29 @@ class SimUnit {
       this.out(W.bulkFrame("FZBD", [off], Array.from(this.image.subarray(off, off + n))));
       if (this.onRead) this.onRead(off);
     } else if (b.tag === "FZSR") this.restore(W.rd32(b.data, 0), W.rd32(b.data, 4));
+  }
+  // EvilGenius's own SysEx, as the unit answers it (the replies captured from it; PARAM, TAGS, RENAME kept)
+  answer(p) {
+    const r = W.parseEg(p);
+    if (!r) return false;
+    const ack = (cmd, st, a, b) => this.out(W.egFrame(0x52, [cmd, st, (a >> 7) & 127, a & 127, (b >> 7) & 127, b & 127]));
+    const sem = this.sem, b = r.body;
+    sem.cmds.push(r.cmd);
+    if (r.cmd === X.CMD1.STATUS) this.out(hex(FX.status[0]));
+    else if (r.cmd === X.CMD1.PROJECTS) this.out(hex(FX.projects[0]));
+    else if (r.cmd === X.CMD.LIST) for (const f of FX.listf) this.out(hex(f));
+    else if (r.cmd === X.CMD.DUMP && b[0] === X.SOURCE_TRACK) this.out(hex(FX.track1[0]));
+    else if (r.cmd === X.CMD.DUMP && b[0] === 1) this.out(hex(FX.factory1[0]));
+    else if (r.cmd === X.CMD.PARAM) {
+      const t = b[0], id = b[1], v = ((b[2] << 14) | (b[3] << 7) | b[4]) - (1 << 20);
+      if (t > 5 && t !== 127) { ack(X.CMD.PARAM, X.ST.BAD_TRACK, t + 1, id); return true; }
+      sem.params.push([t, id, v]);
+      if (b[5] & 1) ack(X.CMD.PARAM, 0, t + 1, id);
+    } else if (r.cmd === X.CMD1.TAGS) { sem.tags.push([b[0], (b[1] << 7) | b[2], b[3]]); ack(r.cmd, 0, 0, 0); }
+    else if (r.cmd === X.CMD1.RENAME) { sem.names.push(String.fromCharCode(...b.slice(3, 15)).trimEnd()); ack(r.cmd, 0, 0, 0); }
+    else if (r.cmd === X.CMD.STORE6) { sem.stores.push(b); this.out(W.egFrame(0x50, [0, b[0] & 1, 0, 7])); }
+    else this.out(W.egFrame(0x7F, [X.ST.BAD_COMMAND, r.cmd]));
+    return true;
   }
   async pull(addr) {                                                 // (fz_pull: asked again until it comes)
     for (let k = 0; k < 20; k++) {
@@ -299,6 +335,150 @@ const accessOf = (...units) => ({ inputs: new Map(units.map((u, i) => [`in${i}`,
   inp.onmidimessage({ data: Uint8Array.from([0xF8]) });
   inp.onmidimessage({ data: Uint8Array.from(fr.slice(9)) });
   check(same(await port.read(10), fr), "a frame in two parts, a clock byte between");
+}
+
+// ---------------------------------------------------------------- EvilGenius's own SysEx
+console.log("sysex");
+{
+  const id = X.identity();
+  check(same(id, hex("F07D454701017FF7")), "IDENTITY's frame: 7D 45 47, protocol 1, its checksum");
+  for (const [k, list] of Object.entries(FX)) for (const f of list) check(X.parseReply(hex(f)) !== null, `the unit's ${k} reply is read`);
+  check(X.parseReply(hex(FX.status[0]).map((v, i, a) => (i === a.length - 2 ? v ^ 1 : v))) === null, "a bad checksum: not read");
+  const fizz = hex(FX.status[0]); fizz[2] = 0x46; fizz[3] = 0x5a;
+  check(X.parseReply(fizz) === null, "FIZZ's id (7D 46 5A): not EvilGenius's");
+  const st = X.parseStatus(hex(FX.status[0]));
+  check(st.tracks === 6 && st.package === "ble" && st.nproj === 4 && st.nlib === 128 && st.lib[1] === 165, "STATUS: tracks, the package, its places, the store's pages");
+  const pj = X.parseProjects(hex(FX.projects[0]));
+  check(pj.list.length === 4 && pj.list[0].current && pj.list[1].there && !pj.list[3].there, "PROJECTS: four places, the current one, which are there");
+  const parts = FX.listf.map((f) => X.parseList(hex(f)));
+  const rows = parts.flatMap((l) => l.entries);
+  check(parts.at(-1).last && rows.length === parts[0].total && rows.every((r) => r.source === "factory" || r.source === "pool"), "LIST: its parts, as many rows as its total");
+  const td = X.parseDump(hex(FX.track1[0]));
+  check(td.source === "track" && td.track === 0 && td.extras && td.blob.length === 128 && td.blob[0] === 0x53, "a track's DUMP: its track, its extras, SID TONE's blob");
+  const fd = X.parseDump(hex(FX.factory1[0]));
+  check(fd.source === "mine" || fd.source === "pool" || fd.slot >= 0, "a factory preset's DUMP read");
+  const bad = X.parseAck(hex(FX.param_bad[0]));
+  check(bad && bad.command === X.CMD.PARAM && bad.statusName === "BAD TRACK", "PARAM on track 10: the unit's BAD TRACK");
+  const back = X.trackFrame(hex(FX.track1[0]));
+  check(X.parseReply(back) === null && back[6] & X.FLAGS.AUDITION && !(back[6] & X.FLAGS.DUMP), "a track's DUMP sent back as an AUDITION (its checksum made again)");
+  let threw = false; try { X.storeSound({ name: "X", blob: new Uint8Array(96) }); } catch (_) { threw = true; }
+  check(threw, "a 96-byte (FM) blob refused: EvilGenius stores SID TONE's 128 bytes only");
+  const pr = X.paramRequest({ track: 2, id: X.MIX_ID.PAN, value: -5, ack: true });
+  check(pr[6] === 2 && pr[7] === 119 && ((pr[8] << 14) | (pr[9] << 7) | pr[10]) - (1 << 20) === -5 && pr[11] === 1, "PARAM: track, the mix's PAN id (119), a signed value, ACK");
+
+  // the sound's values: the core's, packed as the core packs them
+  check(N.NP === 119 && VALUES[N.ID.SAY][0] === "SAY" && VALUES[N.ID.MOD0][0] === "SOURCE" && VALUES[N.ID.VMODE][6] === 0, "egvalues.js: 119 values, SAY and MOD where quad_voice.h has them, VOICE not lockable");
+  check(DESTS[2] === "CUTOFF" && DEST_ID[2] === N.ID.FREQ && DEST_ID[1] === -1 && DEST_ID.every((v) => v < N.NP), "the destinations: each its value (PITCH none)");
+  if (DESTS.length > 20)                                   // (a core with the envelopes' destinations, QD_D_EA..FKTRK)
+    check(DESTS[20] === "ATK" && DEST_ID[20] === N.ID.EATK && DEST_ID[36] === N.ID.FKTRK, "the destinations: EA..FKTRK, each its value");
+  for (const [k, f] of [["track", td], ["factory", fd]]) {
+    const sn = N.soundFromDump(f);
+    check(sn && same(N.blobOf(sn.values), f.blob), `${k}: the unit's blob unpacked and packed again, byte for byte`);
+  }
+  let ok = true;
+  for (let n = 0; n < 200; n++) {
+    const v = VALUES.map(([, mn, mx]) => mn + Math.floor(Math.random() * (mx - mn + 1)));
+    if (JSON.stringify(N.valuesOf(N.blobOf(v))) !== JSON.stringify(v)) { ok = false; break; }
+  }
+  check(ok, "200 random sounds: packed and unpacked, the same values");
+  const v1 = N.blobOf(N.defaults()); v1[1] = 1;
+  const old = N.valuesOf(v1);
+  check(old && old[N.ID.SSPD] === VALUES[N.ID.SSPD][3], "a version-1 sound: SAY's values take their defaults");
+  const over = N.blobOf(N.defaults()); over[2] = 200;
+  check(N.valuesOf(over) === null, "a value out of its range: not a sound");
+  const midi = new Uint8Array(128); midi[0] = 0x53; midi[1] = 2; midi.set([77, 73, 68, 73], 124);
+  const ms = N.soundFromPreset({ name: "CCS", blob: midi });
+  check(ms.midi && same(N.blobNow(ms), midi), "a MIDI track's sound kept as it came");
+  check(N.text(N.ID.FDEPTH, 70) === "+6" && N.text(N.ID.C1, -3) === "-3" && N.text(N.ID.FTYPE, 1) === "LP" && N.text(X.MIX_ID.PAN, -5) === "L5", "the values' texts as the unit shows them");
+  const s0 = N.soundFromDump(td);
+  N.setValue(s0, N.lfo(1, "DEST"), 3); N.setValue(s0, N.lfo(1, "DEPTH"), 80);
+  check(N.routes(s0.values).some((r) => r.kind === "lfo" && r.k === 1 && r.dest === 3 && r.depth === 16), "LFO 2 onto RESO: a route");
+  check(N.clampV(N.ID.FREQ, 5000) === 2047, "a value clamped to its range");
+
+  // the link: the unit's own SysEx through it
+  const unit = new SimUnit({ image: makeImage() });
+  unit.sem = { cmds: [], params: [], tags: [], names: [], stores: [] };
+  const link = quick(await findUnit(accessOf(unit)));
+  const ls = await link.status();
+  check(ls && ls.kind === "status" && ls.tracks === 6, "link.status()");
+  const lr = await link.list({ factory: true, pool: true });
+  check(lr.length === rows.length, "link.list(): every part");
+  const lt = await link.dumpTrack(1);
+  check(lt && same(lt, hex(FX.track1[0])), "link.dumpTrack(1)");
+  const a = await link.param(2, N.ID.FREQ, 1500);
+  check(a.status === 0 && unit.sem.params.at(-1).join() === `2,${N.ID.FREQ},1500`, "link.param(): the value reaches the unit, its ACK");
+  const nb = await link.param(9, 0, 1);
+  check(nb.statusName === "BAD TRACK", "link.param() refused: the status said");
+  const tg = await link.tags("mine", 3, ["BASS", "FX"]);
+  check(tg.status === 0 && unit.sem.tags.at(-1).join() === `0,3,${1 | 64}`, "link.tags(): MY PRESETS 3 tagged BASS and FX");
+  await link.rename("mine", 3, "NEW NAME");
+  check(unit.sem.names.at(-1) === "NEW NAME", "link.rename()");
+  const sr = await link.store(N.storeFrameOf(s0, { slot: 0 }));
+  check(sr.kind === "store" && sr.slot === 7 && unit.sem.stores.length === 1, "link.store(): a STORE6, the place it went");
+  const old2 = await link.browse(0, 5);
+  check(old2.old === true, "a command the unit does not know: {old}");
+  link.close();
+}
+
+// ---------------------------------------------------------------- EDIT and LIBRARY's model, against egsim.js
+console.log("edit");
+{
+  const sim = new EgSim();
+  const link = quick(await findUnit(sim.access));
+  check(await link.version() === "EVILGENIUS SIM", "the simulated unit: found, its IDENTITY");
+  const rows = await link.list({ factory: true });
+  check(rows.length === 95 && rows[1].name === "SAW LEAD", "its LIST: the unit's 95 factory presets");
+  const t1 = N.soundFromDump(X.parseDump(await link.dumpTrack(1)));
+  check(t1 && t1.name === "ZAP" && same(t1.blob, sim.tracks[0].blob), "a track's DUMP: the unit's own sound");
+  // live: a drag's many values: the latest of each id, one at a time with its ACK
+  const errs = [];
+  const live = new Live({ link, track: 0, onError: (e) => errs.push(e) });
+  for (let v = 10; v <= 90; v += 5) live.set(N.ID.PW1, v);
+  live.set(N.ID.FREQ, 1500); live.set(X.MIX_ID.PAN, -10);
+  await live.idle();
+  const sv = N.valuesOf(sim.tracks[0].blob);
+  check(sv[N.ID.PW1] === 90 && sv[N.ID.FREQ] === 1500 && sim.tracks[0].pan === -10 && !errs.length, "LIVE: the values reach the track, the mix's PAN too");
+  check(sim.counts.params <= 5, `LIVE: a drag of 17 values sent as ${sim.counts.params} PARAMs (only the latest of each)`);
+  const bad = new Live({ link, track: 9, onError: (e) => errs.push(e) });
+  bad.set(0, 1); await bad.idle();
+  check(errs.length === 1 && errs[0].statusName === "BAD TRACK", "LIVE: a refusal reaches onError");
+  // an AUDITION and the track put back
+  const kept = await link.dumpTrack(2);
+  const saw = N.soundFromDump(X.parseDump(await link.dump("factory", 2)));
+  await link.store(N.storeFrameOf(saw, { track: 1, audition: true }));
+  check(sim.tracks[1].name === "SAW LEAD" && !sim.mine.some(Boolean), "SEND TO TRACK: on the track, nothing stored");
+  await link.store(X.trackFrame(kept));
+  check(same(sim.tracks[1].blob, X.parseDump(kept).blob) && sim.tracks[1].name === X.parseDump(kept).name, "PUT TRACK BACK: the track as it was");
+  // SAVE AS NEW, REPLACE, the library's commands
+  const r1 = await link.store(N.storeFrameOf({ ...saw, name: "MY SAW" }, { slot: 0, own: true }));
+  check(r1.slot === 1 && sim.mine[0].name === "MY SAW" && !sim.mine[0].imported, "SAVE AS NEW: MY PRESETS' first free place, the owner's");
+  N.setValue(saw, N.ID.FREQ, 77);
+  await link.store(N.storeFrameOf({ ...saw, name: "MY SAW" }, { slot: 1, own: true }));
+  check(N.valuesOf(sim.mine[0].blob)[N.ID.FREQ] === 77 && sim.mine.filter(Boolean).length === 1, "REPLACE: the same place, the new sound");
+  check((await link.rename("mine", 1, "SAW TWO")).status === 0 && sim.mine[0].name === "SAW TWO", "RENAME");
+  check((await link.swap("mine", 1, 3)).status === 0 && sim.mine[2] && !sim.mine[0], "SWAP into an empty place: a move");
+  check((await link.browse("selected", sim.mine[2].id)).status === 0, "BROWSE (LOAD ON FM-1)");
+  const inUse = await link.remove("mine", 3);
+  check(inUse.statusName === "IN USE", "DELETE of a preset a track plays: IN USE first");
+  check((await link.remove("mine", 3, { confirm: true })).status === 0 && !sim.mine.some(Boolean), "DELETE confirmed");
+  check(filterRows(rows, { q: "bass" }).every((r) => /bass/i.test(r.name)) && filterRows(rows, { src: "mine" }).length === 0 &&
+    filterRows(rows, { tags: 1 }).every((r) => r.tags & 1), "LIBRARY's filters: a name, where, a tag");
+  link.close();
+
+  // routes: an LFO onto a value, a MOD source into the first free slot, FULL
+  const v = N.defaults();
+  const pl = plan(v, { kind: "lfo", k: 1 }, destOf(N.ID.RESO));
+  check(destOf(N.ID.RESO) === 3 && pl.changes.some(([id, x]) => id === N.lfo(1, "DEST") && x === 3) && pl.changes.some(([id, x]) => id === N.lfo(1, "DEPTH") && x === 88),
+    "LFO 2 onto RESO: its DEST, a depth that moves");
+  for (const [id, x] of pl.changes) v[id] = x;
+  check(plan(v, { kind: "lfo", k: 1 }, 3).existing, "the same route again: its card, nothing changed");
+  const pm = plan(v, { kind: "mod", src: 1 }, destOf(N.ID.FREQ));
+  check(pm.changes.join() === [[N.mod(0, 0), 1], [N.mod(0, 1), 2], [N.mod(0, 2), 40]].join(), "VEL onto CUTOFF: slot 1 at +40");
+  for (let k = 0; k < 8; k++) { v[N.mod(k, 0)] = 2; v[N.mod(k, 1)] = 3; }
+  check(plan(v, { kind: "mod", src: 1 }, 2).full, "every slot used: FULL");
+  check(unroute({ kind: "mod", k: 3 }).join() === [N.mod(3, 0), 0].join(), "a route removed: the slot's SOURCE off");
+  check(destOf(N.ID.W1) === -1 && PADS.includes(1) && PADS.includes(12), "a WAVE is no destination; PITCH and PAN are pads");
+  check(VALUES.every((_, id) => help(id).length > 10), "every value has its help line");
 }
 
 console.log(fails ? `${fails} of ${checks} checks FAILED` : `all ${checks} checks pass`);

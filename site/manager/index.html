@@ -5,7 +5,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>EVILGENIUS manager: back up an FM-1, move its presets</title>
-<meta name="description" content="Back up and restore an M-VAVE FM-1 running EVILGENIUS, and export and import its presets, from the browser over USB.">
+<meta name="description" content="Back up and restore an M-VAVE FM-1 running EVILGENIUS, edit its sounds live, keep its library, export and import its presets, from the browser over USB.">
 <link rel="stylesheet" href="../css/eg.css">
 <style>
 /* the manager's own: the console that follows the page down, the scene in it, the lists */
@@ -22,6 +22,60 @@
 #presets .key { padding: var(--px) calc(var(--px) * 2); box-shadow: none; }
 .name { color: var(--white); }
 @media (max-width: 640px) { .console .scene { min-width: 0; } .console .scene .prop { display: none; } }
+/* the tabs */
+.tabs { display: flex; gap: calc(var(--px) * 3); flex-wrap: wrap; margin: calc(var(--px) * 6) 0 calc(var(--px) * 4); }
+.tabs button { cursor: pointer; padding: calc(var(--px) * 2) calc(var(--px) * 3); border: var(--px) solid var(--blue); background: var(--black); line-height: 0; }
+.tabs button[aria-selected="true"] { border-color: var(--yellow); background: var(--blue); }
+.tabs button:hover { background: var(--blue); }
+[aria-pressed="true"].key, .seg [aria-pressed="true"] { border-color: var(--yellow); background: var(--blue); }
+.seg { display: inline-flex; gap: var(--px); flex-wrap: wrap; }
+.seg .key, .edtags .key { padding: var(--px) calc(var(--px) * 2); box-shadow: none; }
+/* LIBRARY */
+.libbar { display: flex; flex-wrap: wrap; gap: calc(var(--px) * 3); align-items: center; margin: 0 0 calc(var(--px) * 4); }
+#lb-table .acts { display: flex; flex-wrap: wrap; gap: var(--px); justify-content: flex-end; }
+#lb-table .acts .key { padding: var(--px) calc(var(--px) * 2); box-shadow: none; }
+#lb-table td:first-child { white-space: nowrap; width: 6em; }
+#lb-table input { width: 12ch; }
+/* EDIT */
+.edtop { display: flex; flex-direction: column; gap: calc(var(--px) * 2); }
+.edwho { color: var(--white); }
+.edsrc, .edacts { margin: calc(var(--px) * 2) 0; align-items: center; }
+.edname { display: flex; flex-wrap: wrap; gap: calc(var(--px) * 3); align-items: center; margin: calc(var(--px) * 3) 0; }
+.edname input { width: 14ch; text-transform: uppercase; }
+.edtags { display: inline-flex; gap: var(--px); flex-wrap: wrap; }
+.edroute { display: flex; flex-wrap: wrap; gap: calc(var(--px) * 2); align-items: center; padding: calc(var(--px) * 2); border: var(--px) dashed var(--blue); margin: 0 0 calc(var(--px) * 3); position: sticky; top: var(--consoleh, 0px); z-index: 1; background: var(--black); }
+.edroute .pads { display: inline-flex; flex-wrap: wrap; gap: var(--px); }
+.chip { cursor: grab; padding: var(--px) calc(var(--px) * 2); border: var(--px) solid var(--c, var(--grey)); background: var(--black); line-height: 0; }
+.chip[aria-pressed="true"] { background: var(--blue); outline: var(--px) solid var(--yellow); }
+.chip.pad { --c: var(--yellow); cursor: pointer; }
+.edjump { display: flex; flex-wrap: wrap; gap: calc(var(--px) * 2); margin: 0 0 calc(var(--px) * 3); }
+.edjump a { padding: var(--px) calc(var(--px) * 2); border: var(--px) solid var(--blue); line-height: 0; }
+.edsec h3 { margin-top: 0; }
+.rowl { margin: calc(var(--px) * 2) 0 var(--px); line-height: 0; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: calc(var(--px) * 2); }
+.tile { position: relative; padding: calc(var(--px) * 2); border: var(--px) solid var(--blue); background: var(--black); cursor: ns-resize; touch-action: none; user-select: none; min-height: 72px; line-height: 0; }
+.tile .tv { display: block; margin-top: calc(var(--px) * 2); min-height: 14px; }
+.tile .tb { display: block; height: var(--px); background: var(--lightblue); margin-top: calc(var(--px) * 2); width: 0; }
+.tile.moved { border-color: var(--lightblue); }
+.tile:hover { background: #0c0b2a; }
+.tile.can { border-color: var(--yellow); border-style: dashed; cursor: copy; }
+.tile.over { background: var(--blue); }
+.tile .rt { position: absolute; top: 2px; right: 2px; display: flex; gap: 2px; }
+.rchip { cursor: pointer; padding: 2px; border: 2px solid var(--darkgrey); background: var(--black); line-height: 0; }
+.edhelp { position: sticky; bottom: 0; background: var(--black); border-top: var(--px) solid var(--blue); padding: calc(var(--px) * 2) 0; margin: calc(var(--px) * 3) 0 0; min-height: 3.2em; max-width: none; color: var(--white); }
+.edpick { position: absolute; z-index: 5; background: var(--black); border: var(--px) solid var(--yellow); padding: calc(var(--px) * 2); max-width: min(560px, calc(100vw - 32px)); }
+.edpick .pl { display: flex; flex-wrap: wrap; gap: var(--px); margin-top: calc(var(--px) * 2); max-height: 50vh; overflow: auto; }
+.edpick .key { padding: var(--px) calc(var(--px) * 2); box-shadow: none; }
+.edpick .key.on { border-color: var(--yellow); background: var(--blue); }
+@media (max-width: 640px) {
+  .tiles { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); }
+  .edroute { position: static; }
+  #lb-table thead { display: none; }
+  #lb-table tr { display: grid; grid-template-columns: 5.5em 1fr; }
+  #lb-table td { border-bottom: 0; padding: 4px 6px; }
+  #lb-table td:nth-child(3) { grid-column: 2; color: var(--grey); }
+  #lb-table td.acts { grid-column: 1 / -1; justify-content: flex-start; border-bottom: 2px solid var(--blue); padding-bottom: 10px; }
+}
 </style>
 <script type="module" src="../js/px.js"></script>
 <script type="module" src="./manager.js"></script>
@@ -42,7 +96,7 @@
 
   <main>
     <h1><px-text font="big" scale="3" color="yellow">THE CABINET</px-text></h1>
-    <p style="margin-top:16px">This page copies what an FM-1 running EVILGENIUS keeps: its projects and MY PRESETS. Save them to a file, put a file back, and move presets between units. It needs <strong>Chrome or Edge on a computer</strong> (Web MIDI) and the FM-1's <strong>USB cable</strong>. Nothing is installed, and nothing leaves this computer.</p>
+    <p style="margin-top:16px">This page copies what an FM-1 running EVILGENIUS keeps: its projects and MY PRESETS. Save them to a file, put a file back, and move presets between units. <strong>LIBRARY</strong> keeps its sounds; <strong>EDIT</strong> edits one, on the unit as you go if you like. It needs <strong>Chrome or Edge on a computer</strong> (Web MIDI) and the FM-1's <strong>USB cable</strong>. Nothing is installed, and nothing leaves this computer.</p>
     <div id="nomidi" class="box bad" hidden>
       <p><strong>This browser cannot talk to the FM-1.</strong> It has no Web MIDI. Open this page in Chrome or Edge on a computer.</p>
     </div>
@@ -69,6 +123,15 @@
       <p id="unit" class="dim">No FM-1 yet.</p>
     </div>
 
+    <nav class="tabs" role="tablist" aria-label="The manager's tabs">
+      <button id="t-cabinet" role="tab" aria-selected="true" aria-controls="tab-cabinet" type="button"><px-text font="big" scale="2" color="white">CABINET</px-text></button>
+      <button id="t-library" role="tab" aria-selected="false" aria-controls="tab-library" type="button"><px-text font="big" scale="2" color="white">LIBRARY</px-text></button>
+      <button id="t-edit" role="tab" aria-selected="false" aria-controls="tab-edit" type="button"><px-text font="big" scale="2" color="white">EDIT</px-text></button>
+    </nav>
+
+    <section id="tab-library" role="tabpanel" aria-labelledby="t-library" hidden></section>
+    <section id="tab-edit" role="tabpanel" aria-labelledby="t-edit" hidden></section>
+    <section id="tab-cabinet" role="tabpanel" aria-labelledby="t-cabinet">
     <h2><px-text font="big" scale="2" color="lightblue">2 BACK UP AND RESTORE</px-text></h2>
     <div class="box">
       <p>A backup is the FM-1's whole store in one <code>.egbak</code> file: every project and all of MY PRESETS. Restoring a backup <strong>replaces everything</strong> in the store with what the file holds. Stop the FM-1 before either, and leave it alone until it is done.</p>
@@ -114,6 +177,7 @@
         <tbody id="presetrows"></tbody>
       </table>
     </div>
+    </section>
   </main>
 
   <footer class="foot">
