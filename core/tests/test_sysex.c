@@ -277,9 +277,9 @@ static void phase1_tests(void)
     /* STATUS, PROJECTS */
     cmd(QD_SX_STATUS, 0, 0);
     CHECK(reply_ok() && R[5] == QD_SX_R_STATUS && R[6] == 1 && R[7] == QD_NTRACK && !(R[8] & QD_SXT_NOSTORE) &&
-              !(R[8] & QD_SXT_PLAYING) && R[9] == 0 && R[11] == 1 && rn == 7 + 24 + 4 * QD_PKG_BLE,
+              !(R[8] & QD_SXT_PLAYING) && R[9] == 0 && R[11] == 1 && rn == 7 + 24 + 4 * QD_STORE_BLE,
           "STATUS: 42, protocol 1, 6 tracks, the store attached, stopped, project 1 worked on, one project (%d bytes)", rn);
-#if QD_PKG_BLE
+#if QD_STORE_BLE
     CHECK(R[29] == QD_SXK_BLE && R[30] == QD_NPROJ && (R[31] << 7 | R[32]) == QD_NLIB,
           "STATUS: the Bluetooth package's byte, its 4 projects, its 128 MY PRESETS' places (%02X %02X %02X %02X)", R[29],
           R[30], R[31], R[32]);

@@ -618,7 +618,7 @@ static FZ_COLD uint32_t sx_put14(uint8_t *b, uint32_t o, uint32_t v)
 static FZ_COLD void sx_status(qd_app_t *a)
 {
     const qd_persist_t *ps = &a->per;
-    uint8_t b[25 + 4 * QD_PKG_BLE];
+    uint8_t b[25 + 4 * QD_STORE_BLE];
     uint32_t u[6] = {0, 0, 0, 0, 0, 0}, o = 0;
     int k, np = 0;
     for (k = 0; k < QD_NLIB; k++)
@@ -649,8 +649,10 @@ static FZ_COLD void sx_status(qd_app_t *a)
         o = sx_put14(b, o, u[k]);
     b[o++] = a->sx.wk.cmd;
     b[o++] = (uint8_t)a->sel;                           /* (P2-B: the selected track) */
-#if QD_PKG_BLE
-    b[o++] = QD_SXK_BLE;                                /* (2026-10-27: the package, its counts) */
+#if QD_STORE_BLE
+    b[o++] = QD_SXK_BLE;                                /* (2026-10-27: the package, its counts; 2026-11-15: the .rfm1
+                                                         * keeps the Bluetooth package's store, qd_config.h
+                                                         * QD_STORE_BLE: the same counts) */
     b[o++] = QD_NPROJ;
     o = sx_put14(b, o, QD_NLIB);
 #endif

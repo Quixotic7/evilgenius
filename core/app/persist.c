@@ -605,6 +605,9 @@ static uint32_t ser_set(const qd_app_t *a, uint8_t *b)
                        (a->ui.voice_mode == QD_VOICE_ALWAYS ? 0x04 : 0));     /* (2026-10-27, the Bluetooth package: bit 4 BLUETOOTH off) */
 #else
     b[o++] = (uint8_t)((a->ui.boost ? 0x80 : 0) | (a->ui.clk_out ? 0 : 0x40) | (a->ui.cc_out ? 0 : 0x20) |
+#if QD_STORE_BLE
+                       (a->per.set_ble_off ? 0x10 : 0) |   /* (the .rfm1: a unit's BLUETOOTH OFF kept for its restore) */
+#endif
                        (a->ui.voice_mode == QD_VOICE_OFF ? 0x08 : 0) | (a->ui.voice_mode == QD_VOICE_ALWAYS ? 0x04 : 0));
                                                         /* (EvilGenius: bit 3 THE VOICE off, bit 2 always; neither:
                                                          * only while stopped) */
@@ -653,6 +656,8 @@ static int de_set(const uint8_t *b, uint32_t len, int *proj, int *pat, int *sel,
 #if QD_PKG_BLE
     a->ui.ble_off = (b[5] & 0x10u) != 0;                /* (bit 4: 0 in every record before it, and the USB package's:
                                                          * ON) */
+#elif QD_STORE_BLE
+    a->per.set_ble_off = (b[5] & 0x10u) != 0;           /* (the .rfm1: kept, not used) */
 #endif
     for (i = 0; i < (int)nf; i++) {
         int16_t v;

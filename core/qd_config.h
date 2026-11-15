@@ -49,6 +49,18 @@
 #if QD_PKG_BLE && !defined(QD_DEVICE)
 #error "qd_config.h: the Bluetooth package (QD_PKG_BLE) is a device build (QD_DEVICE)"
 #endif
+/* THE STORE'S LAYOUT (2026-11-15, 0.1.2): the Bluetooth package's store (persist.h: 4 projects, 128 MY presets, its
+ * regions at the FM-1's data region's 0xAF000..0xDFFFF, store.h's magic "EGB2"), byte for byte, apart from the package:
+ * QD_STORE_BLE 1. The Bluetooth package has it (its default: QD_PKG_BLE); FM1VST's glue (the .rfm1 RemoteFM1 plays:
+ * core_evilgenius.cmake's -DQD_STORE_BLE=1) asks for it in the host's profile, so a backup the web manager makes of a
+ * unit restores in the player and the other way round (core/glue/qd_bulk.h). 0: the USB package's (QD_DEVICE) or the
+ * host's own (every other host build, the tests) as before */
+#ifndef QD_STORE_BLE
+#define QD_STORE_BLE QD_PKG_BLE
+#endif
+#if QD_PKG_BLE && !QD_STORE_BLE
+#error "qd_config.h: the Bluetooth package keeps its own store (QD_STORE_BLE)"
+#endif
 
 /* USB HOST (2026-11-14): SETTINGS' page 3 on the USB package, the USB port the host of a USB-MIDI keyboard or synth
  * (fm1-base's plat_usb_host; app.h qd_app_usb_host_on). Never saved: off at every power-on. The core keeps and shows

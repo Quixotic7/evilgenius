@@ -51,9 +51,10 @@ extern "C" {
 #define QDS_MAXSEC 256                     /* sectors a store */
 #define QDS_RESERVE 6u                     /* blank sectors kept ahead by default (qd_store_set_reserve: the largest
                                             * record's sectors and one more) */
-#if QD_PKG_BLE
+#if QD_STORE_BLE
 #define QDS_MAGIC 0x32424745u              /* EvilGenius "EGB2" (2: SAY and its voice in the patch) (FIZZ was "Z2FB": the Bluetooth package's stores (2026-10-27: a layout of their own,
-                                            * persist.h; each package reads the other's sectors as not its own) */
+                                            * persist.h; each package reads the other's sectors as not its own;
+                                            * 2026-11-15: the .rfm1's too, qd_config.h QD_STORE_BLE) */
 #else
 #define QDS_MAGIC 0x32534745u              /* EvilGenius "EGS2" (FIZZ was "Z2FS": never read here) */
 #endif
