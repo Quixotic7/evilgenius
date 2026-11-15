@@ -12,6 +12,12 @@ EVILGENIUS began as FIZZ 0.12.0-beta.17 with another engine and another face; FI
 
 <!-- The next release's notes, for testers, in plain language. firmware/release.py moves them. -->
 
+- **The mixer's knobs work as on the Home views**: PRESETS chooses the track and ALGORITHM the step (a knob turned
+  with a step chosen locks it on that step). PRESETS no longer mutes; hold a track's black key to mute it. On the
+  FX MIX page PRESETS is still TV's send.
+- **An LFO's MULT turns in the order of its speed**: FREE, then 1/128, 1/64, 1/32 .. 8 BAR. 1/64 and 1/128 came
+  after 8 BAR. Sounds you saved keep their setting.
+
 ## 0.1.0-beta.3 (2026-11-14)
 
 - **The start screen runs smoothly: 29 frames a second on the unit, from 11.** It drew more than the unit's frame

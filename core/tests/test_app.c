@@ -520,6 +520,22 @@ static void t_mfx(void)
     printf("  mfx: MIDI in through a group, ALL NOTES OFF, undo\n");
 }
 
+static void t_mult_order(void)                          /* 2026-11-14 (owner): MULT turns fastest to slowest */
+{
+    static const char *const WANT[12] = {"FREE", "1/128", "1/64", "1/32", "1/16", "1/8", "1/4", "1/2", "1 BAR",
+                                         "2 BAR", "4 BAR", "8 BAR"};
+    const int id = QD_QP_LFO(0, QD_QL_MULT);
+    char buf[16];
+    int v = 0, i, ok = 1;
+    for (i = 0; i < 12; i++) {
+        ok &= !strcmp(qd_quad_value_text(id, v, buf), WANT[i]);
+        v = qd_quad_mult_step(v, 1);
+    }
+    CHECK(ok && qd_quad_mult_step(v, 5) == v, "MULT, a detent at a time: FREE, 1/128 .. 8 BAR, and stops there");
+    CHECK(qd_quad_mult_step(qd_quad_mult_step(3, -2), 2) == 3 && qd_quad_mult_step(0, -1) == 0,
+          "MULT back and forth comes home; FREE is the first");
+    printf("  MULT: FREE, 1/128, 1/64, 1/32 .. 8 BAR\n");
+}
 static void t_mix(void)
 {
     qd_track_t *t;
@@ -1057,6 +1073,25 @@ static void t_tracks(void)
     }
     tap_button(QD_B_PAGE);
     CHECK(A.ui.mix_page == 1 && qd_view_screen(&A) == QD_SCR_MIX, "ENV again: the sends");
+    {                                                   /* 2026-11-14 (owner): PRESETS the track, ALGORITHM the step */
+        const int s0 = A.sel;
+        const uint8_t m0 = A.seq.mute;
+        qd_app_knob(&A, QD_K_PRESETS, 1);
+        run(10, 0);
+        CHECK(A.sel == s0 + 1 && A.seq.mute == m0 && A.ui.latch == QD_LATCH_MIX,
+              "the mix, PRESETS right: the next track (%d -> %d), no mute, the mix still open", s0, A.sel);
+        qd_app_knob(&A, QD_K_ALGO, 1);
+        run(10, 0);
+        CHECK(A.ui.slatch && A.ui.nheld == 1 && A.ui.held[0] == A.ui.page[A.sel] * QD_PAGE &&
+                  A.ui.latch == QD_LATCH_MIX, "the mix, ALGORITHM right: the page's first step chosen (%d held, %d)",
+              A.ui.nheld, A.ui.held[0]);
+        qd_app_knob(&A, QD_K_ALGO, -1);
+        run(10, 0);
+        CHECK(!A.ui.nheld && A.sel == s0 + 1, "the mix, ALGORITHM fully left: LIVE, no step (%d held)", A.ui.nheld);
+        qd_app_knob(&A, QD_K_PRESETS, -1);
+        run(10, 0);
+        CHECK(A.sel == s0, "the mix, PRESETS left: the track back (%d)", A.sel);
+    }
     A.seq.mute |= 1u;                                   /* track 1 muted (2026-11-11: SEL's map retired; the mix's
                                                          * hold does it, tested in test_ctl) */
     run(10, 0);
@@ -1499,6 +1534,7 @@ int main(void)
     t_midi();
     t_mfx();
     t_mix();
+    t_mult_order();
     t_limiter();
     t_panic();
     h1 = session();

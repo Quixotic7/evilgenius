@@ -41,7 +41,7 @@ static const char *const L_PSLOPE[2] = {"TIME", "RATE"};
 static const char *const L_VLOOP[3] = {"OFF", "FWD", "BOUNCE"};
 static const char *const L_DHOLD[8] = {"2K", "3K", "4K", "6K", "8K", "11K", "16K", "22K"};
 /* (1/64 and 1/128 after the bars: a sound's MULT is its place in this list, and the sounds saved before them keep
- * theirs. At 120 BPM a 1/64 is 32 Hz and a 1/128 64 Hz: an ARP wave a note a division reaches the PAL frame's 50 Hz) */
+ * theirs; the knob turns through MULT_ORDER, the speed's order. At 120 BPM a 1/64 is 32 Hz and a 1/128 64 Hz: an ARP wave a note a division reaches the PAL frame's 50 Hz) */
 static const char *const L_MULT[12] = {"FREE", "1/32", "1/16", "1/8", "1/4", "1/2", "1 BAR", "2 BAR", "4 BAR", "8 BAR",
                                        "1/64", "1/128"};
 static const char *const L_LWAVE[QD_LW_N] = {"TRI", "SINE", "SAW", "SQR", "S&H", "EXP", "RAMP", "ARP OCT", "ARP 5TH",
@@ -702,6 +702,19 @@ int qd_quad_dest_step(int d, int s)
     return d < 0 ? 0 : d >= QD_D_N ? QD_D_N - 1 : d;
 }
 int qd_quad_dest_pos(int d) { return d < 0 ? 0 : d >= QD_D_N ? QD_D_N - 1 : d; }
+/* 2026-11-14 (owner): MULT turns in the order of its speed, FREE, then 1/128 fastest .. 8 BAR slowest (the stored value
+ * stays the place in L_MULT, so the sounds saved before 1/64 and 1/128 keep theirs) */
+static const uint8_t MULT_ORDER[12] = {0, 11, 10, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+int qd_quad_mult_pos(int m)
+{
+    int i;
+    for (i = 0; i < 12; i++)
+        if (MULT_ORDER[i] == m)
+            return i;
+    return 0;
+}
+int qd_quad_mult_at(int pos) { return MULT_ORDER[pos < 0 ? 0 : pos > 11 ? 11 : pos]; }
+int qd_quad_mult_step(int m, int d) { return qd_quad_mult_at(qd_quad_mult_pos(m) + d); }
 
 /* ---------------------------------------------------------------- the math: 2^x, the LFO shapes --- */
 static float ex2(float x)                               /* 2^x, about 0.001 % (no libm: the device's flash diet) */

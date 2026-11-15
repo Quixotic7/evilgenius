@@ -337,8 +337,8 @@ static FZ_COLD void lb_ctx(const qd_app_t *a, qd_labels_t *o)
         for (k = 0; k < 4; k++)
             lb_set(o, LB_KNOB(QD_K_1 + k), MIXK[u->mix_page % QD_MIX_NPAGE][k]);
         lb_set(o, LB_KNOB(QD_K_SELECT), "PAGE");
-        lb_set(o, LB_KNOB(QD_K_ALGO), "TRACK");
-        lb_set(o, LB_KNOB(QD_K_PRESETS), u->mix_page % QD_MIX_NPAGE == 2 ? "TV SEND" : "MUTE");
+        lb_set(o, LB_KNOB(QD_K_ALGO), "STEP");          /* (2026-11-14, owner: the step cursor, PRESETS the track) */
+        lb_set(o, LB_KNOB(QD_K_PRESETS), u->mix_page % QD_MIX_NPAGE == 2 ? "TV SEND" : "TRACK");
         for (i = 0; i < QD_NTRACK; i++)
             lb_setn(o, LB_B(i), "TRACK ", i + 1);
         lb_set(o, LB_B(10), "CLEAR M/S");               /* (with a track key held; alone the hold key) */

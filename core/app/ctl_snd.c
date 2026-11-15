@@ -868,6 +868,10 @@ int qd_snd_knob(qd_app_t *a, int knob, int d)
         qd_player_live_edit(&a->player, a->sel, id, v < lo ? lo : v > hi ? hi : v);
         return 1;
     }
+    if (id >= QD_QP_LFO0 && id < QD_QP_LFO0 + 3 * 8 && (id - QD_QP_LFO0) % 8 == QD_QL_MULT) {
+        snd_put(a, id, qd_quad_mult_step(snd_cur(a, id), d));   /* 2026-11-14 (owner): MULT in the speed's order */
+        return 1;
+    }
     if ((id >= QD_QP_LFO0 && id < QD_QP_LFO0 + 3 * 8 && (id - QD_QP_LFO0) % 8 == QD_QL_DEST) ||
         (id >= QD_QP_MOD0 && id < QD_QP_VMODE && (id - QD_QP_MOD0) % 3 == QD_QM_DST)) {   /* (E4: a slot's DEST too) */
         snd_dest(a, id, d);                             /* P1.5k: DEST, through ChoralRoot's list in its order */

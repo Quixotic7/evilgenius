@@ -349,8 +349,9 @@ int qd_mix_knob(qd_app_t *a, int knob, int d)
         u->menu_knob = -1;
         return 1;
     }
-    if (knob == QD_K_ALGO) {                            /* the track */
-        qd_ctl_select_track(a, cl(a->sel + d, 0, QD_NTRACK - 1));
+    if (knob == QD_K_ALGO) {                            /* 2026-11-14 (owner): the step cursor, as on the Home views and
+                                                         * the effects (fully left: LIVE); it was the track */
+        qd_step_cursor(a, d);
         return 1;
     }
     if (pg == 2) {                                      /* FX MIX: the selected track's sends into the five rooms */
@@ -361,8 +362,9 @@ int qd_mix_knob(qd_app_t *a, int knob, int d)
         }
         return 1;
     }
-    if (knob == QD_K_PRESETS) {                         /* left: muted, right: heard */
-        a->seq.mute = (uint8_t)(d < 0 ? a->seq.mute | (1u << a->sel) : a->seq.mute & ~(1u << a->sel));
+    if (knob == QD_K_PRESETS) {                         /* 2026-11-14 (owner): the track (it was: left muted, right
+                                                         * heard; a held black key still mutes) */
+        qd_ctl_select_track(a, cl(a->sel + d, 0, QD_NTRACK - 1));
         return 1;
     }
     if (knob < QD_K_1)

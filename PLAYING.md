@@ -615,12 +615,13 @@ Undo and redo of everything (P1.5c):
 ## How do I mix? (ENV = MIX)
 
 - **Tap ENV**: the mixer, six faders, each with its pan dial on top, a level meter beside it, its number (a muted
-  track crossed, a soloed one yellow), its delay and reverb sends as two little bars under it. **ALGORITHM** chooses
-  the track; its parts take the knobs' colours: **KNOB 1 LEVEL, KNOB 2 PAN, KNOB 3 DELAY, KNOB 4 REVERB**.
+  track crossed, a soloed one yellow), its delay and reverb sends as two little bars under it. **PRESETS** chooses
+  the track and **ALGORITHM** the step, as on the Home views (fully left: none; a knob turned with a step chosen locks
+  it on that step); the track's parts take the knobs' colours: **KNOB 1 LEVEL, KNOB 2 PAN, KNOB 3 DELAY, KNOB 4
+  REVERB**.
 - **Black keys, on both pages**: **tap B1..B6** to select the track, **hold** one to mute / unmute it (at the hold),
   **double-tap** to solo it; **a track key held + B11** clears every mute and solo (2026-11-10: B11 alone is the
-  hold key, as everywhere; SEL + B11 still clears them). **PRESETS** left mutes the selected track, right
-  unmutes it. The keys' lights: playing, dim muted, blinking soloed. **SELECT** turns the page (faders / sends).
+  hold key, as everywhere; SEL + B11 still clears them). The keys' lights: playing, dim muted, blinking soloed. **SELECT** turns the page (faders / sends).
 - **ENV again**: the **sends**, every track's chorus, delay and reverb as three bars; **KNOB 1 CHORUS, KNOB 2 DELAY,
   KNOB 3 REVERB**. ENV again goes back to the faders. **HOME** closes it (0.9.6: F1 no longer does: F1 / F2 + W copy
   and move steps here, see copy and paste).
@@ -994,6 +995,7 @@ F1 / F2 show the ten before / after; B11 removes the sound lock.
   - **SPEED** (MULT on FREE) is a step's length in PAL frames, the C64's 50 Hz: 127 is a note a frame (the buzzing
     chord of the old games), and every 8 below that is a frame more, down to 16 frames a note at 0.
   - **MULT** on a division makes a step that long instead: 1/16 is a note a sixteenth, in time with the pattern.
+    Turning right goes FREE, then fastest to slowest: 1/128, 1/64, 1/32 .. 8 BAR.
   - **TRIG**: TRIG starts the chord again with every note; FREE keeps every note of the track in step with each other;
     ONE runs through the notes once and stays on the last (a run up or down); HOLD keeps the note the chord was on
     when the key went down.

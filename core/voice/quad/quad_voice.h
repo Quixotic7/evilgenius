@@ -248,6 +248,9 @@ int qd_quad_lfo_value(int id, int v, const int16_t *w, const uint8_t *dest);
 const char *qd_quad_dest_name(int dest);
 int qd_quad_dest_step(int dest, int d);
 int qd_quad_dest_pos(int dest);
+int qd_quad_mult_pos(int mult);           /* an LFO's MULT in the speed's order: FREE, 1/128 .. 8 BAR */
+int qd_quad_mult_at(int pos);
+int qd_quad_mult_step(int mult, int d);
 
 /* VOX's vocabulary (eg_vox_data.h): the words' count and names */
 int qd_vox_nwords(void);

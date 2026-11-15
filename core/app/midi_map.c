@@ -60,6 +60,7 @@ int qd_midi_id_cc(int id)
 }
 
 static int mm_dest(int id) { return id >= QD_QP_LFO0 && id < QD_QP_LFO0 + 3 * 8 && (id - QD_QP_LFO0) % 8 == QD_QL_DEST; }
+static int mm_mult(int id) { return id >= QD_QP_LFO0 && id < QD_QP_LFO0 + 3 * 8 && (id - QD_QP_LFO0) % 8 == QD_QL_MULT; }
 /* the range the CC spreads over: the value's, or its list's places (the MACHINE's six in the menu order, the DESTs in
  * ChoralRoot's editor order), RATIO B's pair */
 static int mm_range(int id, int *lo, int *hi)
@@ -91,6 +92,8 @@ int qd_midi_cc_value(int id, int cc)
         const int m = QD_SND_MENU[p];
         return m ? m + 2 : QD_QF_LP12;
     }
+    if (mm_mult(id))                                    /* (2026-11-14: MULT in the speed's order, as its knob) */
+        return qd_quad_mult_at(p);
     if (mm_dest(id))
         return qd_quad_dest_step(qd_quad_dest_step(0, -qd_quad_ndest()), p);   /* (the order's first, on p places) */
     return p;
@@ -106,6 +109,8 @@ int qd_midi_value_cc(int id, int v)
             ;
     } else if (mm_dest(id)) {
         v = qd_quad_dest_pos(v);
+    } else if (mm_mult(id)) {
+        v = qd_quad_mult_pos(v);
     }
     v = v < lo ? lo : v > hi ? hi : v;
     return ((v - lo) * 127 + (hi - lo) / 2) / (hi - lo);
