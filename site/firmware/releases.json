@@ -1,7 +1,44 @@
 {
   "name": "EVILGENIUS",
-  "latest": "0.1.0-beta.3",
+  "latest": "0.1.0-beta.4",
   "releases": [
+    {
+      "version": "0.1.0-beta.4",
+      "date": "2026-11-15",
+      "channel": "beta",
+      "identity": "FM-1_45000100",
+      "source": "abd13c088594af79e23b72ece7eedde088c7aa5c",
+      "fm1base": "934e40d846d84e76e9c428d37b74bccb6192c823",
+      "notes": "- **The mixer's knobs work as on the Home views**: PRESETS chooses the track and ALGORITHM the step (a knob turned\n  with a step chosen locks it on that step). PRESETS no longer mutes; hold a track's black key to mute it. On the\n  FX MIX page PRESETS is still TV's send.\n- **An LFO's MULT turns in the order of its speed**: FREE, then 1/128, 1/64, 1/32 .. 8 BAR. 1/64 and 1/128 came\n  after 8 BAR. Sounds you saved keep their setting.",
+      "packages": [
+        {
+          "name": "evilgenius",
+          "kind": "ble",
+          "label": "8 voices across both cores, USB and Bluetooth MIDI, USB audio; 4 projects, 128 MY presets",
+          "projects": 4,
+          "presets": 128,
+          "fwsc": {
+            "path": "0.1.0-beta.4/evilgenius.fwsc",
+            "bytes": 1042154,
+            "sha256": "1eb3a178aa6e670c7932696e351b8597f263b6d549c16263b41dd3b820b94605"
+          },
+          "data": {
+            "path": "0.1.0-beta.4/evilgenius-xdata.bin",
+            "bytes": 51288,
+            "sha256": "f617842f5d968c0a4db0b5ff6864c97ab86aca49d954f694835a95e5860fcbbf",
+            "crc32": 3100736934,
+            "at": 946176
+          },
+          "data2": {
+            "path": "0.1.0-beta.4/evilgenius-xdata2.bin",
+            "bytes": 92560,
+            "sha256": "7267373cfcb8c602976fab28d322c6a37d3937f6af2ffc6958935fd07800ac89",
+            "crc32": 880535625,
+            "at": 618496
+          }
+        }
+      ]
+    },
     {
       "version": "0.1.0-beta.3",
       "date": "2026-11-14",

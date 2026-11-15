@@ -12,6 +12,8 @@ EVILGENIUS began as FIZZ 0.12.0-beta.17 with another engine and another face; FI
 
 <!-- The next release's notes, for testers, in plain language. firmware/release.py moves them. -->
 
+## 0.1.0-beta.4 (2026-11-15)
+
 - **The mixer's knobs work as on the Home views**: PRESETS chooses the track and ALGORITHM the step (a knob turned
   with a step chosen locks it on that step). PRESETS no longer mutes; hold a track's black key to mute it. On the
   FX MIX page PRESETS is still TV's send.
