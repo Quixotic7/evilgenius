@@ -12,6 +12,12 @@ EVILGENIUS began as FIZZ 0.12.0-beta.17 with another engine and another face; FI
 
 <!-- The next release's notes, for testers, in plain language. firmware/release.py moves them. -->
 
+- **The first stable release.** The same firmware as 0.1.0-beta.4, now out of beta.
+- **EVILGENIUS in RemoteFM1.** Each release now carries `evilgenius-VERSION.rfm1`, and RemoteFM1 (the app,
+  remotefm1.com and FM1VST) picks it up at its next nightly update. It plays in RemoteFM1's on-screen FM-1 in
+  EVILGENIUS's own colours: a deep indigo faceplate, violet keys, maroon knobs and green LEDs, with no background
+  picture.
+
 ## 0.1.0-beta.4 (2026-11-15)
 
 - **The mixer's knobs work as on the Home views**: PRESETS chooses the track and ALGORITHM the step (a knob turned
