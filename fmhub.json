@@ -3,5 +3,8 @@
   "author": "Quixotic7",
   "kinds": ["groove"],
   "play": "https://quixotic7.github.io/evilgenius/try/",
-  "editor": "https://quixotic7.github.io/evilgenius/manager/"
+  "editor": "https://quixotic7.github.io/evilgenius/manager/",
+  "image": "docs/hub-card.png",
+  "color": "#8B81FF",
+  "sounds": "own: presets by the author; words spoken by SAM in the firmware"
 }
