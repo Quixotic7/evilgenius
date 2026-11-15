@@ -12,6 +12,8 @@ EVILGENIUS began as FIZZ 0.12.0-beta.17 with another engine and another face; FI
 
 <!-- The next release's notes, for testers, in plain language. firmware/release.py moves them. -->
 
+## 0.1.2 (2026-11-15)
+
 - **The manager edits sounds** ([the manager](https://quixotic7.github.io/evilgenius/manager/), Chrome or Edge over
   USB). LIBRARY lists MY PRESETS and the factory's, found by name and tag: EDIT, LOAD ON FM-1 (the unit's own browser
   opens on it), EXPORT, and for MY PRESETS RENAME, TAGS, UP / DOWN and DELETE. EDIT shows every value of a sound
