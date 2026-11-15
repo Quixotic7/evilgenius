@@ -12,6 +12,8 @@ EVILGENIUS began as FIZZ 0.12.0-beta.17 with another engine and another face; FI
 
 <!-- The next release's notes, for testers, in plain language. firmware/release.py moves them. -->
 
+## 0.1.1 (2026-11-15)
+
 - **The same firmware as 0.1.0**, released again so that RemoteFM1 takes it: its nightly update read 0.1.0 as older
   than 0.1.0-beta.3 and kept the beta. RemoteFM1 picks up `evilgenius-0.1.1.rfm1` at its next nightly update.
 

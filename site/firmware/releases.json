@@ -1,7 +1,44 @@
 {
   "name": "EVILGENIUS",
-  "latest": "0.1.0",
+  "latest": "0.1.1",
   "releases": [
+    {
+      "version": "0.1.1",
+      "date": "2026-11-15",
+      "channel": "stable",
+      "identity": "FM-1_45000101",
+      "source": "2d7c2b0f625090f396c639ee6b622bc01499c3c1",
+      "fm1base": "934e40d846d84e76e9c428d37b74bccb6192c823",
+      "notes": "- **The same firmware as 0.1.0**, released again so that RemoteFM1 takes it: its nightly update read 0.1.0 as older\n  than 0.1.0-beta.3 and kept the beta. RemoteFM1 picks up `evilgenius-0.1.1.rfm1` at its next nightly update.",
+      "packages": [
+        {
+          "name": "evilgenius",
+          "kind": "ble",
+          "label": "8 voices across both cores, USB and Bluetooth MIDI, USB audio; 4 projects, 128 MY presets",
+          "projects": 4,
+          "presets": 128,
+          "fwsc": {
+            "path": "0.1.1/evilgenius.fwsc",
+            "bytes": 1042154,
+            "sha256": "9ec590ccda28913f833a9ac8f5075f24caefdadcf05a9bdd03265c9e859cb967"
+          },
+          "data": {
+            "path": "0.1.1/evilgenius-xdata.bin",
+            "bytes": 51288,
+            "sha256": "a228be4b9cebfb3b1bf4ab0abe49e6c493021da9d328eda0b022ef4e4654ff01",
+            "crc32": 1680457261,
+            "at": 946176
+          },
+          "data2": {
+            "path": "0.1.1/evilgenius-xdata2.bin",
+            "bytes": 92560,
+            "sha256": "21574898b708ecd1e50e086295a2dd30e8ccd3947664a8ecaf642b005b01282e",
+            "crc32": 1781928672,
+            "at": 618496
+          }
+        }
+      ]
+    },
     {
       "version": "0.1.0",
       "date": "2026-11-15",
