@@ -19,10 +19,10 @@ EVILGENIUS began as FIZZ 0.12.0-beta.17 with another engine and another face; FI
   onto a value to route it; LIVE changes the track as you go; SEND TO TRACK / PUT TRACK BACK try a sound on a track
   without keeping it; SAVE AS NEW, REPLACE, REVERT, EXPORT; the computer's keys play the track. Works with this
   firmware and the releases before it (0.1.0 and later).
-- **Projects keep their names and their tracks' mix again.** Since the five rooms came in, a project read back (at
-  power-on, at a project load) lost its name, and its tracks' level, pan, sends, room sends and names went back to
-  none. What a project last saved is read right again; a project worked on since then saved the lost values, so set
-  those again.
+- **Projects keep their names again.** Since the five rooms came in, the unit could not read a project's header back
+  (at power-on, at a project load): the project lost its name, and the settings kept there (the tracks' level, pan,
+  sends, room sends and names) were not read from it either. The headers were written right all along, so what a
+  project last saved is read again now.
 - **The manager is a full-screen app now**, loading as a program on a C64 would. F1..F6 (or ALT + 1..6) switch
   between HOME, LIBRARY, SOUND, SEQUENCE, MIX and CABINET, and ? lists every key. HOME shows the SID-chip brain, the
   picked track's sound as the chip's three voices and the open pattern's six tracks. SOUND draws each section as the
