@@ -27,6 +27,15 @@ export function filterRows(rows, { q = "", src = "all", tags = 0 } = {}) {
     (!want || r.name.toLowerCase().includes(want)));
 }
 
+// USERS' reply in words: "in the pool of projects 1 (12 steps), 3; tracks 2, 5 play it" / "used nowhere"
+export function usedText(u) {
+  const tracks = [0, 1, 2, 3, 4, 5].filter((t) => (u.tracks >> t) & 1).map((t) => t + 1);
+  const parts = [];
+  if (u.projects.length) parts.push(`in the pool of project${u.projects.length > 1 ? "s" : ""} ${u.projects.map((p) => `${p.project}${p.steps ? ` (${p.steps} step${p.steps === 1 ? "" : "s"})` : ""}`).join(", ")}`);
+  if (tracks.length) parts.push(`track${tracks.length > 1 ? "s" : ""} ${tracks.join(", ")} play${tracks.length > 1 ? "" : "s"} it`);
+  return parts.length ? parts.join("; ") : "used nowhere";
+}
+
 export function mountLibrary(ctx) {
   const { $, say, refuse } = ctx;
   const S = { rows: null, q: "", src: "all", tags: 0, nlib: 128 };
@@ -92,7 +101,7 @@ export function mountLibrary(ctx) {
     $("lb-note").textContent = `${list.length} of ${S.rows.length} sounds shown. MY PRESETS: ${mine} of ${S.nlib} places used.`;
     for (const r of list) {
       const tr = el("tr");
-      const place = el("td", "dim", `${r.source === "mine" ? "MINE" : "FACT"} ${r.slot}`);
+      const place = el("td", "dim", `${r.source === "mine" ? "MINE" : "FACT"} ${r.slot}${r.inPool ? " · POOL" : ""}`);
       const name = el("td", "name", r.name);
       const tags = el("td", "", tagList(r.tags).join(", "));
       const act = el("td", "acts");
@@ -102,6 +111,7 @@ export function mountLibrary(ctx) {
       if (r.source === "mine") {
         act.append(btn("RENAME", `Rename ${r.name}`, () => rename(r, name)));
         act.append(btn("TAGS", `Tags of ${r.name}`, () => tagsOf(r, tags)));
+        act.append(btn("USED BY", `Who uses ${r.name}`, () => ctx.job(() => usedBy(r))));
         act.append(btn("UP", `Move ${r.name} up`, () => ctx.job(() => move(r, -1))));
         act.append(btn("DOWN", `Move ${r.name} down`, () => ctx.job(() => move(r, 1))));
         act.append(btn("DELETE", `Delete ${r.name}`, () => ctx.job(() => remove(r)), "key warn"));
@@ -165,6 +175,13 @@ export function mountLibrary(ctx) {
     const ok = el("button", "key go"); ok.type = "button"; ok.append(px("SET"));
     ok.addEventListener("click", () => ctx.job(async () => { if (await done(await ctx.link().tags("mine", r.slot, m), "tag it")) { r.tags = m; say(`${r.name}: ${tagList(m).join(", ") || "no tags"}.`, "ok"); } render(); }));
     cell.append(box, ok);
+  }
+  // USED BY: the projects whose pools hold it (this one's steps counted), the tracks of this project playing it
+  async function usedBy(r) {
+    const u = await ctx.link().users("mine", r.slot);
+    if (!u || u.old) { refuse("this EVILGENIUS cannot say who uses it"); return; }
+    if (u.status) { refuse(`the FM-1 did not say (${u.statusName})`); return; }
+    say(`${r.name}: ${usedText(u)}.`, "ok");
   }
   async function move(r, d) {
     const to = r.slot + d;

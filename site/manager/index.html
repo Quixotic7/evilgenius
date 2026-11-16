@@ -229,6 +229,67 @@ body.app { background: var(--lightblue); }
 .helpgrid dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; margin: 0; font-size: 13px; }
 .helpgrid dt { color: var(--black); background: var(--lightgrey); padding: 0 5px; border-bottom: 3px solid var(--grey); white-space: nowrap; justify-self: start; }
 .helpgrid dd { margin: 0; color: var(--white); }
+
+/* POOL */
+.plbody { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: calc(var(--px) * 4); align-items: start; }
+@media (max-width: 1000px) { .plbody { grid-template-columns: 1fr; } }
+.plgrid { display: grid; grid-template-columns: repeat(16, minmax(0, 1fr)); gap: 3px; }
+@media (max-width: 760px) { .plgrid { grid-template-columns: repeat(8, minmax(0, 1fr)); } }
+.plc { position: relative; min-height: 44px; padding: 3px 3px 3px 7px; border: 2px solid #1a1846; background: #06051a; color: var(--grey); font: 10px/1.15 var(--mono); text-align: left; cursor: pointer; overflow: hidden; display: flex; flex-direction: column; gap: 2px; }
+.plc.used { border-color: var(--blue); background: #0c0b2a; color: var(--white); }
+.plc.used::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--c, var(--grey)); }
+.plc.on { border-color: var(--yellow); }
+.plc.mv { outline: 2px dashed var(--lightred); }
+.plc .pln { color: var(--grey); font-size: 9px; }
+.plc .plnm { overflow-wrap: anywhere; }
+.plbar { display: flex; flex-wrap: wrap; gap: calc(var(--px) * 3); align-items: center; justify-content: space-between; margin-top: calc(var(--px) * 3); }
+.plbar .key, .pjacts .key, .cabgrid .keys .key { padding: var(--px) calc(var(--px) * 2); box-shadow: none; }
+.plsel { margin: 0; color: var(--yellow); font-size: 13px; }
+.plside { margin: 0; display: flex; flex-direction: column; gap: 8px; }
+.plside input { width: 14ch; }
+.plside .seg .key { padding: 2px 6px; }
+.pllist { display: flex; flex-direction: column; gap: 2px; max-height: 52vh; overflow: auto; }
+.plsnd { display: grid; grid-template-columns: 3.4em 1fr auto; gap: 8px; padding: 3px 6px 3px 9px; border: 0; border-left: 4px solid var(--c, var(--grey)); background: #0c0b2a; color: var(--white); font: 12px var(--mono); text-align: left; cursor: pointer; }
+.plsnd:hover, .plsnd:focus { background: var(--blue); }
+.plsnd.in { color: var(--lightblue); }
+/* PROJECTS */
+.pjbody { display: grid; grid-template-columns: minmax(260px, 360px) minmax(0, 1fr); gap: calc(var(--px) * 4); align-items: start; }
+@media (max-width: 900px) { .pjbody { grid-template-columns: 1fr; } }
+.pjslots { display: flex; flex-direction: column; gap: 4px; }
+.pjslot { display: grid; grid-template-columns: 30px 1fr auto; gap: 10px; align-items: center; padding: 6px; border: var(--px) solid #1a1846; background: #06051a; color: var(--grey); font: 13px var(--mono); text-align: left; cursor: pointer; }
+.pjslot.there { color: var(--white); border-color: var(--blue); }
+.pjslot.on { border-color: var(--yellow); background: #0c0b2a; }
+.pjslot.cur .pjn { background: var(--green); }
+.pjslot .pjn { background: var(--blue); text-align: center; padding: 3px 0; color: var(--white); }
+.pjslot input { width: 13ch; }
+.pjacts { margin: calc(var(--px) * 3) 0; }
+.pjto { margin: 0 0 calc(var(--px) * 3); }
+.pjmain { margin: 0; }
+.pjgrid .key { cursor: default; }
+/* CABINET */
+.cabgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: calc(var(--px) * 4); align-items: start; }
+@media (max-width: 520px) { .cabgrid { grid-template-columns: 1fr; } }
+.cabgrid > .box { margin: 0; min-width: 0; }
+.cbver { color: var(--white); font-size: 14px; }
+.cbstats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 10px 0; }
+.cbstats div { display: flex; flex-direction: column; gap: 2px; border: 2px solid var(--blue); padding: 6px; }
+.cbn { font: 20px var(--mono); color: var(--yellow); }
+.cbmeter { display: grid; grid-template-columns: repeat(32, minmax(0, 1fr)); gap: 2px; }
+.cbmeter i, .cblegend i { display: inline-block; height: 14px; background: #1a1846; }
+.cblegend i { width: 14px; vertical-align: -2px; margin: 0 4px 0 10px; }
+.cbmeter i.lib, .cblegend i.lib { background: var(--cyan); }
+.cbmeter i.prj, .cblegend i.prj { background: var(--lightred); }
+.cbkept { display: flex; flex-direction: column; gap: 4px; }
+.cbk { display: grid; grid-template-columns: 9em 1fr; gap: 4px 10px; align-items: center; border-bottom: 2px solid #1a1846; padding: 4px 0; font-size: 13px; }
+.cbk .keys { grid-column: 1 / -1; gap: 4px; }
+.cbk .key { padding: 2px 6px; box-shadow: none; }
+.cbdrop { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 18px; border: var(--px) dashed var(--cyan); cursor: pointer; text-align: center; }
+.cbdrop.over { background: #0c0b2a; border-color: var(--yellow); }
+.cbdest { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 10px 0; }
+.cbrows { display: flex; flex-direction: column; gap: 2px; max-height: 36vh; overflow: auto; margin: 0 0 10px; }
+.cbrow { display: grid; grid-template-columns: 22px minmax(8em, 1fr) auto auto; gap: 8px; align-items: center; font-size: 13px; padding: 2px 4px; background: #0c0b2a; }
+.cbrow.dup { background: #2a0c12; }
+#presets td:first-child, #presets th:first-child { width: 4.5em; color: var(--grey); }
 </style>
 <script type="module" src="../js/px.js"></script>
 <script type="module" src="./manager.js"></script>
@@ -238,13 +299,15 @@ body.app { background: var(--lightblue); }
 <div class="scr">
   <header class="topbar">
     <a class="logo" href="../" aria-label="EVILGENIUS, the site"><px-text font="big" scale="2" color="lightred" shadow="red">EVIL</px-text> <px-text font="big" scale="2" color="white" shadow="darkgrey">GENIUS</px-text></a>
-    <nav class="fkeys" role="tablist" aria-label="Screens (F1..F6, or ALT + 1..6)">
+    <nav class="fkeys" role="tablist" aria-label="Screens (F1..F8, or ALT + 1..8)">
       <button id="t-home" role="tab" aria-selected="true" aria-controls="tab-home" type="button"><px-text font="small" scale="2" color="yellow">F1</px-text><px-text font="big" scale="2" color="white">HOME</px-text></button>
       <button id="t-library" role="tab" aria-selected="false" aria-controls="tab-library" type="button"><px-text font="small" scale="2" color="yellow">F2</px-text><px-text font="big" scale="2" color="white">LIBRARY</px-text></button>
       <button id="t-edit" role="tab" aria-selected="false" aria-controls="tab-edit" type="button"><px-text font="small" scale="2" color="yellow">F3</px-text><px-text font="big" scale="2" color="white">SOUND</px-text></button>
       <button id="t-seq" role="tab" aria-selected="false" aria-controls="tab-seq" type="button"><px-text font="small" scale="2" color="yellow">F4</px-text><px-text font="big" scale="2" color="white">SEQUENCE</px-text></button>
       <button id="t-mix" role="tab" aria-selected="false" aria-controls="tab-mix" type="button"><px-text font="small" scale="2" color="yellow">F5</px-text><px-text font="big" scale="2" color="white">MIX</px-text></button>
-      <button id="t-cabinet" role="tab" aria-selected="false" aria-controls="tab-cabinet" type="button"><px-text font="small" scale="2" color="yellow">F6</px-text><px-text font="big" scale="2" color="white">CABINET</px-text></button>
+      <button id="t-pool" role="tab" aria-selected="false" aria-controls="tab-pool" type="button"><px-text font="small" scale="2" color="yellow">F6</px-text><px-text font="big" scale="2" color="white">POOL</px-text></button>
+      <button id="t-projects" role="tab" aria-selected="false" aria-controls="tab-projects" type="button"><px-text font="small" scale="2" color="yellow">F7</px-text><px-text font="big" scale="2" color="white">PROJECTS</px-text></button>
+      <button id="t-cabinet" role="tab" aria-selected="false" aria-controls="tab-cabinet" type="button"><px-text font="small" scale="2" color="yellow">F8</px-text><px-text font="big" scale="2" color="white">CABINET</px-text></button>
     </nav>
     <div class="right">
       <span id="unitpill" class="pill">NO FM-1</span>
@@ -263,64 +326,9 @@ body.app { background: var(--lightblue); }
     <section id="tab-edit" role="tabpanel" aria-labelledby="t-edit" hidden></section>
     <section id="tab-seq" role="tabpanel" aria-labelledby="t-seq" hidden></section>
     <section id="tab-mix" role="tabpanel" aria-labelledby="t-mix" hidden></section>
-    <section id="tab-cabinet" role="tabpanel" aria-labelledby="t-cabinet" hidden>
-    <h1><px-text font="big" scale="3" color="yellow">THE CABINET</px-text></h1>
-    <p style="margin-top:16px">What an FM-1 running EVILGENIUS keeps: its projects and MY PRESETS. Save them to a file, put a file back, move presets between units. It needs <strong>Chrome or Edge on a computer</strong> (Web MIDI) and the FM-1's <strong>USB cable</strong>. Nothing is installed, and nothing leaves this computer.</p>
-    <h2><px-text font="big" scale="2" color="lightblue">1 CONNECT</px-text></h2>
-    <div class="box">
-      <p>Plug the FM-1 into this computer with a USB <strong>data</strong> cable and switch it on. Close other tabs and apps that use MIDI. The browser asks once for permission to use MIDI devices: allow it. Bluetooth is not used here.</p>
-      <p id="unit" class="dim">No FM-1 yet.</p>
-    </div>
-
-
-    <h2><px-text font="big" scale="2" color="lightblue">2 BACK UP AND RESTORE</px-text></h2>
-    <div class="box">
-      <p>A backup is the FM-1's whole store in one <code>.egbak</code> file: every project and all of MY PRESETS. Restoring a backup <strong>replaces everything</strong> in the store with what the file holds. Stop the FM-1 before either, and leave it alone until it is done.</p>
-      <div class="keys">
-        <button id="backup" class="key" type="button" disabled><px-sprite name="ICON_DISK" scale="2"></px-sprite><px-text font="big" scale="2" color="white">BACK UP</px-text></button>
-        <button id="restore" class="key plain" type="button" disabled><px-text font="big" scale="2" color="white">RESTORE A BACKUP</px-text></button>
-        <input id="restorefile" class="hide" type="file" accept=".egbak,.bin" aria-label="A backup file to restore" tabindex="-1">
-      </div>
-      <div id="restoreplan" class="box bad plan" hidden>
-        <h3><px-text font="big" scale="2" color="lightred">RESTORE THIS?</px-text></h3>
-        <p id="restoretext"></p>
-        <ul id="restorelist"></ul>
-        <p>Everything on the FM-1 now is replaced: its projects and MY PRESETS. It takes up to a minute. <strong>Do not unplug the FM-1 while it writes.</strong></p>
-        <div class="keys">
-          <button id="restorego" class="key warn" type="button"><px-text font="big" scale="2" color="white">RESTORE NOW</px-text></button>
-          <button id="restoreno" class="key plain" type="button"><px-text font="big" scale="2" color="white">CANCEL</px-text></button>
-        </div>
-      </div>
-    </div>
-
-    <h2><px-text font="big" scale="2" color="lightblue">3 MY PRESETS</px-text></h2>
-    <div class="box">
-      <p>A preset travels as a small <code>.egsnd</code> file, or several in one <code>.egsnds</code> file. Imported presets go into the free places of MY PRESETS; nothing there is replaced.</p>
-      <div class="keys">
-        <button id="exportall" class="key" type="button" disabled><px-sprite name="DOC" scale="2"></px-sprite><px-text font="big" scale="2" color="white">EXPORT ALL</px-text></button>
-        <button id="import" class="key plain" type="button" disabled><px-text font="big" scale="2" color="white">IMPORT PRESETS</px-text></button>
-        <input id="importfile" class="hide" type="file" accept=".egsnd,.egsnds,.json" multiple aria-label="Preset files to import" tabindex="-1">
-      </div>
-      <div id="importplan" class="box lit plan" hidden>
-        <h3><px-text font="big" scale="2" color="yellow">IMPORT THESE?</px-text></h3>
-        <p id="importtext"></p>
-        <ul id="importlist"></ul>
-        <p>This EVILGENIUS takes presets only as part of its store. So the page reads the store, saves it to your downloads as a backup, adds the presets, and writes the store back: the same as a restore, about a minute in all. Stop the FM-1 first; anything on it not yet saved is lost. <strong>Do not unplug the FM-1 while it writes.</strong></p>
-        <div class="keys">
-          <button id="importgo" class="key go" type="button"><px-text font="big" scale="2" color="white">IMPORT NOW</px-text></button>
-          <button id="importno" class="key plain" type="button"><px-text font="big" scale="2" color="white">CANCEL</px-text></button>
-        </div>
-      </div>
-      <p id="presetnote" class="dim">Connect an FM-1 to see its presets.</p>
-      <table id="presets" hidden>
-        <caption class="px-sr">MY PRESETS on the FM-1</caption>
-        <thead><tr><th scope="col">Place</th><th scope="col">Name</th><th scope="col">Tags</th><th scope="col"><span class="px-sr">Export</span></th></tr></thead>
-        <tbody id="presetrows"></tbody>
-      </table>
-    </div>
-    
-    <p class="foot">A backup is the file <code>firmware/tools/fizz_xdata.py backup</code> writes, so either tool reads the other's. The link is adapted from FIZZ's manager and <a href="https://github.com/charlesvestal/fm1-base">fm1-base</a>'s installer (MPL-2.0). EVILGENIUS is <a href="https://github.com/Quixotic7/evilgenius">open source</a>, MPL-2.0. Not affiliated with M-VAVE.</p>
-    </section>
+    <section id="tab-pool" role="tabpanel" aria-labelledby="t-pool" hidden></section>
+    <section id="tab-projects" role="tabpanel" aria-labelledby="t-projects" hidden></section>
+    <section id="tab-cabinet" role="tabpanel" aria-labelledby="t-cabinet" hidden></section>
   </main>
 
   <footer id="console" class="statusline lit">
@@ -334,7 +342,7 @@ body.app { background: var(--lightblue); }
       <p id="alert" class="status err" role="alert"></p>
     </div>
     <div class="bar" role="progressbar" aria-label="Progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="bar"><i id="barfill"></i></div>
-    <span class="hint" id="hint">F1..F6 THE SCREENS · ? EVERY KEY</span>
+    <span class="hint" id="hint">F1..F8 THE SCREENS · ? EVERY KEY</span>
   </footer>
 </div>
 </div>

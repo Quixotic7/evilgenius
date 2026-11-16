@@ -17,7 +17,9 @@ import { VALUES, DESTS, DEST_ID } from "../../site/manager/egvalues.js";
 import { readFileSync } from "node:fs";
 import { SimUnit as EgSim } from "../../site/manager/egsim.js";
 import { Live, plan, destOf, unroute, PADS } from "../../site/manager/eglive.js";
-import { filterRows } from "../../site/manager/eglibrary.js";
+import { filterRows, usedText } from "../../site/manager/eglibrary.js";
+import { sortPlan } from "../../site/manager/egpool.js";
+import { importRows, meterOf, keptSummary } from "../../site/manager/egcabinet.js";
 import { help } from "../../site/manager/eghelp.js";
 import * as Q from "../../site/manager/egseq.js";
 import { SeqEditor } from "../../site/manager/egseqedit.js";
@@ -693,6 +695,81 @@ console.log("seq editor");
   check(a.status === 0 && ed.pat.pattern === 0 && ed.pat.tracks[3].set.transpose === 5, "gotoPattern(1): back, its edits there");
   await ed.undo();
   check(errs.length === 1, "undo through the editor: no new refusal");
+  link.close();
+}
+
+// ---- POOL, PROJECTS, CABINET (parity with FIZZ's manager): the pieces with no DOM, then the commands on the simulated unit
+{
+  const P = (slot, name, tags) => ({ slot, id: 1000 + slot, name, tags });
+  const places = new Array(128).fill(null);
+  places[0] = P(1, "ZAP", 64); places[2] = P(3, "BOOM", 1); places[4] = P(5, "AIR", 8); places[9] = P(10, "ACID", 1); places[40] = P(41, "ROLL", 0);
+  const plan = sortPlan(places), cur = places.map((p) => (p ? p.name : ""));
+  for (const [a, b] of plan) [cur[a - 1], cur[b - 1]] = [cur[b - 1], cur[a - 1]];
+  check(cur.slice(0, 5).join() === "ACID,BOOM,AIR,ZAP,ROLL" && cur.slice(5).every((x) => !x), `sortPlan: BASS (by name), PAD, FX, untagged; packed into 1..5 (${plan.length} swaps)`);
+  check(sortPlan(places.map((_, k) => (k < 5 ? cur[k] && { ...places.find((p) => p && p.name === cur[k]), slot: k + 1 } : null))).length === 0, "sortPlan: sorted already, no swaps");
+  const rows = importRows([{ name: "A" }, { name: "B" }, { name: "A" }], [{ name: "B" }]);
+  check(rows[0].on && !rows[1].on && rows[1].dup && !rows[2].on && rows[2].twice, "importRows: a name MY PRESETS has and a second copy: marked, not ticked");
+  const m = meterOf({ lib: [40, 160], prj: [120, 480] });
+  check(m && m.lamps.filter((x) => x === "lib").length === 2 && m.lamps.filter((x) => x === "prj").length === 6 && m.kb === 40 && m.of === 160, "meterOf: lamps by pages, KB used of all");
+  check(meterOf(null) === null && meterOf({ lib: [0, 0], prj: [0, 0] }) === null, "meterOf: no STATUS, no meter");
+  check(usedText({ projects: [{ project: 1, steps: 12 }, { project: 3, steps: 0 }], tracks: 0b10010 }) === "in the pool of projects 1 (12 steps), 3; tracks 2, 5 play it", "usedText: projects with steps, tracks");
+  check(usedText({ projects: [], tracks: 0 }) === "used nowhere", "usedText: nobody");
+  check(keptSummary({ blank: false, projects: [{ slot: 1, name: "LIVE" }], presets: [1, 2] }) === "1 project (LIVE) and 2 presets", "keptSummary: what a kept backup holds");
+
+  const sim = new EgSim();
+  const link = quick(await findUnit(sim.access));
+  let r = await link.list({ factory: true, pool: true });
+  const pool = r.filter((x) => x.source === "pool");
+  check(pool.length === 9 && pool[0].slot === 1 && pool[0].name === sim.factory[0].name && r.find((x) => x.source === "factory" && x.id === sim.factory[0].id).inPool,
+    "LIST with the pool: the project's 9 places, the factory rows marked IN POOL");
+  let a = await link.poolRef(20, sim.factory[30].id);
+  check(a.status === 0 && a.a === 20 && sim.pool[19] === sim.factory[30].id, "POOL REF: a factory sound into place 20");
+  a = await link.poolRef(0, sim.factory[31].id);
+  check(a.status === 0 && a.a === 10, "POOL REF place 0: the first free (10)");
+  a = await link.poolRef(5, 0x3FFFF);
+  check(a.status === X.ST.NOT_FOUND, "POOL REF of an id no preset has: NOT FOUND");
+  sim.pat.tracks[1].steps[4].sound = 7;
+  let u = await link.users("pool", 7);
+  check(u.kind === "users" && u.projects[0].steps === 1 && u.tracks === 0, "USERS of place 7: the demo's one step locks it");
+  a = await link.swap("pool", 7, 20);
+  check(a.status === 0 && sim.pool[19] === sim.factory[6].id && sim.pat.tracks[1].steps[4].sound === 20, "SWAP of the pool: the places and the step's lock follow");
+  a = await link.poolRef(20, 0);
+  check(a.status === 0 && !sim.pool[19] && !(sim.pat.tracks[1].steps[4].ovr & (1 << Q.PM.SOUND)), "POOL REF 0: the place cleared, its step back to the track's sound");
+  a = await link.poolRef(20, 0);
+  check(a.status === X.ST.NOT_FOUND, "clearing an empty place: NOT FOUND");
+  // PROJECTS
+  let pj = await link.projects();
+  check(pj.current === 1 && pj.list.length === 4 && pj.list[1].there && pj.list[1].name === "LIVE SET" && !pj.list[2].there, "PROJECTS: 4 slots, 1 worked on, 2 LIVE SET, 3 and 4 empty");
+  a = await link.project("copy", 2, 1);
+  check(a.status === X.ST.BAD_SLOT, "COPY onto the one worked on: BAD SLOT");
+  a = await link.project("load", 3);
+  check(a.status === X.ST.NOT_FOUND, "LOAD of an empty slot: NOT FOUND");
+  a = await link.project("copy", 2, 3);
+  pj = await link.projects();
+  check(a.status === 0 && pj.list[2].there && pj.list[2].name === "LIVE SET", "COPY 2 to 3");
+  a = await link.rename("project", 3, "LIVE COPY");
+  pj = await link.projects();
+  check(a.status === 0 && pj.list[2].name === "LIVE COPY", "RENAME project 3");
+  a = await link.project("new", 4);
+  pj = await link.projects();
+  const st = await link.status();
+  check(a.status === 0 && pj.current === 4 && pj.list[3].name === "PROJECT 4" && st.project === 4 && st.pool === 0, "NEW in slot 4: worked on, its pool empty");
+  a = await link.project("delete", 3);
+  pj = await link.projects();
+  check(a.status === 0 && !pj.list[2].there, "DELETE project 3");
+  a = await link.project("load", 1);
+  check(a.status === 0 && (await link.status()).project === 1 && (await link.list({ pool: true })).filter((x) => x.source === "pool").length === 10, "LOAD 1: its pool again (its 10 places)");
+  sim.playing = true;
+  const t0 = Date.now();
+  a = await link.cmd(X.projectRequest({ op: "load", p: 2 }), X.CMD1.PROJECT, { timeout: 300 }).catch((e) => e);
+  check(Date.now() - t0 >= 250 && (await link.status()).project === 1, "PROJECT while playing: the unit waits (no answer), nothing loaded");
+  sim.playing = false;
+  // IMPORT: STORE6 into the pool and onto a track
+  const snd = { name: "IMPORT ME", blob: sim.factory[2].blob, tags: 1, pan: -10, chorus: 0, delay: 20, reverb: 30 };
+  r = await link.store(X.storeSound({ ...snd, pool: true }));
+  check(r.kind === "store" && r.status === 0 && r.pool && sim.mine.some((m) => m && m.name === "IMPORT ME" && sim.pool[r.slot - 1] === m.id), "STORE6 with POOL: a MY preset at the pool's first free place");
+  r = await link.store(X.storeSound({ ...snd, name: "ON TRACK 3", track: 2 }));
+  check(r.status === 0 && sim.tracks[2].name === "ON TRACK 3" && sim.mine[r.slot - 1].name === "ON TRACK 3", "STORE6 with LOAD: a MY preset, on track 3");
   link.close();
 }
 

@@ -43,7 +43,10 @@ export class SimUnit {
     this.tracks = SIM_TRACKS.map((f) => { const d = parseDump(hex(f)); return { ...soundOf(d), id: d.extras.id, edited: false, chan: d.extras.chan }; });
     this.mine = new Array(LAYOUT.nlib).fill(null);
     this.nextId = 0x100;
-    this.projects = [{ name: "", there: true }, { name: "", there: true }, { there: false }, { there: false }];
+    this.projects = [{ name: "PROJECT 1", there: true, pool: new Array(128).fill(0) }, { name: "LIVE SET", there: true, pool: new Array(128).fill(0) },
+      { there: false, pool: new Array(128).fill(0) }, { there: false, pool: new Array(128).fill(0) }];
+    // (the pool: the project's 128 places, each a preset's id or 0; the demo project starts with a few factory sounds)
+    this.factory.slice(0, 9).forEach((f, k) => { this.projects[0].pool[k] = f.id; });
     this.input = { name, state: "connected", onmidimessage: null, open: async () => {}, close: async () => {} };
     this.output = { name, state: "connected", open: async () => {}, close: async () => {}, send: (b) => this.take(Array.from(b)) };
     this.pat = demoPattern(this.tracks.map((t) => t.name));
@@ -110,16 +113,21 @@ export class SimUnit {
   }
   status() {
     const used = this.mine.filter(Boolean).length;
-    return W.egFrame(0x42, [1, 6, (this.playing ? 1 : 0), this.project - 1, this.pat.pattern & 127, this.projects.filter((p) => p.there).length, ...u14(used), ...u14(0),
+    return W.egFrame(0x42, [1, 6, (this.playing ? 1 : 0), this.project - 1, this.pat.pattern & 127, this.projects.filter((p) => p.there).length, ...u14(used), ...u14(this.pool.filter(Boolean).length),
       0, 0, 0, ...u14(used * 2), ...u14(165), ...u14(48), ...u14(570), 0, this.sel, 1, LAYOUT.nproj, ...u14(LAYOUT.nlib), ...u14(this.pat.rev)]);
   }
-  rows(factory) {
+  rows(factory, pool = false) {
     const out = [];
-    this.mine.forEach((s, k) => { if (s) out.push([0, k + 1, s.id, s.name, s.tags, s.imported ? 1 : 0]); });
-    if (factory) for (const f of this.factory) out.push([1, f.slot, f.id, f.name, f.tags, 0]);
+    this.mine.forEach((s, k) => { if (s) out.push([0, k + 1, s.id, s.name, s.tags, (s.imported ? 1 : 0) | (this.inPool(s.id) ? 2 : 0)]); });
+    if (factory) for (const f of this.factory) out.push([1, f.slot, f.id, f.name, f.tags, this.inPool(f.id) ? 2 : 0]);
+    if (pool) this.pool.forEach((id, k) => { const f = id && this.find(id); if (id) out.push([2, k + 1, id, f ? f.name : "?", f ? f.tags : 0, 0]); });
     return out;
   }
   find(id) { return this.factory.find((f) => f.id === id) || this.mine.find((m) => m && m.id === id) || null; }
+  get pool() { return this.projects[this.project - 1].pool; }
+  inPool(id) { return !!id && this.pool.includes(id); }
+  // the steps of the open pattern locking pool place k (1..128): the sim's one pattern
+  poolUsers(k) { let n = 0; for (const t of this.pat.tracks) for (const st of t.steps) if (st.on && st.ovr & (1 << PM.SOUND) && st.sound === k) n++; return n; }
 
   semantic(cmd, b) {
     const t0 = (t) => (t === 127 ? this.sel : t);
@@ -129,12 +137,12 @@ export class SimUnit {
       case CMD1.FLUSH: this.out(this.status()); return;
       case CMD1.PROJECTS: {
         const body = [this.project - 1, this.projects.length];
-        this.projects.forEach((p, k) => body.push((p.there ? 1 : 0) | (k + 1 === this.project ? 2 : 0), ...nm12(p.name || ""), 0, 4));
+        this.projects.forEach((p, k) => body.push((p.there ? 1 : 0) | (k + 1 === this.project ? 2 : 0), ...nm12(p.there ? p.name || "" : ""), ...u14(p.there ? 4 + 3 * k : 0)));
         this.out(W.egFrame(0x63, body));
         return;
       }
       case CMD.LIST: {
-        const rows = this.rows(b[0] & 1), parts = Math.max(1, Math.ceil(rows.length / 16));
+        const rows = this.rows(b[0] & 1, !!(b[0] & 2)), parts = Math.max(1, Math.ceil(rows.length / 16));
         for (let k = 0; k < parts; k++) {
           const part = rows.slice(k * 16, k * 16 + 16);
           this.out(W.egFrame(0x61, [k, k === parts - 1 ? 1 : 0, ...u14(rows.length), part.length,
@@ -171,6 +179,15 @@ export class SimUnit {
           const x = b.length >= 22 + 147 + 1 + 8 ? b.slice(22 + 147 + 1) : null;
           this.tracks[t] = { ...this.tracks[t], ...s, id: x ? (x[0] << 14) | (x[1] << 7) | x[2] : this.tracks[t].id, edited: x ? !!(x[5] & 1) : true };
           this.out(W.egFrame(0x50, [0, 0, 0, 0]));
+          return;
+        }
+        if (fl & FLAGS.POOL) {                                        // (a MY preset, referenced at a pool place: slot the place, 0 the first free)
+          const k = this.mine.findIndex((m) => !m), at = slot || this.pool.indexOf(0) + 1;
+          if (k < 0 || !at || at > 128) { this.out(W.egFrame(0x50, [ST.FULL, 1, 0, 0])); return; }
+          const id = this.nextId++;
+          this.mine[k] = { ...s, id, imported: !(fl & FLAGS.OWN) };
+          this.pool[at - 1] = id;
+          this.out(W.egFrame(0x50, [0, 1, ...u14(at)]));
           return;
         }
         let k = slot ? slot - 1 : this.mine.findIndex((m) => !m);
@@ -330,6 +347,7 @@ export class SimUnit {
           this.projects[slot - 1].name = String.fromCharCode(...b.slice(3, 15)).trimEnd();
           this.ack(cmd, 0, slot); return;
         }
+        if (cmd === CMD1.DELETE && src === 2) { this.semantic(CMD1.POOLREF, [...u14(slot), 0, 0, 0]); return; }
         const s = src === 0 ? this.mine[slot - 1] : null;
         if (!s) { this.ack(cmd, src === 0 ? ST.NOT_FOUND : ST.BAD_SLOT); return; }
         if (cmd === CMD1.TAGS) s.tags = b[3];
@@ -344,6 +362,15 @@ export class SimUnit {
       }
       case CMD1.SWAP: {
         const a = (b[1] << 7) | b[2], c = (b[3] << 7) | b[4];
+        if (b[0] === 2) {                                             // the pool's: a job, stopped only (the steps follow)
+          if (!a || !c || a > 128 || c > 128 || a === c) { this.ack(cmd, ST.BAD_SLOT); return; }
+          if (this.playing) return;                                   // (the unit's job waits: no reply while it plays)
+          const P = this.pool;
+          [P[a - 1], P[c - 1]] = [P[c - 1], P[a - 1]];
+          for (const t of this.pat.tracks) for (const st of t.steps) if (st.ovr & (1 << PM.SOUND)) st.sound = st.sound === a ? c : st.sound === c ? a : st.sound;
+          this.ack(cmd, 0, a, c);
+          return;
+        }
         if (b[0] !== 0 || !a || !c || a > this.mine.length || c > this.mine.length) { this.ack(cmd, ST.BAD_SLOT); return; }
         [this.mine[a - 1], this.mine[c - 1]] = [this.mine[c - 1], this.mine[a - 1]];
         this.ack(cmd, 0, a, c);
@@ -351,8 +378,45 @@ export class SimUnit {
       }
       case CMD1.USERS: {
         const slot = (b[1] << 7) | b[2], s = b[0] === 0 ? this.mine[slot - 1] : null;
+        if (b[0] === 2) {
+          if (!slot || slot > 128 || !this.pool[slot - 1]) { this.ack(cmd, ST.NOT_FOUND); return; }
+          const n = this.poolUsers(slot);
+          this.out(W.egFrame(0x57, [2, ...u14(slot), 1, this.project - 1, ...u14(n), 0]));
+          return;
+        }
         const n = s ? this.tracks.filter((t) => t.id === s.id).length : 0;
         this.out(W.egFrame(0x57, [b[0], ...u14(slot), n ? 1 : 0, ...(n ? [this.project - 1, ...u14(0)] : []), n]));
+        return;
+      }
+      case CMD1.POOLREF: {
+        const slot = (b[0] << 7) | b[1], id = (b[2] << 14) | (b[3] << 7) | b[4], P = this.pool;
+        if (slot > 128) { this.ack(cmd, ST.BAD_SLOT); return; }
+        if (!id) {
+          if (!slot || !P[slot - 1]) { this.ack(cmd, ST.NOT_FOUND); return; }
+          P[slot - 1] = 0;
+          for (const t of this.pat.tracks) for (const st of t.steps) if (st.ovr & (1 << PM.SOUND) && st.sound === slot) { st.ovr &= ~(1 << PM.SOUND); st.sound = 0; }
+          this.ack(cmd, 0, slot, 0);
+          return;
+        }
+        if (!this.find(id)) { this.ack(cmd, ST.NOT_FOUND); return; }
+        const k = slot || P.indexOf(0) + 1;
+        if (!k) { this.ack(cmd, ST.FULL); return; }
+        P[k - 1] = id;
+        this.ack(cmd, 0, k, id & 0x3FFF);
+        return;
+      }
+      case CMD1.PROJECT: {                                            // LOAD, NEW, COPY p onto q, DELETE (1..4): a job, stopped only
+        const op = b[0], p = b[1], q = b[2], P = this.projects, there = (x) => P[x - 1] && P[x - 1].there;
+        if (op < 1 || op > 4 || !P[p - 1] || (op === 3 && (!P[q - 1] || q === p || q === this.project))) { this.ack(cmd, ST.BAD_SLOT, p, q); return; }
+        if ((op === 3 || op === 4 || op === 1) && !there(p)) { this.ack(cmd, ST.NOT_FOUND, p, q); return; }
+        if (this.playing) return;
+        const blank = (x) => { P[x - 1] = { there: true, name: `PROJECT ${x}`, pool: new Array(128).fill(0) }; };
+        if (op === 1) this.project = p;
+        else if (op === 2) { blank(p); this.project = p; }
+        else if (op === 3) P[q - 1] = { there: true, name: P[p - 1].name, pool: [...P[p - 1].pool] };
+        else if (p === this.project) blank(p);
+        else P[p - 1] = { there: false, pool: new Array(128).fill(0) };
+        this.ack(cmd, 0, p, q);
         return;
       }
       default: this.error(cmd, ST.BAD_COMMAND);

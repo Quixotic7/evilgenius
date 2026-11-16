@@ -28,6 +28,11 @@ EVILGENIUS began as FIZZ 0.12.0-beta.17 with another engine and another face; FI
   velocity, any parameter lock, the sound lock, chance and condition in lanes below it, every field of a step, the
   track's settings, copy and paste, and undo on the unit. PATTERNS shows the project's 64 patterns; click one to go
   there.
+- **The manager's POOL, PROJECTS and CABINET** (F6, F7, F8). POOL shows the project's 128 pool places: put a sound
+  in a place, CLEAR, MOVE (the steps follow), USED BY, SORT BY TAG and CLEAR UNUSED. PROJECTS: LOAD, NEW, RENAME, COPY
+  TO, MOVE TO and DELETE a project, and which of its 64 patterns hold steps. CABINET shows the store in use, keeps your
+  last 12 backups in the browser to restore or save again, saves PRESETS ONLY, and imports sounds one by one into MY
+  PRESETS, the pool or a track, without rewriting the store. LIBRARY says who uses a preset (USED BY).
 - **Undo works after a full lock pool is cleared** on the Bluetooth firmware; every edit after it had no undo before.
 ## 0.1.1 (2026-11-15)
 

@@ -40,7 +40,7 @@ for (const page of PAGES) {
 
 // the manager's modules with no DOM load in Node, each import there (a published module that fails to load is a blank page)
 for (const m of ["egwire.js", "egstore.js", "egfiles.js", "eglink.js", "egsysex.js", "egvalues.js", "egsound.js", "eglive.js", "eghelp.js",
-  "egsim.js", "egsimdata.js", "egedit.js", "eglibrary.js", "egseq.js", "egseqnames.js", "egseqedit.js", "egseqtab.js", "egpics.js", "eghome.js", "egmix.js", "egkeys.js", "egboot.js"]) {
+  "egsim.js", "egsimdata.js", "egedit.js", "eglibrary.js", "egseq.js", "egseqnames.js", "egseqedit.js", "egseqtab.js", "egpics.js", "eghome.js", "egmix.js", "egkeys.js", "egboot.js", "egpool.js", "egprojects.js", "egcabinet.js"]) {
   let ok = true;
   try { await import(pathToFileURL(path.join(SITE, "manager", m))); } catch (e) { ok = false; console.log(`  ${e.message}`); }
   check(ok, `manager/${m}: loads`);

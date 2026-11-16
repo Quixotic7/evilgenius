@@ -117,6 +117,7 @@ export function mountHome(ctx) {
     load, render, says,
     show(on) { S.shown = on; if (on && ctx.link() && !S.tracks) ctx.job(load); render(); },
     gone() { S.tracks = null; S.sounds = []; S.pattern = -1; says(QUIPS[1 + Math.floor(Math.random() * 2)]); render(); },
+    stale() { S.tracks = null; S.sounds = []; S.pattern = -1; },
     get sel() { return S.sel; },
   };
 }
