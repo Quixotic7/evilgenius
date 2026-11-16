@@ -15,12 +15,13 @@ import { LAYOUT } from "./egstore.js";
 import { mountCabinet } from "./egcabinet.js";
 import { mountPool } from "./egpool.js";
 import { mountProjects } from "./egprojects.js";
+import { mountTransport } from "./egtransport.js";
 import { mountEdit } from "./egedit.js";
 import { mountLibrary } from "./eglibrary.js";
 import { mountSeq } from "./egseqtab.js";
 import { mountHome } from "./eghome.js";
 import { mountMix } from "./egmix.js";
-import { mountKeys, SCREENS } from "./egkeys.js";
+import { mountKeys, SCREENS, HINTS } from "./egkeys.js";
 import { runBoot } from "./egboot.js";
 
 const SIM = new URLSearchParams(location.search).has("sim");
@@ -76,7 +77,7 @@ function keys() {
   $("connect").classList.toggle("hide", !!link);
   $("disconnect").classList.toggle("hide", !link);
   $("disconnect").disabled = working;
-  for (const x of [edit, library, seq, pool, projects, cabinet]) if (x) x.render();
+  for (const x of [edit, library, seq, pool, projects, cabinet, transport]) if (x) x.render();
 }
 // one job at a time; while the unit's store is being written, leaving the page asks first
 async function job(fn, { writes = false } = {}) {
@@ -113,7 +114,7 @@ function download(name, data, type) {
 function gone() {
   if (link) link.close();
   link = null;
-  for (const x of [edit, seq, home, mix, pool, projects, cabinet]) if (x) x.gone();
+  for (const x of [edit, seq, home, mix, pool, projects, cabinet, transport]) if (x) x.gone();
   $("unitpill").textContent = "NO FM-1"; $("unitpill").classList.remove("on");
   if (library) library.clear();
   keys();
@@ -167,7 +168,7 @@ async function connect() {
 }
 
 // ---- the tabs
-let edit = null, library = null, seq = null, home = null, mix = null, pool = null, projects = null, cabinet = null;
+let edit = null, library = null, seq = null, home = null, mix = null, pool = null, projects = null, cabinet = null, transport = null;
 const ctx = { $, log, say, refuse, bar, link: () => link, busy: () => working, job: (fn, o) => job(fn, o), download, changed: () => changed() };
 library = mountLibrary({ ...ctx, edit: (snd, origin) => { edit.open(snd, origin); tab("edit"); } });
 edit = mountEdit({ ...ctx, onSaved: () => { library.load({ quiet: true }).catch(() => {}); } });
@@ -177,6 +178,7 @@ mix = mountMix(ctx);
 pool = mountPool(ctx);
 projects = mountProjects(ctx);
 cabinet = mountCabinet(ctx);
+transport = mountTransport(ctx);
 const TABS = SCREENS;
 function tab(name) {
   for (const t of TABS) {
@@ -187,10 +189,12 @@ function tab(name) {
   seq.show(name === "seq");
   home.show(name === "home");
   mix.show(name === "mix");
+  library.show(name === "library");
   pool.show(name === "pool");
   projects.show(name === "projects");
   cabinet.show(name === "cabinet");
   $("view").scrollTop = 0;
+  $("hint").textContent = HINTS[name] || "";
   try { sessionStorage.setItem("eg-tab", name); } catch (_) { /* (no storage: the first tab) */ }
 }
 for (const t of TABS) $(`t-${t}`).addEventListener("click", () => tab(t));
@@ -208,7 +212,7 @@ let polling = false;
 setInterval(async () => {
   if (polling || working || !link) return;
   polling = true;
-  try { await edit.poll(); await seq.poll(); } catch (e) { if (e.code === "lost") { gone(); refuse("the FM-1 was unplugged"); } else log(`read-back: ${e.message}`); }
+  try { await edit.poll(); await seq.poll(); if (!working) await transport.poll(); } catch (e) { if (e.code === "lost") { gone(); refuse("the FM-1 was unplugged"); } else log(`read-back: ${e.message}`); }
   finally { polling = false; }
 }, 1000);
 

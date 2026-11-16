@@ -78,6 +78,12 @@ export function mountPool(ctx) {
     $("pl-tags").append(b);
   });
   $("pl-q").addEventListener("input", () => { S.q = $("pl-q").value; renderList(); });
+  $("pl-q").addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === "ArrowDown") { e.preventDefault(); e.stopPropagation(); const b = $("pl-list").querySelector("button"); if (b) b.focus(); } });
+  $("pl-list").addEventListener("keydown", (e) => {               // (the sounds: UP / DOWN, ENTER puts one in, ESC back)
+    const bs = [...$("pl-list").querySelectorAll("button")], at = bs.indexOf(document.activeElement);
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); e.stopPropagation(); (bs[at + (e.key === "ArrowDown" ? 1 : -1)] || bs[at]).focus(); }
+    else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); document.activeElement.blur(); }
+  });
   $("pl-clear").addEventListener("click", () => ctx.job(clear));
   $("pl-move").addEventListener("click", () => startMove());
   $("pl-users").addEventListener("click", () => ctx.job(usedBy));
@@ -232,6 +238,7 @@ export function mountPool(ctx) {
   document.addEventListener("keydown", (e) => {
     if (!S.shown || !S.places || e.metaKey || e.ctrlKey || e.altKey) return;
     if (e.target.closest && e.target.closest("input, select, textarea")) { if (e.key === "Escape") e.target.blur(); return; }
+    if (e.target.closest && e.target.closest("#pl-list")) return;
     const d = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -COLS, ArrowDown: COLS }[e.key];
     if (d) { S.sel = Math.max(1, Math.min(NPOOL, S.sel + d)); render(); e.preventDefault(); return; }
     if (e.key === "Enter") { if (S.moving) ctx.job(() => moveTo(S.sel)); else { const first = $("pl-list").querySelector("button"); if (first) first.focus(); } }

@@ -24,7 +24,7 @@
 // half done is put back the same way.
 //
 //   node tools/eg/manager_hw.mjs [--out FILE.egbak] [--sounds FILE.egsnds] [--sysex-only] [--steps] [--write-track6]
-//     [--phase3-track6] [--pool-projects]
+//     [--phase3-track6] [--pool-projects] [--transport] [--sim]
 import { spawn, execFileSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -318,6 +318,37 @@ async function poolProjects(link) {
 }
 
 // --sim: the simulated unit (site/manager/egsim.js) instead of the bridge: a dry run of a writing test
+// --transport: PLAY tapped as the remote taps it (the page's SPACE), STATUS read, PLAY again: playing, then stopped. Only
+// if stopped first; no REC, nothing written
+async function transport(link) {
+  const { BUTTON } = await import("../../site/manager/eglink.js");
+  if (process.argv.includes("--stop")) {                     // (--stop: a PLAY tap if it plays, and nothing else)
+    const st = await link.status();
+    if (st && st.playing) { await link.press(BUTTON.PLAY, 60); await new Promise((r) => setTimeout(r, 400)); }
+    const after = await link.status();
+    console.log(`stop: ${after && !after.playing ? "stopped" : "STILL PLAYING"}`);
+    return after && !after.playing ? 0 : 1;
+  }
+  const st0 = await link.status();
+  if (!st0 || st0.playing) { console.log("transport: the FM-1 is playing (or silent): left alone"); return 1; }
+  let bad = 0;
+  const ok = (c, m) => { console.log(`${c ? "ok  " : "FAIL"} ${m}`); if (!c) bad = 1; };
+  const tap = async (want) => {                               // (the press that wakes the idle screen does nothing: again)
+    for (let k = 0; k < 2; k++) {
+      await link.press(BUTTON.PLAY, 60);
+      await new Promise((r) => setTimeout(r, 400));
+      const st = await link.status();
+      if (st && st.playing === want) { if (k) console.log("     (the first press woke the unit's screen)"); return st; }
+    }
+    return link.status();
+  };
+  const st1 = await tap(true);
+  ok(st1 && st1.playing, `PLAY (channel 16, CC 30): playing pattern ${st1 ? st1.pattern + 1 : "?"}`);
+  const st2 = await tap(false);
+  ok(st2 && !st2.playing && !st2.rec, "PLAY again: stopped, not recording");
+  return bad;
+}
+
 const acc = process.argv.includes("--sim") ? { ...new (await import("../../site/manager/egsim.js")).SimUnit().access, close() {} } : access();
 let rc = 0;
 try {
@@ -353,6 +384,7 @@ try {
   if (process.argv.includes("--write-track6")) rc |= await writeTrack6(link);
   if (process.argv.includes("--phase3-track6")) rc |= await phase3Track6(link);
   if (process.argv.includes("--pool-projects")) rc |= await poolProjects(link);
+  if (process.argv.includes("--transport")) rc |= await transport(link);
   link.close();
 } catch (e) {
   console.log(`FAIL: ${e.code || ""} ${e.message}`);

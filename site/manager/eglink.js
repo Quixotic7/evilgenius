@@ -24,7 +24,8 @@
 //   link.store(frame) -> {kind: "store", status, slot, pool} | {kind: "error", ..}   (a STORE6: storeSound)
 //   link.tags / rename / remove / swap / poolRef / users / projects / project / flush / param / browse -> the ACK
 //     ({status, statusName, a, b}) or the reply asked for; {old: true} when this EVILGENIUS has no such command
-//   link.note(ch, n, vel)  a note (no reply)
+//   link.note(ch, n, vel)  a note (no reply);  link.button(b, down) / await link.press(b, ms): a panel button, as the
+//     remote presses it (BUTTON.PLAY, BUTTON.REC: no reply; STATUS says what it did)
 //   link.patternInfo() -> parsePinfo | {old: true} (a firmware without it) | null;  link.steps(track, {first, count,
 //     locks}) -> {pattern, rev, first, steps: [20-byte wire], locks: [{step, id, value}] | null} | {old: true} | null
 //     (docs/SEQ-SYSEX-PLAN.md phase 1: the pattern open on the unit, read)
@@ -43,6 +44,7 @@ import { CMD, CMD1, parseReply, parseList, parseDump, statusRequest, flushReques
 const MORE = Symbol("more");
 
 export const GAP_MS = 3;
+export const BUTTON = { PLAY: 10, REC: 11 }, HOLD_MS = 400;   // (core/app/app.h QD_B_*, ctl.h QD_PLAY_HOLD_MS / QD_REC_HOLD_MS)
 const PORT_RE = /fm-?1|evil\s*genius|felucca/i;            // never ask other gear who it is
 export const isBlePort = (name) => /bluetooth/i.test(String(name || ""));
 const err = (code, msg, extra = {}) => Object.assign(new Error(msg), { code }, extra);
@@ -306,6 +308,10 @@ export class EgLink {
   trackSet(o) { return this.cmd(trackSetRequest(o), CMD_SEQ.TRACKSET, { timeout: 1500, tries: 2, wake: false }); }
   gotoPattern(p) { return this.cmd(gotoRequest(p), CMD_SEQ.GOTO, { timeout: 2000, tries: 1 }); }
   note(ch, n, vel) { this.io.send(vel ? [0x90 | (ch & 15), n & 127, vel & 127] : [0x80 | (ch & 15), n & 127, 0]); }
+  // the panel's buttons, as the remote presses them (channel 16, CC 20 + the button: core/app/midi_map.h; app.h QD_B_*:
+  // PLAY 10, REC 11): down, then up after ms (a tap: under the unit's 400 ms hold; a hold: over it)
+  button(b, down) { this.io.send([0xBF, (20 + b) & 127, down ? 127 : 0]); }
+  async press(b, ms = 60) { this.button(b, true); await sleep(ms); this.button(b, false); }
 
   version() {
     return this.turn(() => { this.io.drain(); return this.ask(egIdentityRequest(), (p) => parseEgIdentity(p) ?? undefined, { timeout: 400, tries: 2 }); });

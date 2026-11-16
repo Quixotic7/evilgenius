@@ -7,21 +7,38 @@
 //   KEYS: [{screen, rows: [[keys, what]]}]; mountKeys({ $, tab(name), current(), tabs }) -> { help(open) }
 export const KEYS = [
   { screen: "EVERYWHERE", rows: [["F1 .. F8", "HOME LIBRARY SOUND SEQUENCE MIX POOL PROJECTS CABINET"], ["ALT + 1 .. 8", "the same, on any keyboard"],
-    ["?", "this screen"], ["ESC", "close it, let go of what is held"], ["TAB", "the next control"]] },
+    ["SPACE", "PLAY / STOP the FM-1"], ["SHIFT + SPACE", "REC: arm, or stop recording"], ["?", "this screen"], ["ESC", "close, let go"],
+    ["TAB / ENTER", "the next control / press it"]] },
   { screen: "HOME", rows: [["1 .. 6", "a track"], ["ENTER", "its sound in SOUND"], ["S", "its steps in SEQUENCE"], ["R", "read the FM-1 again"]] },
-  { screen: "LIBRARY", rows: [["TAB", "the find box, the filters, a sound's keys"], ["ENTER", "on EDIT: the sound into SOUND"]] },
-  { screen: "SOUND", rows: [["TAB", "the next value"], ["UP / DOWN", "turn it (SHIFT: fine)"], ["PAGE UP / DOWN", "a big step"],
-    ["HOME / END", "its ends"], ["ENTER", "its list"], ["DELETE", "its default"], ["A W S .. ;", "play the track (Z / X the octave)"], ["ESC", "let go of a source"]] },
-  { screen: "SEQUENCE", rows: [["LEFT / RIGHT", "the step (SHIFT: add steps)"], ["DELETE", "clear the steps"], ["[ ]", "length"], ["- =", "velocity"],
-    ["PAGE UP / DOWN", "the pages shown"], ["Z / X", "the octave shown"], ["CMD + C / V", "copy / paste steps and their locks"],
-    ["CMD + Z", "undo on the FM-1 (SHIFT: redo)"], ["CLICK", "a note; on a note: its step"], ["ALT + CLICK", "take a note away; clear a lock"]] },
-  { screen: "MIX", rows: [["1 .. 6", "a track"], ["UP / DOWN", "the value under the cursor"], ["LEFT / RIGHT", "the next value"]] },
-  { screen: "POOL", rows: [["ARROWS", "a place"], ["ENTER", "to the sounds (ENTER on one: put it there)"], ["DELETE", "clear the place"], ["M", "move it (then a place, ENTER)"],
-    ["U", "who uses it"], ["/", "find a sound"], ["R", "read the pool again"]] },
-  { screen: "PROJECTS", rows: [["UP / DOWN", "a slot"], ["ENTER", "load it"], ["N", "a new project (an empty slot)"], ["R", "rename it"], ["C", "copy it to a slot"],
-    ["DELETE", "delete it (its name typed first)"]] },
-  { screen: "CABINET", rows: [["TAB", "BACK UP, PRESETS ONLY, RESTORE, the kept backups, IMPORT"]] },
+  { screen: "LIBRARY", rows: [["UP / DOWN", "a sound (PAGE, HOME, END)"], ["/", "find"], ["A M F", "all, mine, factory"], ["1 .. 7", "a tag filter"],
+    ["ENTER", "edit it in SOUND"], ["L", "load it on the FM-1 (K: the track)"], ["E", "export it"], ["N / T", "rename / tags (MY PRESETS)"],
+    ["U", "used by"], ["[ ]", "move it up / down"], ["DELETE", "delete it"], ["R", "read again"]] },
+  { screen: "SOUND", rows: [["1 .. 9", "a page"], ["LEFT / RIGHT", "the value beside"], ["UP / DOWN", "turn it (PAGE: big, HOME / END)"],
+    ["ENTER / DELETE", "its list / its default"], ["SHIFT + M", "modulate it"], ["A W S .. ;", "play the track (Z / X octave)"],
+    ["SHIFT + R / 1..6", "read the track / a track"], ["SHIFT + L", "LIVE"], ["SHIFT + S / P", "save as new / replace"],
+    ["SHIFT + T / B", "send to track / put it back"], ["SHIFT + V / E", "revert / export"], ["SHIFT + I / O", "INIT / open a file"], ["SHIFT + N / G", "the name / the tags"]] },
+  { screen: "SEQUENCE", rows: [["1 .. 6", "a track"], ["V", "STEPS / PIANO ROLL"], ["ARROWS", "the cursor (SHIFT: pick more)"], ["ENTER", "a step on / off (STEPS)"],
+    ["[ ]  - =", "length, velocity"], [", .", "the page's first / last step (STEPS)"], ["L", "the page in the loop (STEPS)"], ["DELETE", "clear"],
+    ["M", "mute the track"], ["P", "the 64 patterns"], ["R", "read again"], ["CMD + C / V / Z", "copy, paste, undo (SHIFT: redo)"], ["Z / X", "the octave (ROLL)"]] },
+  { screen: "MIX", rows: [["1 .. 6", "a track"], ["LEFT / RIGHT", "the value"], ["UP / DOWN", "turn it (SHIFT: big)"]] },
+  { screen: "POOL", rows: [["ARROWS", "a place"], ["ENTER", "to the sounds (UP / DOWN, ENTER puts one there, ESC back)"], ["DELETE", "clear the place"],
+    ["M", "move it (a place, ENTER)"], ["U", "who uses it"], ["/", "find a sound"], ["R", "read again"]] },
+  { screen: "PROJECTS", rows: [["UP / DOWN", "a slot"], ["ENTER", "load it"], ["N", "new (an empty slot)"], ["R", "rename it"], ["C / M", "copy / move it (then 1..8)"],
+    ["DELETE", "delete it (its name typed)"], ["P", "read its patterns"]] },
+  { screen: "CABINET", rows: [["B", "back up"], ["P", "presets only"], ["R", "restore a file"], ["K", "the kept backups"], ["I", "import sound files"],
+    ["D / T", "where they go / the track"], ["S / C", "send / clear them"]] },
 ];
+// the status line's hint: the screen's main keys
+export const HINTS = {
+  home: "1..6 TRACK · ENTER SOUND · S STEPS · SPACE PLAY · ? KEYS",
+  library: "UP/DOWN · / FIND · ENTER EDIT · L LOAD · E EXPORT · ? KEYS",
+  edit: "1..9 PAGE · ARROWS · SHIFT+M MOD · SHIFT+L LIVE · ? KEYS",
+  seq: "1..6 TRACK · V VIEW · ARROWS · ENTER STEP · , . START/END · ? KEYS",
+  mix: "1..6 TRACK · ARROWS · SPACE PLAY · ? KEYS",
+  pool: "ARROWS · ENTER SOUNDS · M MOVE · DEL CLEAR · ? KEYS",
+  projects: "UP/DOWN · ENTER LOAD · N NEW · C COPY · ? KEYS",
+  cabinet: "B BACK UP · R RESTORE · I IMPORT · S SEND · ? KEYS",
+};
 export const SCREENS = ["home", "library", "edit", "seq", "mix", "pool", "projects", "cabinet"];
 
 export function mountKeys({ $, tab, current }) {

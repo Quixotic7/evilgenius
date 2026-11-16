@@ -15,6 +15,10 @@
 //     a sound that is not the track's goes onto the track whole (AUDITION: nothing stored), PUT TRACK BACK undoes that;
 //   - SAVE AS NEW (MY PRESETS' first free place), REPLACE (the MY preset it came from), REVERT, EXPORT (.egsnd);
 //   - the computer's keys play the track on the FM-1 (A W S E D F T G Y H U J K O L P ;, Z / X the octave).
+// The pages one at a time (1..9, as the unit's); a value: LEFT / RIGHT the one beside, UP / DOWN turn it. Every action
+// SHIFT + its letter (the plain letters are the piano): R read the track, 1..6 a track, L LIVE, S save as new, P
+// replace, T send to track, B put the track back, V revert, E export, I INIT, O open a file, N the name, G the tags,
+// M modulate the value (its sources and routes, a list).
 // Written for EvilGenius (MPL-2.0); FIZZ's editor (GPL-3.0) lent ideas only.
 //   mountEdit({ $, log, say, refuse, link(), busy(), job(fn), download, onSaved() }) -> { open(sound, origin), poll(), shown(v), render(), state }
 //   origin: { kind: "track", track: 0..5 | "selected" } | { kind: "mine", slot } | { kind: "factory", slot } | { kind: "file", name } | { kind: "new" }
@@ -43,7 +47,7 @@ export function mountEdit(ctx) {
   const { $, log, say, refuse } = ctx;
   const S = { snd: null, base: null, baseFrame: null, origin: null, live: null, liveOn: false, armed: null, lastEdit: 0,
     chan: 0, target: 0, kept: null, oct: 4, held: new Map(), shown: false, tiles: new Map(), auditioned: false,
-    pics: new Map(), picsDue: false };
+    pics: new Map(), picsDue: false, page: 0, secs: [] };
   const root = $("tab-edit");
 
   // ---- the frame of the tab (built once)
@@ -61,6 +65,7 @@ export function mountEdit(ctx) {
       </div>
     </div>
     <div id="ed-body" hidden>
+      <div class="edrow2">
       <div class="edname">
         <label>NAME <input id="ed-name" type="text" maxlength="12" spellcheck="false" autocomplete="off"></label>
         <span class="edtags" id="ed-tags" role="group" aria-label="Tags"></span>
@@ -73,8 +78,9 @@ export function mountEdit(ctx) {
         <button id="ed-revert" class="key plain" type="button"></button>
         <button id="ed-export" class="key plain" type="button"></button>
       </div>
-      <div class="edroute" id="ed-route" role="toolbar" aria-label="Modulation sources: drag one onto a value"></div>
-      <nav class="edjump" id="ed-jump" aria-label="Pages"></nav>
+      </div>
+      <nav class="edjump" id="ed-jump" aria-label="Pages (1..9)"></nav>
+      <div class="edroute" id="ed-route" role="toolbar" aria-label="Modulation sources: drag one onto a value (SHIFT + M on a value)"></div>
       <div class="edpanel" id="ed-panel"></div>
       <p class="edhelp" id="ed-help" aria-live="polite"></p>
       <p class="dim edkeys">The computer's keys play the track on the FM-1: <kbd>A</kbd> <kbd>W</kbd> <kbd>S</kbd> .. <kbd>;</kbd>, <kbd>Z</kbd> / <kbd>X</kbd> the octave (<span id="ed-oct">C4</span>).</p>
@@ -110,28 +116,51 @@ export function mountEdit(ctx) {
     const panel = $("ed-panel"), jump = $("ed-jump");
     panel.textContent = ""; jump.textContent = ""; S.tiles.clear();
     const secs = [...SECTIONS, { key: "mix", title: "MIX", rows: [MIX.map((m) => m.id)], labels: ["THE TRACK'S MIX (kept with the preset)"] }];
-    for (const sec of secs) {
+    S.secs = secs;
+    secs.forEach((sec, k) => {
       const box = el("section", "box edsec");
       box.id = `ed-sec-${sec.key}`;
+      box.dataset.k = k;
       const h = el("h3"); h.append(px(sec.title, "big", 2, "yellow")); box.append(h);
-      if (picture(sec.key, defaults())) {                 // (the unit's picture of this page, over its values)
+      const inner = el("div", "edin"), grps = el("div", "edgrps");
+      if (picture(sec.key, defaults())) {                 // (the unit's picture of this page, beside its values)
         const pic = el("div", "pic");
         pic.dataset.key = sec.key;
         S.pics.set(sec.key, pic);
-        box.append(pic);
+        inner.append(pic);
+        inner.classList.add("withpic");
       }
       sec.rows.forEach((row, r) => {
-        if (sec.labels[r]) { const l = el("div", "rowl"); l.append(px(sec.labels[r], "small", 2, "grey")); box.append(l); }
+        const grp = el("div", "edgrp");
+        if (sec.labels[r]) { const l = el("div", "rowl"); l.append(px(sec.labels[r], "small", 2, "grey")); grp.append(l); }
         const g = el("div", "tiles");
+        g.style.setProperty("--n", String(row.length));
         for (const id of row) g.append(tile(id));
-        box.append(g);
+        grp.append(g);
+        grps.append(grp);
       });
+      inner.append(grps);
+      box.append(inner);
       panel.append(box);
-      const a = el("a"); a.href = `#ed-sec-${sec.key}`; a.append(px(sec.title, "small", 2, "white"));
+      const a = el("button", "key plain"); a.type = "button"; a.dataset.k = k;
+      a.append(el("kbd", "", String(k + 1)), px(sec.title, "small", 2, "white"));
+      a.setAttribute("aria-label", `${sec.title} (${k + 1})`);
+      a.addEventListener("click", () => page(k));
       jump.append(a);
-    }
+    });
     buildRoute();
+    page(S.page);
   }
+  // a page of the sound (the unit's), the others hidden; focus: its first value
+  function page(k, focus = false) {
+    S.page = Math.max(0, Math.min(S.secs.length - 1, k));
+    for (const b of $("ed-panel").children) b.hidden = +b.dataset.k !== S.page;
+    for (const b of $("ed-jump").children) b.setAttribute("aria-pressed", String(+b.dataset.k === S.page));
+    if (focus) { const t = $("ed-panel").querySelector(`[data-k="${S.page}"] .tile`); if (t) t.focus(); }
+  }
+  // a value's tile, on its page
+  function goTile(id) { const t = S.tiles.get(id); if (!t) return; page(+t.closest(".edsec").dataset.k); t.focus(); }
+  const pageTiles = () => [...$("ed-panel").querySelectorAll(`[data-k="${S.page}"] .tile`)];
   function buildRoute() {
     const r = $("ed-route");
     r.textContent = "";
@@ -180,7 +209,7 @@ export function mountEdit(ctx) {
     renderTiles();
     say(`${srcName(src)} now moves ${destName(dest)}.`, "ok");
     const r = p.route, depth = r.kind === "lfo" ? lfo(r.k, "DEPTH") : mod(r.k, 2);
-    S.tiles.get(depth)?.focus();
+    goTile(depth);
   }
   // a route's card: where it goes, its depth (the tile's own), REMOVE
   function card(r) {
@@ -188,7 +217,7 @@ export function mountEdit(ctx) {
     const who = r.kind === "lfo" ? `LFO ${r.k + 1}` : `MOD ${r.k + 1} (${MOD_SOURCES[S.snd.values[mod(r.k, 0)]]})`;
     const at = [...S.tiles.keys()].find((id) => destOf(id) === r.dest);
     pick(S.tiles.get(at ?? depthId), `${who} → ${destName(r.dest)}, DEPTH ${text(depthId, S.snd.values[depthId])}`, [
-      { label: "GO TO DEPTH", go: () => { S.tiles.get(depthId).scrollIntoView({ block: "center" }); S.tiles.get(depthId).focus(); } },
+      { label: "GO TO DEPTH", go: () => goTile(depthId) },
       { label: "REMOVE", go: () => { for (const [id, v] of unroute(r)) change(id, v, { quiet: true }); renderTiles(); say(`${who} no longer moves ${destName(r.dest)}.`, "ok"); } },
     ]);
   }
@@ -228,6 +257,12 @@ export function mountEdit(ctx) {
     t.addEventListener("keydown", (e) => {
       if (!S.snd) return;
       const v = valueOf(S.snd, id), big = Math.max(1, Math.round(range / 8)), fine = range > 255 && !e.shiftKey ? Math.max(1, Math.round(range / 128)) : 1;
+      if ((e.key === "ArrowLeft" || e.key === "ArrowRight") && !e.shiftKey) {   // (the value beside)
+        const ts = pageTiles(), at = ts.indexOf(t), n = ts[at + (e.key === "ArrowRight" ? 1 : -1)];
+        e.preventDefault(); e.stopPropagation();
+        if (n) n.focus();
+        return;
+      }
       const k = { ArrowUp: v + fine, ArrowRight: v + fine, ArrowDown: v - fine, ArrowLeft: v - fine, PageUp: v + big, PageDown: v - big,
         Home: i.min, End: i.max, Delete: i.def, Backspace: i.def }[e.key];
       if (k !== undefined) { e.preventDefault(); e.stopPropagation(); change(id, k); return; }
@@ -261,6 +296,13 @@ export function mountEdit(ctx) {
       ul.append(b);
     }
     p.append(ul);
+    ul.addEventListener("keydown", (e) => {                       // (the arrows walk the list)
+      const bs = [...ul.querySelectorAll("button")], at = bs.indexOf(document.activeElement);
+      const d = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key];
+      if (!d || at < 0) return;
+      e.preventDefault(); e.stopPropagation();
+      (bs[at + d] || bs[at]).focus();
+    });
     p.hidden = false;
     const r = anchor ? anchor.getBoundingClientRect() : { left: 20, bottom: 100 };
     p.style.left = Math.max(8, Math.min(window.innerWidth - p.offsetWidth - 8, r.left + window.scrollX)) + "px";
@@ -493,11 +535,37 @@ export function mountEdit(ctx) {
   });
 
   // the computer's keys: notes on the track's channel (the FM-1 plays them on its track)
+  // SHIFT + M on a value: the sources that can move it, and the routes that do
+  function modMenu(t) {
+    const id = +t.dataset.id, d = destOf(id);
+    if (!S.snd || S.snd.midi) return;
+    if (d <= 0) { refuse(`${info(id).name} cannot be modulated`); return; }
+    const items = [];
+    for (const r of routes(S.snd.values).filter((x) => x.dest === d))
+      items.push({ label: `EDIT ${r.kind === "lfo" ? `LFO ${r.k + 1}` : `MOD ${r.k + 1} ${MOD_SOURCES[r.src]}`}`, go: () => card(r) });
+    for (let k = 0; k < NLFO; k++) items.push({ label: `LFO ${k + 1}`, go: () => route({ kind: "lfo", k }, d) });
+    MOD_SOURCES.forEach((name, s0) => { if (s0) items.push({ label: name, go: () => route({ kind: "mod", src: s0 }, d) }); });
+    pick(t, `MODULATE ${info(id).name}`, items);
+  }
   const typing = (e) => e.target.closest && e.target.closest("input, select, textarea, #ed-pick");
+  const SHIFTED = { r: () => $("ed-read").click(), l: () => $("ed-live").click(), s: () => $("ed-save").click(), p: () => $("ed-replace").click(),
+    t: () => $("ed-send").click(), b: () => $("ed-back").click(), v: () => $("ed-revert").click(), e: () => $("ed-export").click(),
+    i: () => $("ed-init").click(), o: () => $("ed-open").click(), n: () => { if (S.snd) { $("ed-name").focus(); $("ed-name").select(); } },
+    g: () => { const b = $("ed-tags").querySelector("button"); if (b) b.focus(); },
+    m: () => { const t = document.activeElement && document.activeElement.closest && document.activeElement.closest(".tile"); if (t) modMenu(t); else refuse("pick a value first (TAB, or a click), then SHIFT + M"); } };
+  $("ed-name").addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === "Escape") { e.preventDefault(); $("ed-name").blur(); page(S.page, true); } });
   document.addEventListener("keydown", (e) => {
     if (!S.shown) return;
     if (e.key === "Escape") { closePick(); arm(null); return; }
     if (typing(e) || e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
+    if (e.shiftKey) {                                             // the actions
+      const dg = /^Digit([1-6])$/.exec(e.code);
+      if (dg) { e.preventDefault(); $("ed-track").value = String(+dg[1] - 1); if (ctx.link()) ctx.job(() => readTrack()); return; }
+      const f = SHIFTED[e.key.toLowerCase()];
+      if (f) { e.preventDefault(); const b = { r: "ed-read", l: "ed-live", s: "ed-save", p: "ed-replace", t: "ed-send", b: "ed-back", v: "ed-revert", e: "ed-export" }[e.key.toLowerCase()]; if (b && $(b).disabled) return; f(); }
+      return;
+    }
+    if (/^[1-9]$/.test(e.key) && S.tiles.size) { e.preventDefault(); page(+e.key - 1, true); return; }
     const k = e.key.toLowerCase();
     if (k === "z" || k === "x") { S.oct = Math.max(0, Math.min(8, S.oct + (k === "x" ? 1 : -1))); $("ed-oct").textContent = `C${S.oct}`; return; }
     const n = KEYS.indexOf(k);

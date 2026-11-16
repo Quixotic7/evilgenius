@@ -22,7 +22,7 @@ export function mountProjects(ctx) {
   const S = { list: null, current: 0, sel: 0, pats: null, shown: false, reading: false };
   const root = $("tab-projects");
   root.innerHTML = `
-    <div class="hhead"><span class="lab" id="pj-title">THE PROJECTS</span><span class="dim">UP / DOWN A SLOT · ENTER LOAD · N NEW · R RENAME · C COPY · DELETE</span></div>
+    <div class="hhead"><span class="lab" id="pj-title">THE PROJECTS</span><span class="dim">UP / DOWN A SLOT · ENTER LOAD · N NEW · R RENAME · C COPY · M MOVE (THEN 1..8) · DELETE · P PATTERNS</span></div>
     <div class="pjbody">
       <div class="pjside">
         <div id="pj-slots" class="pjslots" role="listbox" aria-label="The project slots"></div>
@@ -222,8 +222,11 @@ export function mountProjects(ctx) {
     else if (e.key.toLowerCase() === "n") ctx.job(newP);
     else if (e.key.toLowerCase() === "r") rename();
     else if (e.key.toLowerCase() === "c") pickTo(false);
+    else if (e.key.toLowerCase() === "m") pickTo(true);
+    else if (/^[1-8]$/.test(e.key) && !$("pj-to").hidden) { const b = [...$("pj-toslots").querySelectorAll("button")].find((x) => x.textContent.trim().startsWith(e.key)); if (b) b.click(); }
     else if (e.key === "Delete" || e.key === "Backspace") ctx.job(del);
     else if (e.key === "Escape" && !$("pj-to").hidden) { $("pj-to").hidden = true; }
+    else if (e.key.toLowerCase() === "p") ctx.job(readPatterns);
     else return;
     e.preventDefault();
   });

@@ -773,5 +773,31 @@ console.log("seq editor");
   link.close();
 }
 
+// ---- the transport: the panel's PLAY and REC pressed as the remote presses them (channel 16, CC 30 / 31)
+{
+  const { BUTTON, HOLD_MS } = await import("../../site/manager/eglink.js");
+  const sim = new EgSim();
+  const link = quick(await findUnit(sim.access));
+  const sent = [];
+  const send0 = link.io.send.bind(link.io);
+  link.io.send = (b) => { if (b[0] === 0xBF) sent.push(Array.from(b)); return send0(b); };
+  await link.press(BUTTON.PLAY, 40);
+  check(JSON.stringify(sent) === JSON.stringify([[0xBF, 30, 127], [0xBF, 30, 0]]), "PLAY: CC 30 on channel 16, down then up");
+  let st = await link.status();
+  check(st.playing && !st.rec, "a PLAY tap: playing (STATUS)");
+  await link.press(BUTTON.REC, HOLD_MS + 100);
+  st = await link.status();
+  check(st.rec, "REC held past 400 ms while playing: recording (STATUS's REC)");
+  await link.press(BUTTON.REC, 40);
+  st = await link.status();
+  check(!st.rec && st.playing, "REC tapped while recording: stopped recording, still playing");
+  await link.press(BUTTON.PLAY, 40);
+  st = await link.status();
+  check(!st.playing, "PLAY tapped again: stopped");
+  await link.press(BUTTON.PLAY, HOLD_MS + 100);
+  check(!(await link.status()).playing, "PLAY held past 400 ms: not a tap (the unit's F3), the transport left alone");
+  link.close();
+}
+
 console.log(fails ? `${fails} of ${checks} checks FAILED` : `all ${checks} checks pass`);
 process.exit(fails ? 1 : 0);

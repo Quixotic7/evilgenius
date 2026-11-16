@@ -328,10 +328,27 @@ export function mountCabinet(ctx) {
   $("cb-track").addEventListener("change", () => { S.track = Number($("cb-track").value); });
   $("importgo").addEventListener("click", () => ctx.job(send));
   $("importno").addEventListener("click", () => { S.rows = null; render(); say("Nothing was sent."); });
+  // the keys (CABINET shown, not typing): B back up, P presets only, R restore a file, K the kept backups, I import
+  // files, D where they go, T the track, S send, C clear
+  document.addEventListener("keydown", (e) => {
+    if (!S.shown || e.metaKey || e.ctrlKey || e.altKey || (e.target.closest && e.target.closest("input, select, textarea"))) return;
+    const k = e.key.toLowerCase(), click = (id) => { if (!$(id).disabled && !$(id).hidden) $(id).click(); };
+    if (k === "b") click("backup");
+    else if (k === "p") click("presetsonly");
+    else if (k === "r") click("restore");
+    else if (k === "i") $("importfile").click();
+    else if (k === "k") { const b = $("cb-kept").querySelector("button"); if (b) b.focus(); }
+    else if (k === "d") { const ds = ["mine", "pool", "track"]; S.dest = ds[(ds.indexOf(S.dest) + 1) % 3]; render(); say(`IMPORT sends to ${S.dest === "mine" ? "MY PRESETS" : S.dest === "pool" ? "the pool" : `track ${S.track + 1}`}.`); }
+    else if (k === "t" && S.dest === "track") { S.track = (S.track + 1) % 6; $("cb-track").value = String(S.track); say(`IMPORT sends to track ${S.track + 1}.`); }
+    else if (k === "s") click("importgo");
+    else if (k === "c") click("importno");
+    else return;
+    e.preventDefault();
+  });
   kept.list().then((k) => { S.keptList = k; render(); });
   return {
     connected, readPresets, render,
-    show(on) { if (on && ctx.link() && !ctx.busy()) ctx.job(async () => { S.st = await ctx.link().status().catch(() => S.st); S.keptList = await kept.list(); render(); }); },
+    show(on) { S.shown = on; if (on && ctx.link() && !ctx.busy()) ctx.job(async () => { S.st = await ctx.link().status().catch(() => S.st); S.keptList = await kept.list(); render(); }); },
     get lib() { return S.lib; },
     gone() { S.lib = null; S.st = null; S.toRestore = null; $("restoreplan").hidden = true; render(); },
   };

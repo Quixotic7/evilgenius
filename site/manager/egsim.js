@@ -73,6 +73,16 @@ export class SimUnit {
     h.open = null;
   }
   restore(json) { JSON.parse(json).forEach((t, k) => { this.pat.tracks[k].steps = t.steps; this.pat.tracks[k].locks = t.locks; }); this.pat.rev = (this.pat.rev + 1) & 0x3FFF; }
+  // the remote's PLAY and REC as the panel takes them (ctl.c b_play, b_rec): PLAY tapped plays / stops at its release;
+  // REC held 400 ms arms (stopped) or latches (playing) the recording, tapped while it records stops it
+  remote(b, down) {
+    const t = Date.now();
+    if (!this.btn) this.btn = {};
+    if (down) { this.btn[b] = t; return; }
+    const held = t - (this.btn[b] || t);
+    if (b === 10 && held < 400) { this.playing = !this.playing; if (!this.playing && this.rec === 2) this.rec = 0; if (this.playing && this.rec === 1) this.rec = 2; }
+    else if (b === 11) { if (this.rec) this.rec = 0; else if (held >= 400) this.rec = this.playing ? 2 : 1; }
+  }
   // the unit's own hands: a knob turned on a track (the editor follows it), SELECT
   turn(t, id, v) { this.setValue(this.tracks[t], id, v); this.tracks[t].edited = true; }
   select(t) { this.sel = t; }
@@ -80,6 +90,7 @@ export class SimUnit {
   take(p) {
     if (p[0] !== 0xF0) {                                              // a note, a controller
       if ((p[0] & 0xF0) === 0x90) this.counts.notes++;
+      if (p[0] === 0xBF && (p[1] === 30 || p[1] === 31)) this.remote(p[1] - 20, p[2] >= 64);   // (the remote's PLAY, REC)
       return;
     }
     if (p.length === W.HS_QUERY.length && p.every((x, i) => x === W.HS_QUERY[i])) { this.out(W.identityFrame(this.id)); return; }
@@ -113,7 +124,7 @@ export class SimUnit {
   }
   status() {
     const used = this.mine.filter(Boolean).length;
-    return W.egFrame(0x42, [1, 6, (this.playing ? 1 : 0), this.project - 1, this.pat.pattern & 127, this.projects.filter((p) => p.there).length, ...u14(used), ...u14(this.pool.filter(Boolean).length),
+    return W.egFrame(0x42, [1, 6, (this.playing ? 1 : 0) | (this.rec ? 32 : 0), this.project - 1, this.pat.pattern & 127, this.projects.filter((p) => p.there).length, ...u14(used), ...u14(this.pool.filter(Boolean).length),
       0, 0, 0, ...u14(used * 2), ...u14(165), ...u14(48), ...u14(570), 0, this.sel, 1, LAYOUT.nproj, ...u14(LAYOUT.nlib), ...u14(this.pat.rev)]);
   }
   rows(factory, pool = false) {
