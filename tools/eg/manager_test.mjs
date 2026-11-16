@@ -1085,6 +1085,18 @@ console.log("projects");
   check(so(1, 2, 12, -1, 0) === "mfx MIDI FX 0" && so(1, 2, 13, 0, 1) === "tools TOOLS 1" && so(1, 1, 0, 0, 1) === "tools TOOLS 1", "MIDI FX and TOOLS on the unit: their own screens");
   check(so(1, 2, 7, -1, 2) === "fm1 EFFECTS 2" && so(1, 2, 5, -1, 0) === "fm1 TRACK SETTINGS 0" && so(1, 1, 0, 1, 0) === "fm1 PATTERNS 0" && so(2, 2, 0, -1, 0) === "fm1 KEYBOARD 0",
     "a page with no screen of its own here (EFFECTS, the settings, PATTERNS, the keyboard): THE FM-1, named after it");
+  const DK = await import("../../site/manager/egdesk.js");
+  const hk = (x, y) => { const h = DK.hit(x, y); return h ? `${h.t}${h.w !== undefined ? " " + DK.PARTS[h.w][1] : h.mute ? " M" : h.solo ? " S" : ""}` : null; };
+  check(hk(4 + 10, 80) === "0 LEVEL" && hk(4 + 56 + 10, 26) === "1 PAN" && hk(4 + 2 * 56 + 31, 80) === "2 ECHO" && hk(4 + 2 * 56 + 37, 80) === "2 ROOM" && hk(4 + 2 * 56 + 44, 80) === "2 CHORUS",
+    "THE DESK: a strip's fader, pan knob and three sends where they are drawn");
+  check(hk(4 + 5 * 56 + 5, 127) === "5 CRUSH" && hk(4 + 5 * 56 + 41, 127) === "5 TV" && hk(4 + 3 * 56 + 10, 140) === "3 M" && hk(4 + 3 * 56 + 36, 140) === "3 S" && hk(360, 80) === null && hk(2, 80) === null,
+    "THE DESK: the five rooms, M and S; the output's meters and the edge are no track's");
+  check(DK.PARTS.length === 11 && DK.valueOf({ level: 104, pan: -3, echo: 1, room: 2, chorus: 3, dry: 64, rooms: [9, 8, 7, 6, 5] }, 1) === -3 && DK.valueOf({ rooms: [9, 8, 7, 6, 5] }, 10) === 5,
+    "THE DESK: a track's eleven values in the unit's order (LEVEL PAN ECHO ROOM CHORUS DRY and the five rooms)");
+  const PX = await import("../../site/manager/egpics.js");
+  const dv = new Array(256).fill(0); dv[0] = 3; dv[3] = 64;
+  check(PX.picture("osc", dv, 0) !== PX.picture("osc", dv, 700) && PX.picture("osc", dv, 0) === PX.picture("osc", dv), "SOUND's pictures move with the time (the oscillators' wave runs), and stand still without it");
+  check(/rect/.test(PX.picture("env", dv, 500)) && PX.picture("env", dv, 500) !== PX.picture("env", dv, 900), "an envelope's picture: a note going along it");
   const TL = await import("../../site/manager/egtools.js");
   const tt = (d) => TL.toolText(d).map((p) => (p ? p.join(" ") : "-")).join(" | ");
   check(tt({ tool: 3, v: [5, 16, 2, 1] }) === "HITS 5 | LENGTH 16 | ROTATE 2 | LANDS ADD" && tt({ tool: 0, rot: -3, v: [] }) === "OFFSET -3 | - | - | -", "TOOLS: EUCLID's and ROTATE's knobs as the unit's");

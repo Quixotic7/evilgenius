@@ -8,7 +8,7 @@
 // that is not listed fails there.
 const CACHE = "evilgenius-manager-1";
 const FILES = [
-  "./", "index.html", "egboot.js", "egcabinet.js", "egedit.js", "egfiles.js", "eghelp.js", "eghome.js", "egkeys.js",
+  "./", "index.html", "egboot.js", "egcabinet.js", "egdesk.js", "egedit.js", "egfiles.js", "eghelp.js", "eghome.js", "egkeys.js",
   "eglibrary.js", "eglink.js", "eglive.js", "egmfx.js", "egmix.js", "egpanel.js", "egpics.js", "egpool.js", "egproject.js",
   "egprojects.js", "egremote.js", "egseq.js", "egseqedit.js", "egseqnames.js", "egseqtab.js", "egsim.js", "egsimdata.js",
   "egsound.js", "egstore.js", "egsysex.js", "egtools.js", "egtransport.js", "egvalues.js", "egvirtual.js", "egwire.js",

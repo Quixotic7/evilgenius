@@ -1,26 +1,27 @@
 // SPDX-License-Identifier: MPL-2.0
 // This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0. If a copy of the MPL was not
 // distributed with this file, You can obtain one at https://mozilla.org/MPL/2.0/.
-// THE FM-1 (ALT + F): the screen for every page of the unit the manager has no screen of its own for (EFFECTS,
-// PATTERNS, the settings, the keyboard ..): the unit's page itself, with what each knob, button and key does there written on it
-// (the firmware's own LABELS, core/app/view_labels.c), so nothing on the unit is without its place here.
-// It is the virtual FM-1's own front (docs/BROWSER-FM1-PLAN.md phase 4): its screen at twice its size, the
-// eight knobs, the fourteen buttons, the 27 keys, with their lights, over any screen of the manager. Each control is
-// the firmware's own input (egvirtual.js vu.buttons / vu.keys / vu.enc: the masks and turns the unit's scanner gives),
-// so what is pressed here does what it does on the unit. Only the virtual FM-1 has one: a real FM-1 has its own panel.
-//   The computer's keyboard while it is open (KEYMAP, by place, so any layout works):
-//     Q W E R T Y U I / A S D F G H J K   the sixteen white keys;  1 .. 0 and -   the eleven black keys
-//     Z X C V B N   FX SEL ENV LFO EDIT GLO;  M , . /   HOME SAVE ARP SEQ;  P or SPACE   PLAY;  O   REC;  [ ]   OCT
-//     UP / DOWN   SELECT;  LEFT / RIGHT   PRESETS;  PAGE UP / DOWN   ALGORITHM;  TAB to a knob: UP / DOWN turn it
-//     SHIFT + a key or a click: held down until pressed again;  ESC: back to the screen before
-//   mountPanel({ $, say, tab(name), back(), go(where) }) -> { open(on), show(on), unit(vu), isOpen(), labels(l), title(t) }
-//   paint(img, fb): a frame to pixels
-// THE DOCK: the FM-1's screen above the whole manager, centred over its frame, while a unit plays the page's FM-1
-// (REMOTE MODE): always there, always in the same place. Its size is the player's: drag its
-// corner, or ALT + [ and ALT + ] (120: EVILGENIUS's own 120 x 120 pixels one to one; kept in this browser). A click
-// opens THE FM-1. Under it, the manager's first row, THE STRIP: where the unit is, and what its seven knobs, eleven black keys and fourteen
-// buttons do there now (LABELS), each one a control: scroll or drag a knob, press a key or a button.
+// THE FM-1 ON THE PAGE: the unit drawn as it looks (the owner, 2026-11-16: "a little version of the FM-1 in the same
+// hardware layout", then his picture of it): the dark body; MASTER, SELECT, PRESETS and ALGORITHM, round, their names
+// over them, with F1 and F2 in their tray under them on the left; the screen in its black bezel; KN1..4 over the tray
+// of two rows of six buttons on the right; the keybed's tray below, the eleven upper keys over the sixteen lower ones.
+// Every control carries its name and, under it, what it does on the page the unit is on right now, in the firmware's
+// own words (LABELS, core/app/view_labels.c), lights when the unit lights it, and is the control: press a button or a
+// key (SHIFT + click: held down until clicked again), drag or scroll a knob. Each is the firmware's own input
+// (egvirtual.js vu.buttons / vu.keys / vu.enc), so what is done here does what it does on the unit.
+// Two of them, one drawing (Device):
+//   THE DOCK: small, above the whole manager while a unit plays the page's FM-1 (REMOTE MODE): always there, in the
+//     same place; its size is the player's (drag its corner, ALT + [ and ALT + ]; kept in this browser).
+//   THE FM-1 (ALT + F): big, a screen of the manager: every page of the unit the manager has no screen of its own
+//     for (EFFECTS, PATTERNS, the settings, the keyboard). While it is shown the computer's keys are the unit's
+//     (KEYMAP, by place, so any layout works):
+//       Q W E R T Y U I / A S D F G H J K   the sixteen white keys;  1 .. 0 and -   the eleven black keys
+//       Z X C V B N   FX SEL ENV LFO EDIT GLO;  M , . /   HOME SAVE ARP SEQ;  P or SPACE   PLAY;  O   REC;  [ ]   OCT
+//       UP / DOWN   SELECT;  LEFT / RIGHT   PRESETS;  PAGE UP / DOWN   ALGORITHM;  TAB to a knob: UP / DOWN turn it
+//       SHIFT + a key: held down until pressed again;  ESC: back to the screen before
 //   mountDock({ $, open() }) -> { unit(vu), show(on), size(px), labels(l), title(t) }
+//   mountPanel({ $, tab(name), back(), go(where), pick(name) }) -> { open(on), show(on), unit(vu), isOpen(), labels(l), title(t) }
+//   paint(img, fb): a frame to pixels;  Held: what is held down (the tests)
 export const BTN = { FX: 0, SEL: 1, ENV: 2, LFO: 3, EDIT: 4, GLO: 5, HOME: 6, SAVE: 7, ARP: 8, SEQ: 9, PLAY: 10, REC: 11, "OCT-": 12, "OCT+": 13 };
 export const ENC = { SELECT: 0, ALGORITHM: 1, PRESETS: 2, KNOB1: 3, KNOB2: 4, KNOB3: 5, KNOB4: 6 };
 export const WHITE_K = [0, 2, 4, 6, 7, 9, 11, 12, 14, 16, 18, 19, 21, 23, 24, 26];
@@ -28,6 +29,11 @@ export const BLACK_K = [1, 3, 5, 8, 10, 13, 15, 17, 20, 22, 25];
 const BLACK_AFTER = [0, 1, 2, 4, 5, 7, 8, 9, 11, 12, 14];   // (the white key each black key sits after)
 const ROW1 = ["FX", "SEL", "ENV", "LFO", "EDIT", "GLO"], ROW2 = ["HOME", "SAVE", "ARP", "SEQ", "PLAY", "REC"];
 const MIN_MS = 50;                                          // (the firmware reads its buttons every 16 ms)
+// LABELS' places (egsysex.js parseLabels list): the knobs SELECT ALGORITHM PRESETS KNOB 1..4 MASTER, the 14 buttons in
+// their bits' order, W1..W16, B1..B11
+const LBL_KNOB = { SELECT: 0, ALGORITHM: 1, PRESETS: 2, KNOB1: 3, KNOB2: 4, KNOB3: 5, KNOB4: 6, MASTER: 7 };
+// what EVILGENIUS prints on the buttons (its panel's labels, by bit): shown while the unit names no job for one
+const PANEL = ["FX", "TRACKS", "MIX", "LATCH", "EDIT", "SHIFT", "HOME", "SOUNDS", "MIDI FX", "PATTERNS", "PLAY", "REC", "F1", "F2"];
 
 // the computer's keys, by their place (KeyboardEvent.code): { key } a key of the unit, { btn } a button, { enc, n } a turn
 export const KEYMAP = {};
@@ -77,273 +83,207 @@ export class Held {
   clear(only = () => true) { for (const id of [...this.by.keys()]) if (only(id)) { this.by.delete(id); this.at.delete(id); } this.sync(); }
 }
 
-export function mountDock(ctx) {
-  const { $ } = ctx;
-  const box = $("dock"), cv = $("dock-lcd"), g = cv.getContext("2d"), img = g.createImageData(240, 240);
-  const strip = $("strip"), mk = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; };
-  let unsub = null, shown = false, px = 120, vu = null;
-  // the strip's controls: [name, job] chips; a knob turns (role: EN_*), a key or a button is held while pressed
-  const sb = new Held((m) => vu && vu.buttons(m, "strip")), sk = new Held((m) => vu && vu.keys(m, "strip"));
-  const head = mk("div", "sthead"), ttl = mk("b", "", "THE FM-1"), rows = { k: mk("div", "strow k"), b: mk("div", "strow b"), n: mk("div", "strow n") };
-  head.append(ttl);
-  strip.append(head, rows.k, rows.b, rows.n);
-  const chips = { k: [], b: [], n: [] };
-  const chip = (row, name, title) => { const c = mk("button", "stc none"); c.type = "button"; c.tabIndex = -1; c.title = title; c.append(mk("i", "", name), mk("span", "", "")); rows[row].append(c); chips[row].push(c); return c; };
-  ["SELECT", "ALGORITHM", "PRESETS", "KNOB 1", "KNOB 2", "KNOB 3", "KNOB 4"].forEach((name, role) => {
-    const c = chip("k", name, `${name}: scroll or drag up and down to turn it`);
-    let drag = null, wheel = 0;
-    const turn = (n) => { if (n && vu) vu.enc(role, n); };
-    c.addEventListener("pointerdown", (e) => { e.preventDefault(); c.setPointerCapture(e.pointerId); drag = { y: e.clientY, acc: 0 }; });
-    c.addEventListener("pointermove", (e) => { if (!drag) return; drag.acc += drag.y - e.clientY; drag.y = e.clientY; const n = Math.trunc(drag.acc / 7); if (n) { drag.acc -= n * 7; turn(n); } });
-    for (const t of ["pointerup", "pointercancel"]) c.addEventListener(t, () => { drag = null; });
-    c.addEventListener("wheel", (e) => {
-      e.preventDefault();
-      const dy = e.deltaMode === 1 ? e.deltaY * 33 : e.deltaY;
-      if (Math.abs(dy) >= 50) { turn(dy < 0 ? 1 : -1); wheel = 0; return; }
-      wheel -= dy; const n = Math.trunc(wheel / 25); if (n) { wheel -= n * 25; turn(n); }
-    }, { passive: false });
-  });
-  const press = (c, h, bit) => {
-    c.addEventListener("pointerdown", (e) => { e.preventDefault(); c.setPointerCapture(e.pointerId); h.down(`p${e.pointerId}`, bit, performance.now()); c.classList.add("held"); });
-    for (const t of ["pointerup", "pointercancel", "lostpointercapture"]) c.addEventListener(t, (e) => {
-      const id = `p${e.pointerId}`, w = h.up(id, performance.now());
-      if (w > 0) setTimeout(() => { h.by.delete(id); h.at.delete(id); h.sync(); }, w);
-      c.classList.remove("held");
-    });
-  };
-  BLACK_K.forEach((n, i) => press(chip("b", `B${i + 1}`, `Black key ${i + 1}`), sk, n));
-  ["FX", "SEL", "ENV", "LFO", "EDIT", "GLO", "HOME", "SAVE", "ARP", "SEQ", "PLAY", "REC", "OCT-", "OCT+"].forEach((name, i) => press(chip("n", name, `The ${name} button`), sb, i));
-  const put = (c, job) => { c.lastChild.textContent = job || ""; c.classList.toggle("none", !job); };
-  try { px = Number(localStorage.getItem("eg-dock")) || 120; } catch (_) { /* (no storage: 120) */ }
-  const size = (v) => {
-    px = Math.max(80, Math.min(480, Math.round(v / 20) * 20));
-    box.style.setProperty("--dock", `${px}px`);
-    try { localStorage.setItem("eg-dock", String(px)); } catch (_) { /* (none) */ }
-    return px;
-  };
-  size(px);
-  cv.addEventListener("click", () => ctx.open());
-  let drag = null;
-  const grip = $("dock-grip");
-  grip.addEventListener("pointerdown", (e) => { e.preventDefault(); grip.setPointerCapture(e.pointerId); drag = { x: e.clientX, y: e.clientY, px }; });
-  grip.addEventListener("pointermove", (e) => { if (drag) size(drag.px + Math.max(e.clientX - drag.x, e.clientY - drag.y)); });
-  for (const t of ["pointerup", "pointercancel"]) grip.addEventListener(t, () => { drag = null; });
-  grip.addEventListener("dblclick", () => size(120));
-  document.addEventListener("keydown", (e) => {
-    if (!shown || !e.altKey || e.metaKey || e.ctrlKey || (e.code !== "BracketLeft" && e.code !== "BracketRight")) return;
-    e.preventDefault(); size(px + (e.code === "BracketRight" ? 40 : -40));
-  });
-  let last = null;
-  return {
-    size,
-    unit(v) {
-      if (unsub) { unsub(); unsub = null; }
-      last = null; vu = v;
-      if (v) unsub = v.onFrame((m) => {
-        if (m.fb) { last = m.fb; if (shown) g.putImageData(paint(img, m.fb), 0, 0); }
-        if (!shown) return;
-        chips.n.forEach((c, i) => c.classList.toggle("lit", !!(m.buttons & (1 << i))));
-        chips.b.forEach((c, i) => c.classList.toggle("lit", !!(m.keys & (1 << BLACK_K[i]))));
+const el = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; };
+const now = () => performance.now();
+
+// the unit, drawn in its own layout into root. who: this drawing's hand on the unit (vu.buttons(mask, who)); big: the
+// computer's key on each control too
+class Device {
+  constructor(root, { who, big = false, onScreen = () => {} }) {
+    Object.assign(this, { root, who, big, vu: null, shown: false, master: 2800, B: [], K: [], KN: {}, last: null, lights: [0, 0] });
+    this.btns = new Held((m) => this.vu && this.vu.buttons(m, who));
+    this.keys = new Held((m) => this.vu && this.vu.keys(m, who));
+    const dv = el("div", `dv${big ? " big" : ""}`), head = el("div", "dvhead"), top = el("div", "dvtop"), left = el("div", "dvleft"), right = el("div", "dvright");
+    this.ttl = el("b", "", "ASLEEP");
+    head.append(el("span", "", "EVILGENIUS FM-1"), this.ttl);
+    const lk = el("div", "dvknobs"), ft = el("div", "dvtray f2");
+    for (const n of ["MASTER", "SELECT", "PRESETS", "ALGORITHM"]) lk.append(this.knob(n));
+    ft.append(this.button("OCT-"), this.button("OCT+"));
+    left.append(lk, ft);
+    this.cv = el("canvas", "dvlcd"); this.cv.width = this.cv.height = 240;
+    this.cv.setAttribute("aria-label", "The FM-1's screen");
+    this.cv.addEventListener("click", onScreen);
+    this.g = this.cv.getContext("2d"); this.img = this.g.createImageData(240, 240);
+    const k4 = el("div", "dvknobs k4"), tray = el("div", "dvtray b12"), bezel = el("div", "dvbezel");
+    for (let i = 1; i <= 4; i++) k4.append(this.knob(`KNOB${i}`));
+    for (const n of [...ROW1, ...ROW2]) tray.append(this.button(n));
+    right.append(k4, tray);
+    bezel.append(this.cv);
+    top.append(left, bezel, right);
+    const bed = el("div", "dvbed");
+    BLACK_K.forEach((n, i) => { const k = this.key(n, `B${i + 1}`, "bk"); k.style.gridColumn = `${2 * BLACK_AFTER[i] + 2} / span 2`; bed.append(k); });
+    WHITE_K.forEach((n, i) => {
+      const k = this.key(n, `W${i + 1}`, "wk"); k.style.gridColumn = `${2 * i + 1} / span 2`;
+      // the strum plate: a finger that went down on a white key moves the held key as it slides
+      k.addEventListener("pointermove", (e) => {
+        const id = `p${e.pointerId}`;
+        if (!this.keys.by.has(id)) return;
+        const r = bed.getBoundingClientRect(), w = WHITE_K[Math.max(0, Math.min(15, Math.floor((e.clientX - r.left) * 16 / r.width)))];
+        if (this.keys.by.get(id) !== w) { this.keys.by.set(id, w); this.keys.sync(); this.paintHeld(); }
       });
-    },
-    show(on) {
-      shown = on; box.hidden = !on; strip.hidden = !on;
-      box.parentElement.classList.toggle("docked", on); strip.parentElement.classList.toggle("docked", on);
-      // (the status line and the top bar's keys ride in the strip's head while it is there, and go back after: the
-      // band takes their rows, so the screens below keep their room)
-      const con = $("console"), right = document.querySelector(".topbar .right, .sthead .right");
-      if (on) head.append(con, right);
-      else if (con.parentElement === head) { strip.parentElement.append(con); document.querySelector(".topbar").append(right); }
-      if (!on) { sb.clear(); sk.clear(); }
-      if (on && last) g.putImageData(paint(img, last), 0, 0);
-    },
-    // the unit's own words for what each control does now (egsysex.js parseLabels: list: 8 knobs, 14 buttons, 16 W, 11 B)
-    labels(l) {
-      if (!l) return;
-      chips.k.forEach((c, i) => put(c, l.list[i]));
-      chips.n.forEach((c, i) => put(c, l.list[8 + i]));
-      chips.b.forEach((c, i) => put(c, l.list[8 + 14 + 16 + i]));
-    },
-    title(t) { ttl.textContent = t || "THE FM-1"; },
-  };
-}
-
-export function mountPanel(ctx) {
-  const { $ } = ctx;
-  const root = $("panel"), el = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; };
-  let vu = null, unsub = null, master = 2800;
-  const btns = new Held((m) => vu && vu.buttons(m)), keys = new Held((m) => vu && vu.keys(m));
-  const B = {}, K = [], KN = {};                              // the buttons, the keys, the knobs: { el, .. }
-
-  root.innerHTML = `<div class="pnl">
-    <div class="pnhead"><h2 id="panel-h">THE FM-1</h2>
-      <span class="pngo" id="panel-go" role="group" aria-label="Pages of the unit"></span>
-      <span class="dim">EACH CONTROL: ITS JOB NOW, ITS KEY · SHIFT HOLDS IT DOWN</span>
-      <button id="panel-close" class="key plain" type="button" aria-label="Back to the screen before (ESC)">ESC</button></div>
-    <div class="pnbody">
-      <canvas id="panel-lcd" class="pnlcd" width="480" height="480" aria-label="The virtual FM-1's screen"></canvas>
-      <div class="pnctl">
-        <div class="pnknobs" id="panel-knobs" role="group" aria-label="Knobs"></div>
-        <div class="pnbtns" id="panel-btns" role="group" aria-label="Buttons"></div>
-      </div>
-    </div>
-    <div class="pnbed" id="panel-bed" role="group" aria-label="Keys"></div></div>`;
-
-  // ---- the controls
-  function paintHeld() {
-    for (const b of Object.values(B)) { b.el.classList.toggle("held", !!(btns.mask & (1 << b.bit))); b.el.classList.toggle("latched", !!(btns.latched & (1 << b.bit))); b.el.setAttribute("aria-pressed", String(!!(btns.mask & (1 << b.bit)))); }
-    K.forEach((k, i) => { k.el.classList.toggle("held", !!(keys.mask & (1 << i))); k.el.classList.toggle("latched", !!(keys.latched & (1 << i))); k.el.setAttribute("aria-pressed", String(!!(keys.mask & (1 << i)))); });
+      bed.append(k);
+    });
+    dv.append(head, top, bed);
+    root.append(dv);
+    this.turn("MASTER", 0);
   }
-  const now = () => performance.now();
-  function letGo(h, id) {
-    const w = h.up(id, now());
-    if (w > 0) { const at = h.at.get(id); setTimeout(() => { if (h.at.get(id) === at) { h.by.delete(id); h.at.delete(id); h.sync(); paintHeld(); } }, w); }
-    paintHeld();
-  }
-  function control(h, bit, name, cap, cls) {
-    const b = el("button", cls);
+  control(h, bit, name, cap, cls) {
+    const b = el("button", `dc ${cls}`), job = el("span", "dj");
     b.type = "button"; b.tabIndex = -1; b.setAttribute("aria-pressed", "false");
-    b.setAttribute("aria-label", cap ? `${name} (${cap})` : name);
+    b.append(el("span", "dn", name), job);
+    if (this.big && cap) b.append(el("span", "dk", cap));
     b.addEventListener("contextmenu", (e) => e.preventDefault());
     let pointerAt = -1e9;
     b.addEventListener("pointerdown", (e) => {
       e.preventDefault(); pointerAt = now();
       if (e.shiftKey || e.button === 2) h.latch(bit);
       else if (!h.unlatch(bit)) { b.setPointerCapture(e.pointerId); h.down(`p${e.pointerId}`, bit, now()); }
-      paintHeld();
+      this.paintHeld();
     });
-    for (const t of ["pointerup", "pointercancel", "lostpointercapture"]) b.addEventListener(t, (e) => letGo(h, `p${e.pointerId}`));
+    for (const t of ["pointerup", "pointercancel", "lostpointercapture"]) b.addEventListener(t, (e) => this.letGo(h, `p${e.pointerId}`));
     // (a screen reader's "activate": a click with no pointer before it: a short press)
-    b.addEventListener("click", () => { if (now() - pointerAt < 2000 || h.unlatch(bit)) { paintHeld(); return; } h.down("t", bit, now()); paintHeld(); setTimeout(() => letGo(h, "t"), 80); });
-    return b;
+    b.addEventListener("click", () => { if (now() - pointerAt < 2000 || h.unlatch(bit)) { this.paintHeld(); return; } h.down("t", bit, now()); this.paintHeld(); setTimeout(() => this.letGo(h, "t"), 80); });
+    return { el: b, job, bit, name };
   }
-  for (const row of [ROW1, ROW2, ["OCT-", "OCT+"]]) {
-    const r = el("div", `pnrow${row.length === 2 ? " oct" : ""}`);
-    for (const name of row) {
-      const cap = capOf("btn", BTN[name]), b = control(btns, BTN[name], name, cap, "pnbtn");
-      const job = el("span", "pnj");
-      b.append(el("span", "pnn", name === "PLAY" ? "PLAY/STOP" : name), job, el("span", "pnk", cap));
-      B[name] = { el: b, bit: BTN[name], job };
-      r.append(b);
-    }
-    $("panel-btns").append(r);
-  }
-  const bed = $("panel-bed");
-  WHITE_K.forEach((n, i) => {
-    const cap = capOf("key", n), k = control(keys, n, `White key ${i + 1}`, cap, "pnkey white");
-    k.style.left = `${i * 100 / 16}%`;
-    const job = el("span", "pnj");
-    k.append(job, el("span", "pnk", cap));
-    K[n] = { el: k, job };
-    // the strum plate: a finger that went down on a white key moves the held key as it slides
-    k.addEventListener("pointermove", (e) => {
-      const id = `p${e.pointerId}`;
-      if (!keys.by.has(id)) return;
-      const r = bed.getBoundingClientRect(), w = WHITE_K[Math.max(0, Math.min(15, Math.floor((e.clientX - r.left) * 16 / r.width)))];
-      if (keys.by.get(id) !== w) { keys.by.set(id, w); keys.sync(); paintHeld(); }
-    });
-    bed.append(k);
-  });
-  BLACK_K.forEach((n, i) => {
-    const cap = capOf("key", n), k = control(keys, n, `Black key ${i + 1}`, cap, "pnkey black");
-    k.style.left = `${(BLACK_AFTER[i] + 1) * 100 / 16}%`;
-    const job = el("span", "pnj");
-    k.append(job, el("span", "pnk", cap));
-    K[n] = { el: k, job };
-    bed.append(k);
-  });
-
-  // ---- the knobs: endless encoders (a turn is a count of detents), and MASTER, the page's volume
-  function turn(name, n) {
-    const k = KN[name];
-    if (!k) return;
-    if (name === "MASTER") {
-      master = Math.max(0, Math.min(4096, master + n * 64));
-      k.angle = -135 + 270 * master / 4096;
-      const pct = Math.round(master * 100 / 4096);
-      k.el.setAttribute("aria-valuenow", String(pct)); k.el.setAttribute("aria-valuetext", `${pct} percent`);
-      if (vu) vu.master(master);
-    } else {
-      if (!n) return;
-      k.angle = (k.angle + n * 18) % 360;
-      if (vu) vu.enc(ENC[name], n);
-    }
-    k.dial.style.transform = `rotate(${k.angle}deg)`;
-  }
-  const KNOBS = [["MASTER", "VOLUME"], ["SELECT", "UP / DOWN"], ["PRESETS", "LEFT / RIGHT"], ["ALGORITHM", "PAGE UP / DN"], ["KNOB1", ""], ["KNOB2", ""], ["KNOB3", ""], ["KNOB4", ""]];
-  for (const [name, cap] of KNOBS) {
-    const k = el("div", "pnknob"), dial = el("i", "pndial"), label = name.replace(/^KNOB(\d)$/, "KNOB $1");
-    k.tabIndex = 0;
+  button(name) { const c = this.control(this.btns, BTN[name], name, capOf("btn", BTN[name]), "bt"); c.job.textContent = PANEL[c.bit]; this.B.push(c); return c.el; }
+  key(n, name, cls) { const c = this.control(this.keys, n, name, capOf("key", n), cls); this.K[n] = c; return c.el; }
+  knob(name) {
+    const k = el("div", "dc knob"), dial = el("i", "dd"), job = el("span", "dj"), label = name.replace(/^KNOB(\d)$/, "KN$1");
+    k.tabIndex = this.big ? 0 : -1;
     k.setAttribute("role", name === "MASTER" ? "slider" : "button");
-    k.setAttribute("aria-label", name === "MASTER" ? "MASTER, the volume" : `${label}: UP / DOWN turn it, PAGE UP / DOWN far`);
+    k.setAttribute("aria-label", name === "MASTER" ? "MASTER, the volume" : `${label}: drag or scroll to turn it`);
     if (name === "MASTER") { k.setAttribute("aria-valuemin", "0"); k.setAttribute("aria-valuemax", "100"); }
-    const job = el("span", "pnj");
-    k.append(el("span", "pnn", label), dial, job, el("span", "pnk", cap));
-    KN[name] = { el: k, dial, angle: 0, job };
+    k.append(el("span", "dn", label), dial, job);
+    this.KN[name] = { el: k, dial, angle: 0, job };
     let drag = null, wheel = 0;
-    k.addEventListener("pointerdown", (e) => { e.preventDefault(); k.focus({ preventScroll: true }); k.setPointerCapture(e.pointerId); drag = { y: e.clientY, acc: 0 }; });
+    k.addEventListener("pointerdown", (e) => { e.preventDefault(); if (this.big) k.focus({ preventScroll: true }); k.setPointerCapture(e.pointerId); drag = { y: e.clientY, acc: 0 }; });
     k.addEventListener("pointermove", (e) => {
       if (!drag) return;
       drag.acc += drag.y - e.clientY; drag.y = e.clientY;
       const step = name === "MASTER" ? 3 : 7, n = Math.trunc(drag.acc / step);
-      if (n) { drag.acc -= n * step; turn(name, n); }
+      if (n) { drag.acc -= n * step; this.turn(name, n); }
     });
     for (const t of ["pointerup", "pointercancel"]) k.addEventListener(t, () => { drag = null; });
     k.addEventListener("wheel", (e) => {
       e.preventDefault();
       const dy = e.deltaMode === 1 ? e.deltaY * 33 : e.deltaY;
-      if (Math.abs(dy) >= 50) { turn(name, dy < 0 ? 1 : -1); wheel = 0; return; }   // a wheel's notch: one detent
-      wheel -= dy;                                                                     // a trackpad: by distance
+      if (Math.abs(dy) >= 50) { this.turn(name, dy < 0 ? 1 : -1); wheel = 0; return; }   // a wheel's notch: one detent
+      wheel -= dy;                                                                          // a trackpad: by distance
       const n = Math.trunc(wheel / 25);
-      if (n) { wheel -= n * 25; turn(name, n); }
+      if (n) { wheel -= n * 25; this.turn(name, n); }
     }, { passive: false });
-    $("panel-knobs").append(k);
+    return k;
   }
-  turn("MASTER", 0);                                          // (its mark where the volume is)
-
-  // ---- the screen and the lights
-  const lcd = $("panel-lcd").getContext("2d"), small = document.createElement("canvas");
-  small.width = small.height = 240;
-  const sctx = small.getContext("2d"), img = sctx.createImageData(240, 240);
-  function frame(m) {
-    if (m.fb) { sctx.putImageData(paint(img, m.fb), 0, 0); lcd.imageSmoothingEnabled = false; lcd.drawImage(small, 0, 0, 480, 480); }
-    for (const b of Object.values(B)) b.el.classList.toggle("lit", !!(m.buttons & (1 << b.bit)));
-    K.forEach((k, i) => k.el.classList.toggle("lit", !!(m.keys & (1 << i))));
+  // the knobs: endless encoders (a turn is a count of detents), and MASTER, the page's volume
+  turn(name, n) {
+    const k = this.KN[name];
+    if (!k) return;
+    if (name === "MASTER") {
+      this.master = Math.max(0, Math.min(4096, this.master + n * 64));
+      k.angle = -135 + 270 * this.master / 4096;
+      const pct = Math.round(this.master * 100 / 4096);
+      k.el.setAttribute("aria-valuenow", String(pct)); k.el.setAttribute("aria-valuetext", `${pct} percent`);
+      if (this.vu && n) this.vu.master(this.master);
+    } else {
+      if (!n) return;
+      k.angle = (k.angle + n * 18) % 360;
+      if (this.vu) this.vu.enc(ENC[name], n);
+    }
+    k.dial.style.transform = `rotate(${k.angle}deg)`;
   }
-  let last = null;                                            // (the last screen, so the panel opens with it drawn)
-  function unit(v) {
-    if (unsub) { unsub(); unsub = null; }
-    btns.clear(); keys.clear(); btns.latched = keys.latched = 0;
-    vu = v; last = null;
-    if (!v) return;
-    unsub = v.onFrame((m) => { if (m.fb) last = m.fb; if (!root.hidden) frame(m); });
+  paintHeld() {
+    for (const c of this.B) { const on = !!(this.btns.mask & (1 << c.bit)); c.el.classList.toggle("held", on); c.el.classList.toggle("latched", !!(this.btns.latched & (1 << c.bit))); c.el.setAttribute("aria-pressed", String(on)); }
+    this.K.forEach((c, i) => { const on = !!(this.keys.mask & (1 << i)); c.el.classList.toggle("held", on); c.el.classList.toggle("latched", !!(this.keys.latched & (1 << i))); c.el.setAttribute("aria-pressed", String(on)); });
   }
-  // the unit's own words for each control's job now (parseLabels: list: 8 knobs, 14 buttons, 16 W keys, 11 B keys)
-  function labels(l) {
+  letGo(h, id) {
+    const w = h.up(id, now());
+    if (w > 0) { const at = h.at.get(id); setTimeout(() => { if (h.at.get(id) === at) { h.by.delete(id); h.at.delete(id); h.sync(); this.paintHeld(); } }, w); }
+    this.paintHeld();
+  }
+  release() { this.btns.clear(); this.keys.clear(); this.btns.latched = this.keys.latched = 0; this.btns.sync(); this.keys.sync(); this.paintHeld(); }
+  // a frame of the unit: its screen (when it changed) and its lights
+  frame(m) {
+    if (m.fb) this.last = m.fb;
+    if (!this.shown) return;
+    if (m.fb) this.g.putImageData(paint(this.img, m.fb), 0, 0);
+    if (m.buttons === this.lights[0] && m.keys === this.lights[1]) return;
+    this.lights = [m.buttons, m.keys];
+    for (const c of this.B) c.el.classList.toggle("lit", !!(m.buttons & (1 << c.bit)));
+    this.K.forEach((c, i) => c.el.classList.toggle("lit", !!(m.keys & (1 << i))));
+  }
+  show(on) {
+    this.shown = on;
+    if (on && this.last) this.g.putImageData(paint(this.img, this.last), 0, 0);
+    if (!on) this.release();
+  }
+  // the unit's own words for each control's job now (parseLabels: list)
+  labels(l) {
     if (!l) return;
-    ["SELECT", "ALGORITHM", "PRESETS", "KNOB1", "KNOB2", "KNOB3", "KNOB4", "MASTER"].forEach((n, i) => { KN[n].job.textContent = l.list[i] || ""; });
-    for (const b of Object.values(B)) b.job.textContent = l.list[8 + b.bit] || "";
-    WHITE_K.forEach((n, i) => { K[n].job.textContent = l.list[22 + i] || ""; });
-    BLACK_K.forEach((n, i) => { K[n].job.textContent = l.list[38 + i] || ""; });
+    for (const [n, i] of Object.entries(LBL_KNOB)) this.KN[n].job.textContent = l.list[i] || "";
+    for (const c of this.B) c.job.textContent = l.list[8 + c.bit] || PANEL[c.bit];
+    WHITE_K.forEach((n, i) => { this.K[n].job.textContent = l.list[22 + i] || ""; });
+    BLACK_K.forEach((n, i) => { this.K[n].job.textContent = l.list[38 + i] || ""; });
   }
-  // the unit's pages with no screen of their own in the manager: a key each takes the unit there
+  title(t) { this.ttl.textContent = t || ""; }
+}
+
+export function mountDock(ctx) {
+  const { $ } = ctx;
+  const box = $("dock"), dev = new Device(box, { who: "dock", onScreen: () => ctx.open() }), grip = el("i", "dvgrip");
+  grip.title = "Drag: its size (ALT + [ and ]). Double-click: 120";
+  box.append(grip);
+  let unsub = null, shown = false, px = 120;
+  try { px = Number(localStorage.getItem("eg-dock")) || 120; } catch (_) { /* (no storage: 120) */ }
+  const size = (v) => {
+    px = Math.max(80, Math.min(360, Math.round(v / 20) * 20));
+    box.style.setProperty("--dock", `${px}px`);
+    try { localStorage.setItem("eg-dock", String(px)); } catch (_) { /* (none) */ }
+    return px;
+  };
+  size(px);
+  let drag = null;
+  grip.addEventListener("pointerdown", (e) => { e.preventDefault(); grip.setPointerCapture(e.pointerId); drag = { y: e.clientY, px }; });
+  grip.addEventListener("pointermove", (e) => { if (drag) size(drag.px + (e.clientY - drag.y)); });
+  for (const t of ["pointerup", "pointercancel"]) grip.addEventListener(t, () => { drag = null; });
+  grip.addEventListener("dblclick", () => size(120));
+  document.addEventListener("keydown", (e) => {
+    if (!shown || !e.altKey || e.metaKey || e.ctrlKey || (e.code !== "BracketLeft" && e.code !== "BracketRight")) return;
+    e.preventDefault(); size(px + (e.code === "BracketRight" ? 20 : -20));
+  });
+  return {
+    size,
+    unit(v) { if (unsub) { unsub(); unsub = null; } dev.release(); dev.vu = v; dev.last = null; if (v) unsub = v.onFrame((m) => dev.frame(m)); },
+    show(on) {
+      shown = on; box.hidden = !on;
+      box.parentElement.classList.toggle("docked", on);
+      dev.show(on);
+    },
+    labels: (l) => dev.labels(l),
+    title: (t) => dev.title(t),
+  };
+}
+
+export function mountPanel(ctx) {
+  const { $ } = ctx;
+  const root = $("panel");
+  const head = el("div", "pnhead"), h2 = el("h2", "", "THE FM-1"), go = el("span", "pngo"), close = el("button", "key plain", "ESC");
+  h2.id = "panel-h"; close.type = "button"; close.setAttribute("aria-label", "Back to the screen before (ESC)");
+  // the unit's pages: a key each takes the unit there (and the manager to its screen for it)
   for (const [where, label] of [["mfx", "MIDI FX"], ["tools", "TOOLS"], ["fx", "EFFECTS"]]) {
     const b = el("button", "key plain", label); b.type = "button"; b.tabIndex = -1;
     b.addEventListener("click", () => (where === "fx" ? ctx.go(where) : ctx.pick(where)));
-    $("panel-go").append(b);
+    go.append(b);
   }
-
-  // ---- open, close, the computer's keys
-  // (it is a screen of the manager, F9: shown and hidden with its tab; open: go there, or back where it was)
+  head.append(h2, go, el("span", "dim", "THE COMPUTER'S KEYS ARE THE UNIT'S HERE (THE YELLOW LETTERS) · SHIFT HOLDS ONE DOWN"), close);
+  root.append(head);
+  const dev = new Device(root, { who: "page", big: true });
+  let unsub = null;
+  function unit(v) { if (unsub) { unsub(); unsub = null; } dev.release(); dev.vu = v; dev.last = null; if (v) unsub = v.onFrame((m) => dev.frame(m)); }
+  // (it is a screen of the manager: shown and hidden with its tab; open: go there, or back where it was)
   function open(on) { if (on) ctx.tab("fm1"); else ctx.back(); }
-  function show(on) {
-    if (on === !root.hidden) return;
-    root.hidden = !on;
-    if (on) { if (last) frame({ fb: last, buttons: 0, keys: 0 }); }
-    else { btns.clear(); keys.clear(); btns.latched = keys.latched = 0; btns.sync(); keys.sync(); paintHeld(); }
-  }
+  function show(on) { if (on === !root.hidden) return; root.hidden = !on; dev.show(on); }
   root.hidden = true;
-  $("panel-close").addEventListener("click", () => open(false));
+  close.addEventListener("click", () => open(false));
   // (capture, on the window: while this screen is shown the computer's keys are the unit's)
   window.addEventListener("keydown", (e) => {
     if (root.hidden || e.metaKey || e.ctrlKey || e.altKey) return;
@@ -351,19 +291,19 @@ export function mountPanel(ctx) {
     e.stopPropagation();
     if (e.key === "Escape") { e.preventDefault(); open(false); return; }
     if (e.key === "Tab") return;                              // (the knobs, the ESC key)
-    const knob = e.target.closest && e.target.closest(".pnknob"), m = KEYMAP[e.code];
+    const knob = e.target.closest && e.target.closest(".dc.knob"), m = KEYMAP[e.code];
     const far = { PageUp: 5, PageDown: -5 }[e.key], near = { ArrowUp: 1, ArrowRight: 1, ArrowDown: -1, ArrowLeft: -1 }[e.key];
-    if (knob && (far || near)) { e.preventDefault(); turn(Object.keys(KN).find((n) => KN[n].el === knob), far || near); return; }
+    if (knob && (far || near)) { e.preventDefault(); dev.turn(Object.keys(dev.KN).find((n) => dev.KN[n].el === knob), far || near); return; }
     if (!m) return;
     e.preventDefault();
-    if (m.enc) { turn(m.enc, m.n); return; }
+    if (m.enc) { dev.turn(m.enc, m.n); return; }
     if (e.repeat) return;
-    const h = m.btn !== undefined ? btns : keys, bit = m.btn !== undefined ? m.btn : m.key;
+    const h = m.btn !== undefined ? dev.btns : dev.keys, bit = m.btn !== undefined ? m.btn : m.key;
     if (e.shiftKey) h.latch(bit);
     else if (!h.unlatch(bit)) h.down(`k${e.code}`, bit, now());
-    paintHeld();
+    dev.paintHeld();
   }, true);
-  window.addEventListener("keyup", (e) => { letGo(btns, `k${e.code}`); letGo(keys, `k${e.code}`); });
-  window.addEventListener("blur", () => { const k = (id) => id[0] === "k"; btns.clear(k); keys.clear(k); paintHeld(); });
-  return { open, show, unit, isOpen: () => !root.hidden, labels, title: (t) => { $("panel-h").textContent = t ? `THE FM-1 · ${t}` : "THE FM-1"; } };
+  window.addEventListener("keyup", (e) => { dev.letGo(dev.btns, `k${e.code}`); dev.letGo(dev.keys, `k${e.code}`); });
+  window.addEventListener("blur", () => { const k = (id) => id[0] === "k"; dev.btns.clear(k); dev.keys.clear(k); dev.paintHeld(); });
+  return { open, show, unit, isOpen: () => !root.hidden, labels: (l) => dev.labels(l), title: (t) => { dev.title(t); h2.textContent = t ? `THE FM-1 · ${t}` : "THE FM-1"; } };
 }

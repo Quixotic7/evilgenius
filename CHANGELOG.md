@@ -69,9 +69,9 @@ EVILGENIUS began as FIZZ 0.12.0-beta.17 with another engine and another face; FI
   lights and screen are the browser's FM-1's.
 - **REMOTE MODE: your FM-1 plays the FM-1 in the browser.** With the manager connected, REMOTE MODE (ALT + P)
   makes the unit the browser FM-1's panel: its keys, buttons and knobs play it, its lights show it, and the unit
-  itself is silent and shows REMOTE MODE until you end it. The FM-1's screen sits in a band at the top of the
-  manager the whole time (drag its corner for its size), with what each knob, black key and button does right now
-  written beside it. The unit and the manager move as one: the unit's pages open the manager's screens (the
+  itself is silent and shows REMOTE MODE until you end it. A small FM-1 sits above the manager the whole time,
+  drawn as the unit is laid out, its screen live and every knob, button and key labelled with what it does right
+  now (drag its corner for its size). The unit and the manager move as one: the unit's pages open the manager's screens (the
   sequencer SEQUENCE, MIX MIX, EDIT SOUND on the page you picked with the black keys), a screen picked in the
   manager takes the unit there, and a page the manager has no screen for yet (EFFECTS, the settings) opens THE
   FM-1 (ALT + F): the unit's page with every control's job on it.
@@ -79,7 +79,13 @@ EVILGENIUS began as FIZZ 0.12.0-beta.17 with another engine and another face; FI
   the eight slots, the picked slot's every value on every page, the ARP's two lanes, and which group each track
   goes through; drag or scroll a value. TOOLS runs the unit's own tools (ROTATE .. CLIP) with the page's steps
   shown before and after, KEEP and UNDO. Both are the unit's own state: turn a knob on the unit and they follow.
-
+- **The manager and its FM-1 move together.** Pick a screen, SEQUENCE's EDIT mode, a track or SOUND's page with
+  the mouse and the FM-1 in the browser goes there; change it on the FM-1 and the manager follows. MIDI FX and
+  TOOLS have moving pictures: the notes going through the chain, the page's steps round a wheel before and after.
+- **MIX is a mixing desk** (on the FM-1 in the browser): six strips drawn as the unit draws them, with the fader,
+  the pan knob, the three sends, the five rooms, mute and solo, a light while a track sounds and the output's
+  meters. LEVEL, DRY and the rooms' sends can be set here now. SOUND's pictures move: the wave runs, a note
+  travels the envelopes, the LFOs run at their speed.
 
 ## 0.1.1 (2026-11-15)
 

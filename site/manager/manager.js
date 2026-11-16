@@ -28,7 +28,7 @@ import { mountMix } from "./egmix.js";
 import { mountKeys, SCREENS, HINTS } from "./egkeys.js";
 import { runBoot } from "./egboot.js";
 import { mountPanel, mountDock } from "./egpanel.js";
-import { findRemote, RemoteSession, screenOf, GOTO } from "./egremote.js";
+import { findRemote, RemoteSession, screenOf, GOTO, HMODE_OF_EDIT, VIEW_OF_SEQ } from "./egremote.js";
 import { labelsRequest, parseLabels } from "./egsysex.js";
 import { mountMfx } from "./egmfx.js";
 import { mountTools } from "./egtools.js";
@@ -155,18 +155,18 @@ function dockSync() {
 }
 function follow(view) {
   viewNow = view;
-  if (!docked || driving || !inPage()) return;
-  const s = screenOf(view), key = s ? `${s.tab} ${s.title} ${s.track} ${s.seqView || ""} ${s.value ?? ""}` : "";
+  if (driving || !inPage()) return;                         // (the FM-1 in the page and the manager are one, docked or not)
+  const s = screenOf(view), key = s ? `${s.tab} ${s.title} ${s.track} ${s.seqView || ""} ${s.value ?? ""} ${s.hmode ?? ""}` : "";
   if (!s || key === followed) return;
   const was = followed.split(" ");
   followed = key;
   dock.title(s.title); panel.title(s.title);
   if (!s.tab || working) return;
   const cur = TABS.find((t) => !$(`tab-${t}`).hidden);
-  if (s.tab === "seq") { seq.track(s.track); if (s.seqView) seq.view(s.seqView); }
+  if (s.tab === "seq") { seq.track(s.track); if (s.seqView) seq.view(s.seqView); if (s.hmode !== undefined) seq.mode(HMODE_OF_EDIT.indexOf(s.hmode)); }
   if (s.tab !== cur) tab(s.tab);
   if (s.tab === "edit") {
-    if (cur !== "edit" || Number(was[was.length - 3]) !== s.track) edit.readTrackOf(s.track);
+    if (cur !== "edit" || Number(was[was.length - 4]) !== s.track) edit.readTrackOf(s.track);
     edit.showValue(s.value);
   }
 }
@@ -187,7 +187,7 @@ async function drive(where) {
 // the unit's own words for what each control does now (LABELS), for THE STRIP and THE FM-1: asked while either shows
 let labelling = false, labelsWas = "";
 setInterval(async () => {
-  if (labelling || working || !vu || !inPage() || !(docked || panel.isOpen())) return;
+  if (labelling || working || !vu || !inPage() || !(docked || panel.isOpen())) return;   // (only while a drawing of the unit shows)
   labelling = true;
   try {
     const l = await vu.link.turn(() => { vu.link.io.drain(); return vu.link.ask(labelsRequest(), (p) => parseLabels(p) ?? undefined, { timeout: 300, tries: 1 }); });
@@ -319,7 +319,15 @@ let mfx = null, tools = null;
 let tabBefore = "home";
 const ctx = { $, log, say, refuse, bar, link: () => link, busy: () => working, job: (fn, o) => job(fn, o), download, changed: () => changed(),
   tab: (name) => tab(name), back: () => tab(tabBefore === "fm1" ? "home" : tabBefore), go: (where) => drive(where), pick: (name) => pick(name),
-  unit: () => (inPage() ? vu : null),                     // (the FM-1 in this page, while the screens are on it: its own calls)
+  unit: () => (inPage() ? vu : null),
+  // what was picked by hand in a screen (SEQUENCE's track, EDIT mode and view; SOUND's page): the unit goes there too
+  onNav: (kind, v) => {
+    if (!vu || !inPage() || driving) return;
+    if (kind === "track") vu.nav(0, v);
+    else if (kind === "mode" && HMODE_OF_EDIT[v] !== undefined) vu.nav(1, HMODE_OF_EDIT[v]);
+    else if (kind === "view" && VIEW_OF_SEQ[v] !== undefined) vu.nav(2, VIEW_OF_SEQ[v]);
+    else if (kind === "page") vu.nav(3, v);
+  },                     // (the FM-1 in this page, while the screens are on it: its own calls)
   other: () => (vu && ulink ? (inPage() ? ulink : vu.link) : null) };
 library = mountLibrary({ ...ctx, edit: (snd, origin) => { edit.open(snd, origin); tab("edit"); } });
 edit = mountEdit({ ...ctx, onSaved: () => { library.load({ quiet: true }).catch(() => {}); } });
@@ -358,7 +366,7 @@ function tab(name) {
   try { sessionStorage.setItem("eg-tab", name); } catch (_) { /* (no storage: the first tab) */ }
 }
 // (a screen picked by hand: in REMOTE MODE the unit goes to its page too)
-function pick(t) { tab(t); if (docked) drive(t); }
+function pick(t) { tab(t); drive(t); }
 for (const t of TABS) $(`t-${t}`).addEventListener("click", () => pick(t));
 mountKeys({ $, tab: pick, current: () => TABS.find((t) => !$(`tab-${t}`).hidden) });
 document.querySelector(".fkeys").addEventListener("keydown", (e) => {

@@ -201,9 +201,32 @@ The seamless round: play on the go on EVILGENIUS; at the computer plug in, GET t
     before and after, KEEP and UNDO. Both ask three times a second while shown, so the unit's knobs move them.
     Tried in the browser: an ARP put in a slot and its RATE turned; EUCLID with 9 hits previewed and undone.
     On a unit worked on over USB these two need phase 3's SysEx; until then its own page (THE FM-1).
+  - **The owner's third round (2026-11-16): "this still feels tacked on".** THE STRIP's rows of boxes are gone: on
+    top there is **a small FM-1 in the unit's own layout** (`egpanel.js Device`: the knobs and OCT keys left, the
+    screen in the middle, KNOB 1..4 over the two rows of buttons right, the black keys over the white keys), each
+    control with its name and its job now (LABELS), its light, and playable; THE FM-1 (ALT + F) is the same drawing,
+    big. **A click in the manager moves the unit, always** (not only in REMOTE MODE): the tabs; SEQUENCE's EDIT mode
+    is the unit's hold mode both ways (`eg_web_view` carries it, `eg_web_nav` sets it), its track and its STEPS /
+    TRACKS view too; SOUND's page is the unit's editor page both ways. **Moving pictures** in the unit's style
+    (drawn small in the C64's colours, shown big): TOOLS' wheel of the page's steps before and after with the hand
+    going round (the playing step while it plays), EUCLID's polygon, GRIDS' map, the timing's ticks; MIDI FX's
+    chain with notes going through it, each effect doing to them what it does.
+  - **The FM-1 on the page looks like the FM-1** (his picture of it, the same day): the dark body, round knobs with
+    their names over them and their jobs under, F1 / F2 in their tray, the screen in its bezel, the purple tray of
+    twelve buttons (each showing what it does now, its printed name small), the keybed's tray with its two rows of
+    keys. Small above the manager, big as THE FM-1.
+  - **MIX is THE DESK** (`egdesk.js`, on the FM-1 in the browser; `eg_web_mix`): the unit's MIX page drawn whole
+    and moving: six strips (the wave running while the track sounds, the pan knob, the fader with its cap, a light
+    for the voices it sounds, the three sends, the five rooms, M and S) and the output's real peaks (the worklet's,
+    with each frame). LEVEL, DRY, the rooms, mute and solo are editable here now (phase 2's MIXER, for the browser
+    FM-1). On a unit on USB MIX is still the four bars over SysEx.
+  - **SOUND's pictures move** (`egpics.js picture(key, values, ms)`): the oscillators' wave runs, a note travels
+    each envelope, a sweeping note's partials stand under the filter's curve, each LFO runs at its speed with its
+    output's dot. Still when the system asks for reduced motion.
   - Still owed for "everything matches a panel": EFFECTS' page in MIX (phase 2), PATTERNS, the track, record and
     global settings (THE FM-1 shows them meanwhile), SOUND's value picked by the unit's knobs lit, TOOLS' richer
-    pictures (GRIDS' map, the timing lanes of HUMANIZE and QUANTIZE, STRETCH's before and after).
+    pictures (STRETCH's and LENGTH's before and after), and moving pictures for HOME, SOUND, MIX, LIBRARY and POOL as
+    the unit draws them (the room, the oscillators, the tower).
 - **Not yet**: over Bluetooth (the route is carried, untested);
   the round in one key (CONNECT: take the project worked on into the browser FM-1 and the session; DISCONNECT: send
   it back to its slot): which browser slot it may replace is the owner's call.

@@ -45,6 +45,7 @@ export function mountTools(ctx) {
     <div class="mfbar"><span class="seg" id="tl-tools" role="group" aria-label="The tools"></span></div>
     <div class="mfbar"><span class="lab">ON</span><span class="seg" id="tl-scopes" role="group" aria-label="The scope"></span><span class="dim" id="tl-where"></span></div>
     <div class="mfslot box">
+      <canvas id="tl-pic" class="pxpic" width="320" height="96" aria-hidden="true"></canvas>
       <div class="mfrow" id="tl-knobs"></div>
       <div class="tlsteps" id="tl-steps" aria-label="The page's steps: before, and after"></div>
       <div class="keys tlacts"><button id="tl-keep" class="key go" type="button">KEEP (ENTER)</button><button id="tl-undo" class="key plain" type="button">UNDO (BACKSPACE)</button>
@@ -136,11 +137,70 @@ export function mountTools(ctx) {
     else return;
     e.preventDefault();
   });
-  setInterval(() => { if (S.shown && !S.drag) ask(); }, 320);
+  // the picture: the page's sixteen steps round a wheel, before (inside) and after (outside), a hand going round with
+  // the pattern (the playing step while the unit plays); and the tool's own: EUCLID's polygon, GRIDS' map, the
+  // timing's ticks pulled about (HUMANIZE) or into line (QUANTIZE), the rows moved (ROTATE, REVERSE)
+  const C = { bg: "#000", dim: "#4a4a4a", was: "#7b7b7b", on: "#706deb", ch: "#edf171", hand: "#fff", cy: "#75cec8", red: "#c46c71", gr: "#a9ff9f" };
+  const pg = $("tl-pic").getContext("2d");
+  function picture(t) {
+    const d = S.d;
+    pg.fillStyle = C.bg; pg.fillRect(0, 0, 320, 96);
+    if (!d || !d.steps) return;
+    const cx = 48, cy = 48, at = (i, r) => [Math.round(cx + Math.cos(i / 16 * 2 * Math.PI - Math.PI / 2) * r), Math.round(cy + Math.sin(i / 16 * 2 * Math.PI - Math.PI / 2) * r)];
+    const sq = (x, y, n, c) => { pg.fillStyle = c; pg.fillRect(x - (n >> 1), y - (n >> 1), n, n); };
+    const pos = d.playing && d.pos >= 0 ? d.pos % 16 : (t / 180) % 16;
+    if (d.tool === 3) {                                     // EUCLID: its hits joined
+      const hits = d.steps.map(([on], i) => (on ? i : -1)).filter((i) => i >= 0);
+      pg.strokeStyle = C.cy; pg.lineWidth = 1; pg.beginPath();
+      hits.forEach((i, k) => { const [x, y] = at(i, 38); if (k) pg.lineTo(x + 0.5, y + 0.5); else pg.moveTo(x + 0.5, y + 0.5); });
+      if (hits.length > 2) pg.closePath();
+      pg.stroke();
+    }
+    d.steps.forEach(([on, was], i) => {
+      const [xi, yi] = at(i, 24), [xo, yo] = at(i, 38), now = Math.floor(pos) === i;
+      sq(xi, yi, 3, was ? C.was : C.dim);
+      sq(xo, yo, now ? 7 : 5, on ? (on !== was ? C.ch : C.on) : C.dim);
+      if (now && on) sq(xo, yo, 3, C.hand);
+    });
+    const [hx, hy] = at(pos, 16);
+    pg.strokeStyle = C.hand; pg.beginPath(); pg.moveTo(cx + 0.5, cy + 0.5); pg.lineTo(hx + 0.5, hy + 0.5); pg.stroke();
+    // the two rows: before, after
+    const X = 104, W = 12;
+    for (let i = 0; i < 16; i++) {
+      const [on, was] = d.steps[i], out = !((d.inr >> i) & 1);
+      pg.fillStyle = was ? C.was : C.dim; pg.fillRect(X + i * W, 12, W - 2, was ? 10 : 2);
+      pg.fillStyle = out ? C.dim : on ? (on !== was ? C.ch : C.on) : C.dim; pg.fillRect(X + i * W, 40, W - 2, on ? 14 : 2);
+      if (Math.floor(pos) === i) { pg.fillStyle = C.hand; pg.fillRect(X + i * W, 58, W - 2, 2); }
+    }
+    const v = d.v || [];
+    if (d.tool === 0 && d.rot) {                            // ROTATE: which way, how far
+      const n = Math.min(8, Math.abs(d.rot)), dir = d.rot > 0 ? 1 : -1, ph = Math.floor(t / 120) % 4;
+      for (let k = 0; k < n; k++) sq(X + 96 + dir * (k * 8 + ph * 2), 30, 3, C.cy);
+    }
+    if (d.tool === 4) {                                     // GRIDS: the map, where X and Y stand, chaos shaking it
+      const gx = 240, gy = 66, jit = (v[3] / 255) * 3;
+      pg.strokeStyle = C.on; pg.strokeRect(gx + 0.5, gy - 0.5, 72, 26);
+      for (let k = 1; k < 4; k++) { pg.fillStyle = C.dim; pg.fillRect(gx + k * 18, gy, 1, 26); }
+      sq(Math.round(gx + 2 + v[0] / 255 * 68 + Math.sin(t / 90) * jit), Math.round(gy + 2 + (1 - v[1] / 255) * 22 + Math.cos(t / 70) * jit), 3 + Math.round(v[2] / 64), C.ch);
+    }
+    if (d.tool === 5 || d.tool === 6) {                     // the timing: each trig's tick off its line, or going back to it
+      for (let i = 0; i < 16; i++) {
+        if (!d.steps[i][0]) continue;
+        const seed = Math.sin(i * 12.9898) * 43758.5453, r = seed - Math.floor(seed) - 0.5;
+        const off = d.tool === 5 ? r * (v[0] / 12) * 5 * (0.6 + 0.4 * Math.sin(t / 300 + i)) : r * 5 * (1 - v[0] / 100) * (0.5 + 0.5 * Math.abs(Math.sin(t / 500)));
+        pg.fillStyle = C.dim; pg.fillRect(X + i * W + 4, 66, 1, 22);
+        pg.fillStyle = C.gr; pg.fillRect(Math.round(X + i * W + 4 + off), 70, 2, 14);
+      }
+    }
+    if (d.pending) { pg.fillStyle = Math.floor(t / 400) % 2 ? C.ch : C.red; pg.fillRect(306, 6, 8, 8); }   // (a change pending: the unit's orange dot)
+  }
+  const loop = (t) => { if (S.shown) { picture(t); requestAnimationFrame(loop); } };
+  setInterval(() => { if (S.shown && !S.drag) ask(S.d ? OP.GET : OP.OPEN); }, 320);   // (not yet answered: the unit was still starting)
   return {
     show(on) {
       S.shown = on;
       if (!on) return;
+      requestAnimationFrame(loop);
       if (!ctx.unit()) { $("tl-note").textContent = "The tools run on the FM-1 in this browser. On a unit on USB: its own screen (THE FM-1)."; return; }
       S.was = ""; ask(OP.OPEN);
     },

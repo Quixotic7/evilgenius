@@ -154,6 +154,7 @@ export function mountEdit(ctx) {
   // a page of the sound (the unit's), the others hidden; focus: its first value
   function page(k, focus = false) {
     S.page = Math.max(0, Math.min(S.secs.length - 1, k));
+    if (!S.quietPage && ctx.onNav && S.secs[S.page]) ctx.onNav("page", S.secs[S.page].rows[0][0]);   // (the unit's editor: the page that holds it)
     for (const b of $("ed-panel").children) b.hidden = +b.dataset.k !== S.page;
     for (const b of $("ed-jump").children) b.setAttribute("aria-pressed", String(+b.dataset.k === S.page));
     if (focus) { const t = $("ed-panel").querySelector(`[data-k="${S.page}"] .tile`); if (t) t.focus(); }
@@ -366,6 +367,17 @@ export function mountEdit(ctx) {
     }
   }
   function renderTiles() { for (const id of S.tiles.keys()) renderTile(id); renderRoutes(); renderPics(); }
+  // the shown page's picture moves (about fifteen times a second), as the unit's pages do; reduced motion: still
+  const still = typeof window !== "undefined" && window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let movedAt = 0;
+  const move = (ms) => {
+    if (!S.shown) return;
+    requestAnimationFrame(move);
+    if (ms - movedAt < 66 || !S.snd || S.snd.midi || !S.secs || !S.secs[S.page]) return;
+    movedAt = ms;
+    const node = S.pics.get(S.secs[S.page].key);
+    if (node) node.innerHTML = picture(S.secs[S.page].key, S.snd.values, ms);
+  };
   // the pictures, drawn again at most once a frame while values move
   function renderPics() {
     if (S.picsDue) return;
@@ -585,9 +597,9 @@ export function mountEdit(ctx) {
 
   return {
     open, poll, render, state: S, readTrack,
-    showValue(id) { const t = S.tiles.get(id); if (t && +t.closest(".edsec").dataset.k !== S.page) page(+t.closest(".edsec").dataset.k); },   // (the unit's editor page)
+    showValue(id) { const t = S.tiles.get(id); if (t && +t.closest(".edsec").dataset.k !== S.page) { S.quietPage = true; page(+t.closest(".edsec").dataset.k); S.quietPage = false; } },   // (the unit's editor page)
     readTrackOf(t) { $("ed-track").value = String(t); if (ctx.link()) ctx.job(() => readTrack()); },
-    shown(v) { S.shown = v; if (!v) { allOff(); closePick(); arm(null); } },
+    shown(v) { const was = S.shown; S.shown = v; if (!v) { allOff(); closePick(); arm(null); } else if (!was && !still && typeof requestAnimationFrame === "function") requestAnimationFrame(move); },
     gone() { S.live = null; S.kept = null; S.auditioned = false; S.liveOn = false; if (S.origin && S.origin.kind === "track") S.origin = { kind: "file", name: "the FM-1's track (unplugged)" }; render(); },
   };
 }

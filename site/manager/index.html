@@ -498,36 +498,65 @@ button.sqsl.on { color: var(--yellow); border-color: var(--yellow); }
 .vscreen { width: min(100%, 360px); aspect-ratio: 1; image-rendering: pixelated; border: var(--px) solid var(--cyan); background: #000; }
 .jar.virtual px-sprite { display: none; }
 .jar.virtual .vscreen { cursor: pointer; }
-/* THE DOCK (REMOTE MODE): the FM-1's screen above the whole manager, in the border's colour, centred (the owner's
-   mock-up, 2026-11-16); then the manager: THE STRIP, the tabs, the screens */
+/* THE FM-1 ON THE PAGE (egpanel.js Device): the unit in its own layout. THE DOCK: small, above the whole manager, in
+   the border's colour, centred (REMOTE MODE); THE FM-1 (ALT + F): big, a screen */
 .frame.docked { flex-direction: column; gap: 8px; }
-.dock { position: relative; flex: none; align-self: center; line-height: 0; }
-.dock canvas { width: var(--dock, 120px); height: var(--dock, 120px); image-rendering: pixelated; background: #000; cursor: pointer; display: block; border: 6px solid var(--yellow); }
+.dock { position: relative; flex: none; align-self: center; width: min(100%, calc(var(--dock, 120px) * 8.6)); }
 .dock[hidden] { display: none; }
-#dock-grip { position: absolute; right: 0; bottom: 0; width: 14px; height: 14px; cursor: nwse-resize; touch-action: none; background: linear-gradient(135deg, transparent 50%, var(--white) 50%); }
-.scr.docked > .strip { order: -1; flex: none; }
-.scr.docked > .topbar { border-top: var(--px) dotted var(--blue); }
-/* THE STRIP: where the unit is, the status line, and its knobs', black keys' and buttons' jobs now */
-.strip { display: flex; flex-direction: column; gap: 3px; padding: 4px 6px; min-width: 0; font-family: var(--mono); }
-.strip[hidden] { display: none; }
-.sthead { display: flex; gap: 10px; align-items: center; min-width: 0; height: 24px; }
-.sthead > b { flex: none; color: var(--yellow); font-size: 15px; letter-spacing: 0.08em; white-space: nowrap; }
-.sthead .statusline { flex: 1; min-width: 0; min-height: 0; border: 0; padding: 0; gap: 8px; }
-.sthead .statusline .scene, .sthead .statusline .ready, .sthead .statusline .hint { display: none; }
-.sthead .statusline .bar { width: 60px; }
-.sthead .right { flex: none; display: flex; gap: 4px; align-items: center; }
-.sthead .right px-text { zoom: 0.55; } .sthead .right .key { padding: 2px 5px; box-shadow: none; }
-.sthead .right .pill { font-size: 10px; padding: 3px 6px; } .sthead .right .trinfo { font-size: 10px; }
-.scr.docked > .topbar { padding-top: 4px; padding-bottom: 4px; }
-.sthead .statusline .status, .sthead .statusline #alert { font-size: 12px; }
-.strow { display: grid; gap: 3px; }
-.strow.k { grid-template-columns: repeat(7, minmax(0, 1fr)); } .strow.b { grid-template-columns: repeat(11, minmax(0, 1fr)); } .strow.n { grid-template-columns: repeat(14, minmax(0, 1fr)); }
-.stc { border: 2px solid var(--blue); background: #06051a; color: var(--white); font: 10px/1.1 var(--mono); padding: 1px 3px; height: 27px; text-align: left; overflow: hidden; white-space: nowrap; cursor: pointer; touch-action: none; user-select: none; }
-.strow.k .stc { cursor: ns-resize; border-color: var(--lightblue); }
-.stc i { display: block; font-style: normal; color: var(--cyan); font-size: 9px; }
-.stc.none span::after { content: "-"; color: var(--darkgrey); }
-.stc.lit { border-color: var(--lightred); } .stc.held { border-color: var(--yellow); background: var(--blue); }
-@media (max-width: 1320px) { .scr.docked .fkeys px-text, .scr.docked .topbar .right px-text { zoom: 0.6; } .scr.docked .fkeys button { padding: 5px 6px; } .scr.docked .topbar { padding: 4px 6px; } }
+.dvgrip { position: absolute; right: 2px; bottom: 2px; width: 14px; height: 14px; cursor: ns-resize; touch-action: none; background: linear-gradient(135deg, transparent 50%, var(--yellow) 50%); }
+.dv { --u: var(--dock, 120px); font-size: clamp(8px, calc(var(--u) / 13), 15px); display: flex; flex-direction: column; gap: 0.6em; padding: 0.6em 1.2em 0.9em; background: #1c1d33; border-radius: 1.6em; font-family: var(--mono); box-sizing: border-box; color: #f2f2f6; }
+.dvhead { display: flex; gap: 1.2em; align-items: baseline; color: #6f7196; font-size: 0.9em; letter-spacing: 0.12em; line-height: 1; }
+.dvhead b { color: var(--yellow); font-size: 1.25em; font-weight: 400; }
+.dvtop { display: grid; grid-template-columns: calc(var(--u) * 1.9) auto minmax(0, 1fr); gap: 1.6em; align-items: stretch; }
+.dvleft, .dvright { display: flex; flex-direction: column; justify-content: space-between; gap: 0.6em; min-width: 0; }
+.dvknobs { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5em 0.4em; justify-items: center; }
+.dvknobs.k4 { grid-template-columns: repeat(4, 1fr); }
+.dvbezel { background: #000; border-radius: 1.3em; padding: 0.6em; align-self: center; line-height: 0; box-shadow: 0 0 0 2px #0c0c18; }
+.dvlcd { width: var(--u); height: var(--u); image-rendering: pixelated; background: #000; cursor: pointer; display: block; }
+.dvtray { background: #5558d6; border-radius: 1em; padding: 0.55em; display: grid; gap: 0.45em; box-shadow: 0 0.25em 0 #3b3ea8; }
+.dvtray.f2 { grid-template-columns: 1fr 1fr; } .dvtray.b12 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.dc { position: relative; border: 0; background: none; color: inherit; font: inherit; padding: 0; cursor: pointer; touch-action: none; user-select: none; min-width: 0; box-sizing: border-box; white-space: nowrap; }
+.dc .dn, .dc .dj, .dc .dk { display: block; overflow: hidden; text-overflow: clip; }
+/* a knob: its name, the knob, what it turns now */
+.dc.knob { display: flex; flex-direction: column; align-items: center; gap: 0.25em; cursor: ns-resize; width: 100%; }
+.dc.knob .dn { font-size: 0.95em; font-weight: 700; letter-spacing: 0.06em; color: #f2f2f6; }
+.dc.knob .dd { display: block; width: calc(var(--u) * 0.2); height: calc(var(--u) * 0.2); border-radius: 50%; background: radial-gradient(circle at 50% 45%, #4a2a30 0 58%, #2e181c 60% 100%); box-shadow: 0 0 0 0.18em #5b3138, 0 0.3em 0.5em rgba(0, 0, 0, 0.5); position: relative; }
+.dc.knob .dd::after { content: ""; position: absolute; left: 50%; top: 8%; width: 0.26em; height: 30%; margin-left: -0.13em; border-radius: 0.2em; background: #f2f2f6; }
+.dc.knob .dj { font-size: 0.95em; color: var(--lightgreen); min-height: 1.1em; max-width: 100%; }
+.dc.knob:focus-visible .dd { box-shadow: 0 0 0 0.2em var(--lightgreen); }
+/* a button: what it does now, big; its name on the unit, small */
+.dc.bt { background: #6366e0; border-radius: 0.7em; min-height: calc(var(--u) * 0.17); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.1em; box-shadow: 0 0.22em 0 #4347b8; padding: 0.2em 0.3em; }
+.dc.bt .dj { font-size: 1.05em; font-weight: 700; letter-spacing: 0.04em; color: #14152b; max-width: 100%; }
+.dc.bt .dn { font-size: 0.62em; color: #23255a; letter-spacing: 0.08em; order: 2; }
+.dc.bt .dk { position: absolute; right: 0.4em; top: 0.2em; font-size: 0.7em; color: var(--yellow); }
+.dc.bt.lit { background: #ff8f8f; box-shadow: 0 0.22em 0 #b84a4a, 0 0 0.9em #ff6b6b; }
+.dc.held { transform: translateY(0.18em); box-shadow: none; filter: brightness(1.25); } .dc.latched { outline: 2px dashed var(--yellow); outline-offset: 1px; }
+/* the keybed: the eleven upper keys over the sixteen lower ones, each with its slot and what it does now */
+.dvbed { display: grid; grid-template-columns: repeat(32, minmax(0, 1fr)); gap: 0.4em 0; background: #5558d6; border-radius: 1.2em; padding: 0.5em 0.8em 0.6em; box-shadow: 0 0.3em 0 #3b3ea8; }
+.dc.wk, .dc.bk { background: #6366e0; border-radius: 0.6em; margin: 0 0.22em; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.15em; box-shadow: 0 0.2em 0 #4347b8; overflow: hidden; }
+.dc.bk { grid-row: 1; min-height: calc(var(--u) * 0.2); margin: 0 0.5em; } .dc.wk { grid-row: 2; min-height: calc(var(--u) * 0.23); }
+.dc.wk .dn, .dc.bk .dn { font-size: 0.6em; color: #23255a; }
+.dc.wk .dj, .dc.bk .dj { font-size: 0.8em; font-weight: 700; color: #14152b; max-width: 100%; }
+.dc.wk .dj:empty::before, .dc.bk .dj:empty::before { content: ""; display: block; width: 0.22em; height: calc(var(--u) * 0.11); border-radius: 0.2em; background: #9a9cb8; }
+.dc.wk.lit { background: #a9ff9f; box-shadow: 0 0.2em 0 #4c9a45, 0 0 0.8em #7dff70; } .dc.bk.lit { background: #ff8f8f; box-shadow: 0 0.2em 0 #b84a4a, 0 0 0.8em #ff6b6b; }
+.dv.big { --u: clamp(200px, calc(100vh - 500px), 420px); }
+.frame.docked .dv.big { --u: clamp(140px, calc(100vh - 800px), 340px); }
+/* THE DESK (egdesk.js): MIX's picture, and the picked track's values under it */
+.dkpic { display: block; height: clamp(162px, 32vh, 486px); width: auto; max-width: 100%; image-rendering: pixelated; background: #000; border: var(--px) solid var(--blue); cursor: ns-resize; touch-action: none; }
+.dkpic[hidden], .dkrow[hidden] { display: none; }
+.dkrow { display: grid; grid-template-columns: 90px repeat(11, minmax(0, 1fr)); gap: 5px; margin: 8px 0 4px; align-items: stretch; }
+.dkrow .lab { margin: 0; align-self: center; }
+.mftile.cur { border-color: var(--yellow); }
+/* the screens' moving pictures (MIDI FX, TOOLS): drawn small in the C64's colours and shown big, as the unit's are */
+#mf-pic { height: clamp(72px, 12vh, 144px); }
+.pxpic { display: block; height: clamp(96px, 17vh, 192px); width: auto; max-width: 100%; image-rendering: pixelated; background: #000; border: var(--px) solid var(--blue); }
+#panel[hidden] { display: none; }
+#panel { display: flex; flex-direction: column; gap: 8px; }
+.pnhead { display: flex; align-items: center; gap: 14px; }
+.pnhead h2 { margin: 0; font: 16px var(--mono); color: var(--yellow); letter-spacing: 0.08em; white-space: nowrap; }
+.pnhead .dim { flex: 1; min-width: 0; font-size: 11px; color: var(--grey); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pnhead .key { padding: 2px 10px; box-shadow: none; font: 13px var(--mono); color: var(--white); }
+.pngo { display: inline-flex; gap: 4px; } .pngo .key { color: var(--cyan); }
 /* MIDI FX and TOOLS (egmfx.js, egtools.js) */
 .mfbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
 .mfbar .lab { margin: 0; } .mfbar .key { padding: 3px 9px; box-shadow: none; font: 13px var(--mono); color: var(--white); }
@@ -554,56 +583,14 @@ button.sqsl.on { color: var(--yellow); border-color: var(--yellow); }
 .tlstep.was { border-color: var(--lightgrey); } .tlstep.on { background: var(--lightblue); color: var(--black); }
 .tlstep.ch { border-color: var(--yellow); } .tlstep.ch.on { background: var(--yellow); } .tlstep.out { opacity: 0.35; }
 .tlacts { align-items: center; gap: 8px; } .tlacts .key { padding: 3px 10px; box-shadow: none; font: 13px var(--mono); color: var(--white); }
-/* THE PANEL (F9): the virtual FM-1's front, over everything (egpanel.js) */
-#panel[hidden] { display: none; }
-.pnl { --lcd: clamp(180px, calc(100vh - 400px), 480px); width: min(100%, calc(var(--lcd) + 560px)); margin: 0 auto; box-sizing: border-box; padding: 4px 6px; gap: 8px; background: var(--black); display: flex; flex-direction: column; font-family: var(--mono); }
-.scr.docked .pnl { --lcd: 0px; width: 100%; }
-.scr.docked .pnlcd { display: none; }
-.pngo { display: inline-flex; gap: 4px; } .pngo .key { padding: 2px 8px; box-shadow: none; font: 12px var(--mono); color: var(--cyan); }
-.pnj { font-size: 10px; color: var(--lightgreen); min-height: 11px; white-space: nowrap; overflow: hidden; max-width: 100%; text-overflow: clip; }
-.pnkey .pnj { color: var(--blue); font-weight: 700; writing-mode: vertical-rl; transform: rotate(180deg); min-height: 0; margin-bottom: 2px; font-size: 9px; }
-#panel .pnkey { flex-direction: column; align-items: center; justify-content: flex-end; }
-#panel .pnkey.black .pnj { color: var(--lightgreen); }
-#panel .pnbtn { height: 46px; gap: 1px; } #panel .pnknob { padding: 4px 2px; gap: 2px; }
-.scr.docked #panel .pnbed { height: 118px; }
-.pnhead { display: flex; align-items: center; gap: 14px; }
-.pnhead h2 { margin: 0; font: 16px var(--mono); color: var(--yellow); letter-spacing: 0.08em; white-space: nowrap; }
-.pnhead .dim { flex: 1; min-width: 0; font-size: 11px; color: var(--grey); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pnhead .key { padding: 2px 10px; box-shadow: none; font: 13px var(--mono); color: var(--white); }
-.pnbody { display: flex; gap: 14px; min-height: 0; }
-.pnlcd { width: var(--lcd); height: var(--lcd); flex: none; image-rendering: pixelated; background: #000; border: var(--px) solid var(--darkgrey); box-sizing: border-box; }
-.pnctl { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: space-between; gap: 8px; }
-.pnknobs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
-.pnknob { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 2px; border: 2px solid var(--blue); cursor: ns-resize; touch-action: none; user-select: none; }
-.pnknob:focus-visible { outline: none; border-color: var(--yellow); }
-.pndial { display: block; width: clamp(26px, calc(var(--lcd) / 9), 52px); aspect-ratio: 1; border-radius: 50%; border: 3px solid var(--lightgrey); background: #1f2124; position: relative; box-sizing: border-box; }
-.pndial::after { content: ""; position: absolute; left: calc(50% - 2px); top: 2px; width: 4px; height: 32%; background: var(--white); }
-.pnn { font-size: 11px; color: var(--white); white-space: nowrap; }
-.pnk { font-size: 10px; color: var(--yellow); min-height: 12px; white-space: nowrap; }
-.pnbtns { display: flex; flex-direction: column; gap: 8px; }
-.pnrow { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
-.pnrow.oct { grid-template-columns: repeat(6, 1fr); }
-.pnbtn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 0; height: clamp(34px, calc(var(--lcd) / 9), 54px); border: 2px solid var(--lightblue); background: #2e3135; cursor: pointer; font-family: var(--mono); touch-action: none; }
-.pnbtn .pnn { font-size: 10px; }
-.pnbtn.lit { background: var(--lightred); border-color: var(--white); }
-.pnbtn.held, .pnkey.held { outline: 3px solid var(--yellow); outline-offset: -3px; }
-.pnbtn.latched, .pnkey.latched { outline: 3px dashed var(--yellow); outline-offset: -3px; }
-.pnbed { position: relative; height: clamp(110px, calc(100vh - var(--lcd) - 130px), 170px); flex: none; border: 2px solid var(--blue); background: #26282c; }
-.pnkey { position: absolute; padding: 0 0 4px; border: 2px solid var(--black); border-radius: 0 0 8px 8px; cursor: pointer; display: flex; align-items: flex-end; justify-content: center; font-family: var(--mono); touch-action: none; box-sizing: border-box; }
-.pnkey.white { top: 42%; bottom: 0; width: 6.25%; background: #d9dadc; }
-.pnkey.black { top: 0; height: 40%; width: 5%; margin-left: -2.5%; background: #55585e; border-radius: 8px; }
-.pnkey .pnk { color: var(--black); font-size: 12px; font-weight: 700; }
-.pnkey.black .pnk { color: var(--yellow); }
-.pnkey.white.lit { background: var(--lightgreen); } .pnkey.black.lit { background: var(--lightred); }
 </style>
 <script type="module" src="../js/px.js"></script>
 <script type="module" src="./manager.js"></script>
 </head>
 <body class="app">
 <div class="frame">
-  <div id="dock" class="dock" hidden><canvas id="dock-lcd" width="240" height="240" title="The FM-1 in this browser: a click opens THE FM-1 (F9)" aria-label="The FM-1's screen"></canvas><i id="dock-grip" title="Drag: its size (ALT + [ and ]). Double-click: 120"></i></div>
+  <div id="dock" class="dock" hidden role="group" aria-label="The FM-1 in this browser: its screen and its controls, each with what it does now"></div>
 <div class="scr">
-  <div id="strip" class="strip" hidden role="group" aria-label="Where the FM-1 is, and what its knobs, black keys and buttons do there"></div>
   <header class="topbar">
     <a class="logo" href="../" aria-label="EVILGENIUS, the site"><px-text font="big" scale="2" color="lightred" shadow="red">EVIL</px-text> <px-text font="big" scale="2" color="white" shadow="darkgrey">GENIUS</px-text></a>
     <nav class="fkeys" role="tablist" aria-label="Screens (F1..F8, or ALT + 1..8)">

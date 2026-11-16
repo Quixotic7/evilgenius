@@ -6,7 +6,9 @@
 // attack / decay / release times, the filter's response (its mode, cutoff and resonance), the LFOs' waves with the
 // arrow to what they move, the word, the modulation slots. Each a small SVG's markup (pixel-crisp lines, the C64's
 // colours). No DOM: the tests run it in Node.
-//   picture(key, values) -> SVG markup | ""   (key: the editor's sections: osc env filter amp vox lfo mod voice)
+//   picture(key, values, ms) -> SVG markup | ""   (key: the editor's sections: osc env filter amp vox lfo mod voice)
+// They move as the unit's do (ms: the time, 0 still): the oscillators' wave runs, a note travels each envelope, the
+// partials of a sweeping note stand under the filter's curve, each LFO runs at its own speed with its output's dot.
 import { ID, lfo, mod, destName, MOD_SOURCES } from "./egsound.js";
 import { VALUES } from "./egvalues.js";
 
@@ -34,14 +36,14 @@ export function wave(kind, phase, pw = 0.5, seed = 1) {
     default: return 0.5;
   }
 }
-function oscPic(v) {
+function oscPic(v, ms = 0) {
   const ks = [0, 1, 2], ratio = (k) => 2 ** ((v[ID.C1 + 5 * k] + (v[ID.F1 + 5 * k] - 64) / 64) / 12);
   const on = ks.filter((k) => v[ID.W1 + 5 * k]);
   let body = `<rect x="1" y="1" width="${W - 2}" height="${H - 2}" fill="none" stroke="${C.lb}" stroke-width="2"/>`;
   if (!on.length) return svg(body + text(W / 2, H / 2 + 4, "ALL THREE OFF", C.gr, 12, "middle"), H, "Every oscillator off");
   const pts = [];
   for (let i = 0; i <= 240; i++) {
-    const t = i / 240 * 3;
+    const t = i / 240 * 3 + ms / 1400;
     let y = 0;
     for (const k of on) {
       let ph = frac(t * ratio(k));
@@ -68,13 +70,21 @@ function envLine(a, d, s, r, x0, w, h, y0) {
   const curve = (xa1, ya, xb, yb) => Array.from({ length: 9 }, (_, i) => { const f = i / 8; return [xa1 + (xb - xa1) * f, yb + (ya - yb) * Math.exp(-4 * f)]; });
   return [[x0, bot], [xa, top], ...curve(xa, top, xd, sl), [xs, sl], ...curve(xs, sl, xr, bot), [x0 + w, bot]];
 }
-function envPic(v) {
+function envPic(v, ms = 0) {
   let body = "";
   const rows = [[ID.EATK, null, C.lg, "ENV 1 AMP"], [ID.E2A, ID.E2LINK, C.cy, "ENV 2"], [ID.E3A, ID.E3LINK, C.lr, "ENV 3"]];
   rows.forEach(([a0, link, col, name], k) => {
     const linked = link !== null && v[link];
     const src = linked ? ID.EATK : a0;
-    body += poly(envLine(v[src], v[src + 1], v[src + 2], v[src + 3], 4, W - 8, 34, 4 + k * 38), linked ? C.dg : col, linked ? 1 : 2, linked ? 'stroke-dasharray="4 3"' : "");
+    const line = envLine(v[src], v[src + 1], v[src + 2], v[src + 3], 4, W - 8, 34, 4 + k * 38);
+    body += poly(line, linked ? C.dg : col, linked ? 1 : 2, linked ? 'stroke-dasharray="4 3"' : "");
+    if (ms && !linked) {                                    // (a note going along it: struck, held, let go)
+      const x = 4 + frac(ms / 2600 + k * 0.13) * (W - 8);
+      let j = 1;
+      while (j < line.length - 1 && line[j][0] < x) j++;
+      const [xa, ya] = line[j - 1], [xb, yb] = line[j], y = ya + (yb - ya) * (xb > xa ? (x - xa) / (xb - xa) : 0);
+      body += `<rect x="${(x - 3).toFixed(1)}" y="${(y - 3).toFixed(1)}" width="6" height="6" fill="${C.wh}"/>`;
+    }
     body += text(W - 6, 16 + k * 38, `${name}${linked ? " = 1" : ""}`, linked ? C.gr : col, 11, "end");
   });
   const T = sidTimes(v[ID.EATK], v[ID.EDEC], v[ID.EREL]);
@@ -82,7 +92,7 @@ function envPic(v) {
 }
 
 // the filter's response: its mode's shape (LP BP HP and their sums), the cutoff on a log axis, the resonance a peak
-function filterPic(v) {
+function filterPic(v, ms = 0) {
   const mode = v[ID.FTYPE], fc = v[ID.FREQ] / 2047, q = v[ID.RESO] / 15;
   const lp = mode === 1 || mode === 5 || mode === 7, bp = mode === 2 || mode === 5 || mode === 6 || mode === 7, hp = mode === 3 || mode === 6 || mode === 7 || mode === 4;
   const pts = [];
@@ -97,8 +107,18 @@ function filterPic(v) {
     pts.push([4 + x * (W - 8), H - 6 - Math.min(1.25, g) * (H - 30)]);
   }
   const cx = 4 + fc * (W - 8);
+  let bars = "";
+  if (ms) {                                                 // (a note sweeping under it: its partials, as much of each as the filter lets by)
+    const f0 = 0.05 + 0.12 * (0.5 + 0.5 * Math.sin(ms / 1700));
+    for (let h = 1; h <= 14; h++) {
+      const x = f0 * h;
+      if (x > 1) break;
+      const [px, py] = pts[Math.round(x * 150)], top = H - 6 - (H - 6 - py) * (1 / Math.sqrt(h)) * 1.6;
+      bars += `<rect x="${(px - 1).toFixed(1)}" y="${Math.max(py, top).toFixed(1)}" width="3" height="${(H - 6 - Math.max(py, top)).toFixed(1)}" fill="${C.lg}"/>`;
+    }
+  }
   const body = `<polygon points="4,${H - 6} ${pts.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ")} ${W - 4},${H - 6}" fill="${C.blue}"/>` +
-    poly(pts, C.cy, 2) + `<line x1="${cx}" y1="8" x2="${cx}" y2="${H - 6}" stroke="${C.ye}" stroke-width="2" stroke-dasharray="4 4"/>` +
+    bars + poly(pts, C.cy, 2) + `<line x1="${cx}" y1="8" x2="${cx}" y2="${H - 6}" stroke="${C.ye}" stroke-width="2" stroke-dasharray="4 4"/>` +
     text(8, 16, ["OFF", "LP", "BP", "HP", "NOTCH", "LP+BP", "BP+HP", "ALL"][mode], C.wh, 12) +
     text(W - 6, 16, v[ID.CHIP] ? "8580" : "6581", C.gr, 11, "end");
   return svg(body, H, `The filter: ${["off", "low pass", "band pass", "high pass", "notch", "LP + BP", "BP + HP", "all"][mode]}, cutoff ${v[ID.FREQ]}, resonance ${v[ID.RESO]}`);
@@ -134,11 +154,13 @@ export function lfoWave(kind, ph) {
     default: { const n = [2, 2, 3, 3, 3, 4, 4, 4, 3][kind - 7] || 3; return Math.floor(ph * n * 2) % n / (n - 1) * 2 - 1; }   // (an arpeggio: its notes)
   }
 }
-function lfoPic(v) {
+function lfoPic(v, ms = 0) {
   let body = "";
   for (let k = 0; k < 3; k++) {
     const dest = v[lfo(k, "DEST")], depth = (v[lfo(k, "DEPTH")] - 64) / 64, kind = v[lfo(k, "WAVE")], y0 = 6 + k * 38, col = [C.cy, C.ye, C.lr][k];
-    const pts = Array.from({ length: 81 }, (_, i) => [8 + i * 1.6, y0 + 16 - lfoWave(kind, frac(i / 40)) * 14 * (dest ? Math.max(0.15, Math.abs(depth)) : 0.15)]);
+    const run = ms / 1000 * (0.15 + v[lfo(k, "SPEED")] / 127 * 2.2), amp = 14 * (dest ? Math.max(0.15, Math.abs(depth)) : 0.15);
+    const pts = Array.from({ length: 81 }, (_, i) => [8 + i * 1.6, y0 + 16 - lfoWave(kind, frac(i / 40 + run)) * amp]);
+    if (ms && dest) body += `<rect x="${144}" y="${(y0 + 13 - lfoWave(kind, frac(2 + run)) * amp).toFixed(1)}" width="6" height="6" fill="${col}"/>`;   // (what it puts out now)
     body += text(4, y0 + 10, `${k + 1}`, col, 11) + poly(pts.map(([x, y]) => [x + 10, y]), dest ? col : C.dg, 2);
     if (dest) body += `<path d="M150 ${y0 + 16} L188 ${y0 + 16} M182 ${y0 + 11} L188 ${y0 + 16} L182 ${y0 + 21}" stroke="${C.wh}" stroke-width="2" fill="none"/>` +
       text(194, y0 + 20, `${destName(dest)} ${depth > 0 ? "+" : ""}${Math.round(depth * 64)}`, C.wh, 11);
@@ -175,8 +197,8 @@ function modPic(v) {
 }
 
 const PICS = { osc: oscPic, env: envPic, filter: filterPic, amp: ampPic, vox: voxPic, lfo: lfoPic, mod: modPic };
-export function picture(key, values) {
+export function picture(key, values, ms = 0) {
   const f = PICS[key];
   if (!f || !values) return "";
-  try { return f(values); } catch (_) { return ""; }
+  try { return f(values, ms); } catch (_) { return ""; }
 }

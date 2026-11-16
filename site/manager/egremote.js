@@ -44,6 +44,8 @@ const VIEWS = [["seq", "PIANO ROLL", "roll"], ["seq", "STEPS", "steps"], ["seq",
 export function screenOf(v) {
   if (v == null || v < 0) return null;
   const mode = v & 15, view = (v >> 4) & 15, latch = (v >> 8) & 15, seq = ((v >> 12) & 15) - 1, track = (v >> 16) & 15, value = (v >> 20) & 255;
+  const hmode = (v >>> 28) & 15;                            // (the hold mode, UI_F_*: SEQUENCE's EDIT mode)
+  if (seq < 0 && !latch && mode === 1 && VIEWS[view]) return { tab: VIEWS[view][0], title: VIEWS[view][1], track, seqView: VIEWS[view][2], hmode };
   if (LATCHES[latch]) return { tab: LATCHES[latch][0], title: LATCHES[latch][1], track, ...(latch === 4 ? { value } : {}) };
   if (seq === 0) return { tab: "tools", title: "TOOLS", track };
   if (seq === 1) return { tab: "fm1", title: "PATTERNS", track };
@@ -58,6 +60,10 @@ export function screenOf(v) {
 // and how the view says it is there; tapped again until it is (the idle screen eats a press, HOME and SEQ cycle), three
 // times at most. A screen with no page on the unit (LIBRARY's list, POOL, PROJECTS, CABINET) takes it nowhere.
 const lat = (v) => (v >> 8) & 15, sq = (v) => ((v >> 12) & 15) - 1;
+// the hold modes (core/ui/ui.h UI_F_*) and SEQUENCE's EDIT modes (egseqtab.js modes(): NOTE VEL LEN MICRO RATCH CHANCE
+// COND FUNC SOUND): TRIG and SLIDE have none there
+export const HMODE_OF_EDIT = [0, 1, 2, 3, 4, 5, 6, 8, 10];
+export const VIEW_OF_SEQ = { steps: 1, tracks: 8 };        // (QD_VIEW_STEPS, QD_VIEW_OVERVIEW; the PIANO ROLL is SEQ's page)
 export const GOTO = {
   mix: { btn: 2, there: (v) => lat(v) === 6 },
   edit: { btn: 4, there: (v) => lat(v) === 4 },

@@ -1197,6 +1197,12 @@ __attribute__((used, visibility("default"))) const char *eg_web_mfx(int op, int 
         js_r("]");
         if (q->type == QD_MFX_ARP) {
             int ln;
+            uint8_t ord[64];
+            const int no = qd_mfx_arp_order(q->v[QD_MA_PAT], 4, ord);   /* (the pattern's walk over four notes: its picture) */
+            js_r(","), js_k("order"), js_r("[");
+            for (k = 0; k < no && k < 16; k++)
+                js_r(k ? "," : ""), js_i(ord[k]);
+            js_r("]");
             js_r(","), js_k("lanes"), js_r("[");
             for (ln = 0; ln < 2; ln++) {
                 js_r(ln ? ",[" : "[");
@@ -1257,6 +1263,7 @@ __attribute__((used, visibility("default"))) const char *eg_web_tools(int op, in
     js_r("]");
     if (qd_tools_open(A)) {
         const int inr = qd_tools_page(A, on, was, note), len = qd_tools_result_len(A, &loop);
+        js_r(","), js_k("pos"), js_i(qd_tools_play_pos(A)), js_r(","), js_k("playing"), js_i(A->seq.playing != 0);
         js_r(","), js_k("inr"), js_i(inr), js_r(","), js_k("len"), js_i(len), js_r(","), js_k("loop"), js_i(loop), js_r(","), js_k("steps"), js_r("[");
         for (i = 0; i < 16; i++)
             js_r(i ? ",[" : "["), js_i(on[i]), js_r(","), js_i(was[i]), js_r(","), js_i(note[i]), js_r("]");
@@ -1269,15 +1276,87 @@ __attribute__((used, visibility("default"))) const char *eg_web_tools(int op, in
     return eg_js;
 }
 
+/* THE MIX for the manager's desk (site/manager/egmix.js). op 0: the state; 1: track a's value b set to c (b: 0 LEVEL,
+ * 1 PAN, 2 the ECHO send, 3 the ROOM send, 4 CHORUS, 5 DRY, 6..10 the five rooms' sends), as the unit's MIX knobs
+ * write them (the player's live edit; DRY its own byte); 2: track a muted / heard; 3: soloed / not; 4: no mute, no
+ * solo. The answer: each track's values, muted, soloed, heard now, and the voices it sounds (its light on the desk) */
+__attribute__((used, visibility("default"))) const char *eg_web_mix(int op, int a, int b, int c)
+{
+    qd_app_t *A = &fz_app;
+    static const int16_t ID[5] = {QD_LK_LEVEL, QD_LK_PAN, QD_LK_DELAY, QD_LK_REVERB, QD_LK_CHORUS};
+    int t, k;
+    if (!fz_up)
+        return "{}";
+    if (op && a >= 0 && a < QD_NTRACK) {
+        qd_undo_input(A, op == 1);
+        if (op == 1 && b >= 0 && b < 5)
+            qd_player_live_edit(&A->player, a, ID[b], eg_clampi(c, b == 1 ? -64 : 0, b == 1 ? 63 : 127));
+        else if (op == 1 && b == 5)
+            A->model.t[a].mix.dry = (uint8_t)eg_clampi(c, 0, 127);
+        else if (op == 1 && b >= 6 && b < 6 + QD_NROOM)
+            qd_player_live_edit(&A->player, a, QD_LK_CRUSH + (b - 6), eg_clampi(c, 0, 127));
+        else if (op == 2)
+            A->seq.mute ^= (uint8_t)(1u << a);
+        else if (op == 3)
+            A->seq.solo ^= (uint8_t)(1u << a);
+        else if (op == 4)
+            A->seq.mute = A->seq.solo = 0;
+    }
+    eg_jn = 0;
+    js_r("{"), js_k("sel"), js_i(A->sel), js_r(","), js_k("page"), js_i(A->ui.mix_page), js_r(","), js_k("playing"), js_i(A->seq.playing != 0);
+    js_r(","), js_k("tracks"), js_r("[");
+    for (t = 0; t < QD_NTRACK; t++) {
+        const qd_mix_track_t *m = &A->model.t[t].mix;
+        js_r(t ? ",{" : "{"), js_k("level"), js_i(m->level), js_r(","), js_k("pan"), js_i(m->pan), js_r(","), js_k("echo"), js_i(m->delay);
+        js_r(","), js_k("room"), js_i(m->reverb), js_r(","), js_k("chorus"), js_i(m->chorus), js_r(","), js_k("dry"), js_i(m->dry);
+        js_r(","), js_k("mute"), js_i(A->seq.mute >> t & 1), js_r(","), js_k("solo"), js_i(A->seq.solo >> t & 1);
+        js_r(","), js_k("heard"), js_i(qd_seq_audible(&A->seq, qd_ctl_cpat(A), t)), js_r(","), js_k("voices"), js_i(qd_pool_count(&A->pool, t));
+        js_r(","), js_k("gate"), js_i(qd_pool_gated(&A->pool, t)), js_r(","), js_k("rooms"), js_r("[");
+        for (k = 0; k < QD_NROOM; k++)
+            js_r(k ? "," : ""), js_i(m->room[k]);
+        js_r("]}");
+    }
+    js_r("]}");
+    return eg_js;
+}
+
 /* 2026-11-16, where the panel is: the mode (QD_MODE_*), the view (QD_VIEW_*) << 4, the latched menu (QD_LATCH_*) << 8,
  * SEQ's page + 1 (QD_SEQ_*; 0 none) << 12, the selected track << 16, the first value of the sound editor's page
- * (QD_QP_*: the manager's own ids, so its SOUND screen opens the page that holds it) << 20. The manager's screens
+ * (QD_QP_*: the manager's own ids, so its SOUND screen opens the page that holds it) << 20, the hold mode (UI_F_*:
+ * NOTE, VEL ..: SEQUENCE's EDIT mode) << 28. The manager's screens
  * follow it while a unit plays the page's FM-1 (REMOTE MODE): MIX on the unit, MIX in the manager */
 __attribute__((used, visibility("default"))) uint32_t eg_web_view(void)
 {
     return (uint32_t)fz_app.ui.mode | (uint32_t)fz_app.ui.view << 4 | (uint32_t)fz_app.ui.latch << 8 |
            (uint32_t)(qd_ctl_seq_page(&fz_app) + 1) << 12 | (uint32_t)fz_app.sel << 16 |
-           (uint32_t)(uint8_t)QD_SND_PAGES[fz_app.ui.snd_page % QD_SND_NPAGE].id[0] << 20;
+           (uint32_t)(uint8_t)QD_SND_PAGES[fz_app.ui.snd_page % QD_SND_NPAGE].id[0] << 20 | (uint32_t)(fz_app.ui.hmode & 15) << 28;
+}
+/* .. and the other way: what was picked in the manager, done on the unit. what 0: the track v selected (as its track
+ * key); 1: the hold mode v (UI_F_*); 2: the sequencer's view v (QD_VIEW_*), in the step view; 3: the sound editor's
+ * page that holds value v (QD_QP_*), if the editor is open */
+__attribute__((used, visibility("default"))) uint32_t eg_web_nav(int what, int v)
+{
+    qd_app_t *A = &fz_app;
+    int p, k;
+    if (!fz_up)
+        return 0;
+    if (what == 0)
+        qd_ctl_select_track(A, v);
+    else if (what == 1 && v >= 0 && v < 11)          /* (UI_NFIELD: core/ui/ui.h) */
+        A->ui.hmode = v;
+    else if (what == 2 && v >= 0 && v < QD_NVIEW) {
+        if (A->ui.mode != QD_MODE_STEP)
+            qd_ctl_set_mode(A, QD_MODE_STEP);
+        qd_ctl_set_view(A, v);
+    } else if (what == 3 && A->ui.latch == QD_LATCH_SND) {
+        for (p = 0; p < QD_SND_NPAGE; p++)
+            for (k = 0; k < 5; k++)
+                if (QD_SND_PAGES[p].id[k] == v && v >= 0) {
+                    A->ui.snd_page = p;
+                    return eg_web_view();
+                }
+    }
+    return eg_web_view();
 }
 __attribute__((used, visibility("default"))) uint32_t eg_web_store_len(void) { return FZ_STORE_SECTORS * 4096u; }
 __attribute__((used, visibility("default"))) uint32_t eg_web_store_writes(void) { return fz_web_writes; }

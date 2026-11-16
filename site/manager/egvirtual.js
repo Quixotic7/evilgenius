@@ -127,6 +127,7 @@ export async function startVirtual({ base = "./vfm1/", log = () => {}, master = 
     node.port.postMessage({ type: "eg-call", id, fn, args });
     setTimeout(() => { if (calls.delete(id)) res(null); }, 1000);
   });
+  vu.nav = (what, v) => node.port.postMessage({ type: "eg-call", id: 0, fn: "eg_web_nav", args: [what, v], raw: true });   // (the unit goes where the manager went)
   vu.master = (value) => node.port.postMessage({ type: "master", value });   // (the volume: 0..4096)
   vu.stop = async () => {
     vu.stopped = true;

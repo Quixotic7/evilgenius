@@ -117,8 +117,10 @@ export function mountSeq(ctx) {
     say(`Pattern ${patName(ed().pat.pattern)}: six tracks read.`, "ok");
     render();
   }
-  const setView = (v) => { S.view = v; store.set("eg-seqview2", v); render(); };
-  const pickTrack = (t) => { if (!ready() || ed().track === t) return; ed().track = t; S.sel.clear(); S.anchor = -1; render(); };
+  // (what is picked here by hand is told, so the unit goes there too: ctx.onNav(kind, value); told: not from the unit)
+  const tell = (kind, v) => { if (!S.quiet && ctx.onNav) ctx.onNav(kind, v); };
+  const setView = (v) => { S.view = v; store.set("eg-seqview2", v); render(); tell("view", v); };
+  const pickTrack = (t) => { if (!ready() || ed().track === t) return; ed().track = t; S.sel.clear(); S.anchor = -1; render(); tell("track", t); };
 
   // ---- the modes: what a drag changes and what each step shows
   function modes() {
@@ -252,7 +254,7 @@ export function mountSeq(ctx) {
     box.append(el("span", "lab", "EDIT"));
     M.forEach((m, i) => {
       if (m.lock !== undefined && m.slot === 0) box.append(el("span", "lab sqlocks", "LOCKS"));
-      const b = btn(`key plain${i === S.mode ? " on" : ""}${m.lock !== undefined ? " lk" : ""}`, "", () => { S.mode = i; store.set("eg-seqmode", i); render(); });
+      const b = btn(`key plain${i === S.mode ? " on" : ""}${m.lock !== undefined ? " lk" : ""}`, "", () => { S.mode = i; store.set("eg-seqmode", i); render(); tell("mode", i); });
       b.append(el("kbd", "", KEYS[i]), document.createTextNode(m.lock !== undefined ? "" : m.name));
       b.setAttribute("aria-pressed", String(i === S.mode));
       b.title = m.help;
@@ -803,9 +805,9 @@ export function mountSeq(ctx) {
     if (cmd && e.key.toLowerCase() === "v" && S.clip) { const at = steps.length ? steps[0] : S.cur; E.paste(at, S.clip.steps, S.clip.locks); say(`Pasted at step ${at + 1}.`); return done(); }
     if (cmd || e.altKey) return;
     // the modes: TAB, SHIFT + 1 .. 9, 0, -, =
-    if (e.key === "Tab") { const n = modes().length; S.mode = (S.mode + (e.shiftKey ? n - 1 : 1)) % n; store.set("eg-seqmode", S.mode); return done(); }
+    if (e.key === "Tab") { const n = modes().length; S.mode = (S.mode + (e.shiftKey ? n - 1 : 1)) % n; store.set("eg-seqmode", S.mode); tell("mode", S.mode); return done(); }
     const MK = ["Digit1", "Digit2", "Digit3", "Digit4", "Digit5", "Digit6", "Digit7", "Digit8", "Digit9", "Digit0", "Minus", "Equal"];
-    if (e.shiftKey && MK.includes(e.code)) { S.mode = MK.indexOf(e.code); store.set("eg-seqmode", S.mode); return done(); }
+    if (e.shiftKey && MK.includes(e.code)) { S.mode = MK.indexOf(e.code); store.set("eg-seqmode", S.mode); tell("mode", S.mode); return done(); }
     if (e.shiftKey && /^Key[A-Z]$/.test(e.code)) {
       const k = e.code.slice(3).toLowerCase();
       if (k === "v") { setView({ tracks: "steps", steps: "roll", roll: "tracks" }[S.view]); return done(); }
@@ -860,7 +862,8 @@ export function mountSeq(ctx) {
     },
     gone() { S.ed = null; S.failed = false; S.sel.clear(); render(); },
     track(t) { S.want = t; if (ready() && ed().track !== t) { ed().track = t; S.sel.clear(); render(); } },
-    view(v) { if (S.view !== v) setView(v); },            // (TRACKS / STEPS / PIANO ROLL from outside: the unit's page keys)
+    view(v) { if (S.view !== v) { S.quiet = true; setView(v); S.quiet = false; } },
+    mode(i) { if (S.mode !== i && i >= 0 && i < 9) { S.mode = i; store.set("eg-seqmode", i); if (ready()) render(); } },   // (the unit's hold mode)            // (TRACKS / STEPS / PIANO ROLL from outside: the unit's page keys)
     state: S,
   };
 }

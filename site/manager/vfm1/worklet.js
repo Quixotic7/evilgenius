@@ -92,7 +92,8 @@ class Fm1 extends AudioWorkletProcessor {
     } else if (m.type === "eg-call") {                // a call of the firmware's own (fz_port.c eg_web_mfx, eg_web_tools): its text back
       const f = this.ex[m.fn];
       let text = "";
-      if (f) {
+      if (f && m.raw) text = String(f(...(m.args || [])) >>> 0);   // (a number: eg_web_nav's view)
+      else if (f) {
         const at = f(...(m.args || [])) >>> 0, mem = new Uint8Array(this.mem.buffer);
         let end = at;
         while (mem[end]) end++;
@@ -119,7 +120,8 @@ class Fm1 extends AudioWorkletProcessor {
     const blits = ex.web_blits();
     const msg = { type: "frame", buttons: ex.web_lit_buttons() >>> 0, keys: ex.web_lit_keys() >>> 0,
       dimButtons: ex.web_dim_buttons ? ex.web_dim_buttons() >>> 0 : 0, dimKeys: ex.web_dim_keys ? ex.web_dim_keys() >>> 0 : 0,
-      view: ex.eg_web_view ? ex.eg_web_view() >>> 0 : -1 };          // (where the panel is: fz_port.c eg_web_view)
+      view: ex.eg_web_view ? ex.eg_web_view() >>> 0 : -1, peak: this.pk ? [this.pk[0], this.pk[1]] : [0, 0] };
+    if (this.pk) this.pk[0] = this.pk[1] = 0;          // (where the panel is: fz_port.c eg_web_view)
     if (this.frames >= 44100) {                       // the share of real time spent running the device
       msg.load = Math.round(100 * this.busy / (this.frames / 44.1));
       this.busy = this.frames = 0;
@@ -164,6 +166,12 @@ class Fm1 extends AudioWorkletProcessor {
     this.frames += n;
     out[0].set(new Float32Array(this.mem.buffer, this.ex.web_out_l(), n));
     if (out[1]) out[1].set(new Float32Array(this.mem.buffer, this.ex.web_out_r(), n));
+    for (let c = 0; c < out.length && c < 2; c++) {     // (the output's peaks since the last frame: the manager's master meter)
+      let m = this.pk ? this.pk[c] : 0;
+      const o = out[c];
+      for (let i = 0; i < n; i += 4) { const x = o[i] < 0 ? -o[i] : o[i]; if (x > m) m = x; }
+      (this.pk || (this.pk = [0, 0]))[c] = m;
+    }
     const k = this.ex.web_out_n();                    // what the firmware sent: to the page
     const r = this.ex.eg_web_out_n ? this.ex.eg_web_out_n() : 0;   // (its SysEx replies, whole frames: fz_port.c)
     if (k || r) {

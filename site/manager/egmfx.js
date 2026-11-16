@@ -22,6 +22,7 @@ export function mountMfx(ctx) {
     <div class="hhead"><span class="lab" id="mf-title">MIDI FX</span><span class="dim">1..5 GROUP · LEFT / RIGHT SLOT · T EFFECT · B BYPASS · , . MOVE · G TRACK'S GROUP · DRAG A VALUE</span></div>
     <div class="mfbar"><span class="lab">GROUP</span><span class="seg" id="mf-groups" role="group" aria-label="The groups"></span>
       <span class="lab" id="mf-tracklab">TRACK</span><span class="seg" id="mf-track" role="group" aria-label="The picked track's group"></span></div>
+    <canvas id="mf-pic" class="pxpic" width="320" height="72" aria-hidden="true"></canvas>
     <div class="mfchain" id="mf-chain" role="listbox" aria-label="The group's eight slots"></div>
     <div class="mfslot box" id="mf-slot"></div>
     <p class="dim" id="mf-note"></p>`;
@@ -159,11 +160,65 @@ export function mountMfx(ctx) {
     else return;
     e.preventDefault();
   });
-  setInterval(() => { if (S.shown && !S.drag) ask(); }, 320);
+  // the picture: notes going through the group's chain, left to right, each effect doing to them what it does: an
+  // ARP hands them on one at a time in its pattern's order, CHANCE lets some fall, REPEAT sends each again, HARM and
+  // CHORD stack more on, TRANSPOSE lifts or drops them, RANDOM scatters them, MONO keeps one; an empty or bypassed
+  // slot is passed by. Not the sound's timing: what the chain is, at a glance, and that it is alive
+  const C = { bg: "#000", dim: "#4a4a4a", box: "#2e2c9b", on: "#706deb", sel: "#edf171", note: "#a9ff9f", cy: "#75cec8", red: "#c46c71", white: "#fff" };
+  const pg = $("mf-pic").getContext("2d");
+  const P = { notes: [], next: 0, arp: 0 };
+  function through(n, s, k, t) {                            // note n passes slot k (s): what becomes of it -> the notes after
+    const v = (name) => { const p = s.pages.flat().find((q) => q && q.name === name); return p ? p.v : 0; };
+    const chance = v("CHANCE");
+    if (s.pages.length && chance < 100 && Math.random() * 100 >= chance) return [n];   // (a miss: the note as it came)
+    switch (S.d.types[s.type]) {
+      case "ARP": { const o = s.order && s.order.length ? s.order : [0]; P.arp = (P.arp + 1) % o.length; return [{ ...n, y: 46 - o[P.arp] * 8, c: C.cy }]; }
+      case "CHANCE": return Math.random() * 100 < chance ? [n] : [{ ...n, dead: t }];
+      case "REPEAT": return [n, { ...n, x: n.x - 7, c: C.on }, { ...n, x: n.x - 14, c: C.box }];
+      case "HARM": return [n, { ...n, y: n.y - 8 }, { ...n, y: n.y - 16 }];
+      case "CHORD": return [n, { ...n, y: n.y - 7 }, { ...n, y: n.y - 13 }, { ...n, y: n.y - 20 }].slice(0, Math.max(1, Math.min(4, v("NOTES") || 3)));
+      case "TRANSPOSE": return [{ ...n, y: n.y - Math.sign(v("SEMI") + 12 * v("OCT")) * 10 }];
+      case "RANDOM": return [{ ...n, y: n.y + Math.round((Math.random() - 0.5) * 24) }];
+      case "MONO": return P.notes.some((m) => m !== n && !m.dead && m.k === k && Math.abs(m.x - n.x) < 3) ? [{ ...n, dead: t }] : [n];
+      default: return [n];
+    }
+  }
+  function picture(t) {
+    const d = S.d;
+    pg.fillStyle = C.bg; pg.fillRect(0, 0, 320, 72);
+    if (!d) return;
+    const X = (k) => 22 + k * 36;
+    pg.fillStyle = C.dim; for (let x = 0; x < 320; x += 4) pg.fillRect(x, 46, 2, 1);
+    d.slots.forEach((s, k) => {
+      const live = s.type && !s.bypass;
+      pg.strokeStyle = k === S.slot ? C.sel : live ? C.on : C.dim;
+      pg.strokeRect(X(k) + 0.5, 14.5, 27, 50);
+      if (live) { pg.fillStyle = C.box; pg.fillRect(X(k) + 2, 16, 24, 6); }
+      pg.fillStyle = live ? C.white : C.dim; pg.font = "8px monospace"; pg.fillText(s.type ? d.types[s.type].slice(0, 5) : "-", X(k) + 2, 10);
+    });
+    if (t > P.next) { P.next = t + 520; P.notes.push({ x: 0, y: 46, k: -1, c: C.note }); }
+    const out = [];
+    for (const n of P.notes) {
+      if (n.dead) { if (t - n.dead < 400) { n.y += 1; out.push(n); } continue; }
+      n.x += 1.4;
+      const k = Math.floor((n.x - 22 - 13) / 36);
+      if (k > n.k && k >= 0 && k < 8 && n.x >= X(k) + 13) {
+        n.k = k;
+        const s = d.slots[k];
+        if (s.type && !s.bypass) { out.push(...through(n, s, k, t)); continue; }
+      }
+      if (n.x < 324) out.push(n);
+    }
+    P.notes = out.slice(-80);
+    for (const n of P.notes) { pg.fillStyle = n.dead ? C.red : n.c; pg.fillRect(Math.round(n.x), Math.max(24, Math.min(62, Math.round(n.y))) - 1, 3, 3); }
+  }
+  const loop = (t) => { if (S.shown) { picture(t); requestAnimationFrame(loop); } };
+  setInterval(() => { if (S.shown && !S.drag) ask(S.d ? OP.GET : OP.OPEN); }, 320);   // (not yet answered: the unit was still starting)
   return {
     show(on) {
       S.shown = on;
       if (!on) return;
+      requestAnimationFrame(loop);
       if (!ctx.unit()) { $("mf-note").textContent = "MIDI FX are edited on the FM-1 in this browser. On a unit on USB: its own screen (THE FM-1)."; return; }
       S.was = ""; ask(OP.OPEN);
     },
