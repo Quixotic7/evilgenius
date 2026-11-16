@@ -277,6 +277,16 @@ const accessOf = (...units) => ({ inputs: new Map(units.map((u, i) => [`in${i}`,
   const res = await link.restore(r.image, { onPhase: (p) => phases.push(p), onProgress: (f) => { last = f; } });
   check(res.ok && same(unit.image, r.image) && phases.join() === "check,write" && last === 1, "a restore: the unit pulls the image twice and holds it after");
   check(S.readLibrary((await link.library()).bytes).presets.map((p) => p.name).join() === "HOT RHINO,COLD CAT,ZZ TEST", "the imported preset is in MY PRESETS");
+  // a project sent to a slot, end to end (PROJECTS' SEND TO SLOT: backup, insertProject, restore), and taken back
+  {
+    const P = await import("../../site/manager/egproject.js");
+    const j = P.extractProject((await link.backup()).image, 1, { unit: link.id });
+    const put = P.insertProject((await link.backup()).image, 3, P.readProject(P.projectFile(j)));
+    await link.restore(put.image);
+    const now = (await link.backup()).image;
+    check(S.readImage(now).projects.map((x) => `${x.slot}:${x.name}`).join() === "1:ALPHA,2:BRAVO,3:ALPHA", "a project sent to slot 3: the unit holds it there, the others as they were");
+    check(P.extractProject(now, 3).records.every((r, i) => r.data === j.records[i].data), "taken back from slot 3: its records byte for byte");
+  }
 
   // refusals from the unit
   unit.playing = true;
@@ -797,6 +807,65 @@ console.log("seq editor");
   check(n === "48,52,55" && sim.pat.tracks[4].steps[6].vel === 33 && sim.pat.tracks[3].steps[6].vel === 99,
     `setNotes on track 4 (${n}); a velocity on track 5 and one on track 4's same step, each on its own track`);
   link.close();
+}
+
+// ---- a project out of one store and into another (egproject.js, docs/PROJECT-FORMAT.md)
+console.log("projects");
+{
+  const P = await import("../../site/manager/egproject.js");
+  // a pattern 'P' 6: the header's 12 bytes, then the six track sounds' references (u16), then the rest
+  const pat6 = (refs, used = 1) => { const b = pat(900); b[0] = 0x50; b[1] = 6; b[7] = used; refs.forEach((id, t) => { b[12 + 2 * t] = id & 0xFF; b[13 + 2 * t] = id >> 8; }); return b; };
+  const ref = (id) => Uint8Array.of(0x52, 1, id & 0xFF, id >> 8);
+  const mfx = Uint8Array.from({ length: 300 }, (_, i) => i & 0x7F); mfx[0] = 0x58; mfx[1] = 1;
+  const named = (name, tracks) => { const b = hdr(name); let o = 2 + 13 + 1 + 6 + 42 + 3; tracks.forEach((n, t) => { b[o + 1] = n ? 1 : 0; [...n].forEach((c, i) => { b[o + 2 + i] = c.charCodeAt(0); }); o += 14; }); return b; };
+  const build = (lib, prj, magic = "EGB2") => {
+    const img = new Uint8Array(S.LAYOUT.size).fill(0xFF);
+    const f = new Uint8Array(27); f[0] = 0x46; f[1] = 2; f[25] = 0x90; f[26] = 0x01;
+    S.writeStore(img, 0, S.LAYOUT.lib.nsec, [...lib.map((x, k) => ({ key: RK(5, 0, x.place ?? k), bytes: S.presetRecord({ ...x, flags: 0 }) })), { key: RK(6, 0, 0), bytes: f }], magic, 2);
+    S.writeStore(img, S.LAYOUT.prj.base, S.LAYOUT.prj.nsec, prj.sort((a, b) => a.key - b.key), magic, 10);
+    return img;
+  };
+  const src = build([snd("SAW", 1, { id: 0x180 }), snd("SQR", 2, { id: 0x181 }), snd("NOT USED", 3, { id: 0x182 })], [
+    { key: RK(1, 0, 0), bytes: set() },
+    { key: RK(2, 0, 0), bytes: named("JAM ONE", ["KICK", "", "LEAD"]) }, { key: RK(3, 0, 0), bytes: pat6([0x180, 3, 0, 0, 0, 0]) },
+    { key: RK(3, 0, 17), bytes: pat6([0, 0, 0, 0, 0, 0x181], 0) }, { key: RK(4, 0, 1), bytes: ref(0x181) }, { key: RK(4, 0, 2), bytes: ref(0x1FF) },
+    { key: RK(4, 0, 3), bytes: ref(5) }, { key: RK(7, 0, 0), bytes: mfx },
+    { key: RK(2, 1, 0), bytes: hdr("OTHER") }, { key: RK(3, 1, 0), bytes: pat6([0x182, 0, 0, 0, 0, 0]) }]);
+  const j = P.extractProject(src, 1, { unit: "TEST" });
+  check(j.format === "evilgenius-project" && j.store === "EGB2" && j.name === "JAM ONE" && j.from.slot === 1 && j.from.unit === "TEST", "a project taken out: its name, its store, where from");
+  check(j.records.length === 7 && j.records.filter((r) => r.kind === "PAT").map((r) => r.index).join() === "0,17" && j.records.some((r) => r.kind === "MFX"), "its records, every kind, none of another project's or the settings");
+  check(j.presets.map((x) => x.name).join() === "SAW,SQR", "the MY PRESETS it names come with it (not the one gone, not a factory one, not another project's)");
+  check(j.summary.tracks.slice(0, 3).join() === "KICK,,LEAD" && j.summary.patterns.join() === "0", "its summary: the tracks' names, the patterns with steps");
+  await throws(() => P.extractProject(src, 3), "empty", "an empty slot");
+  const back = P.readProject(P.projectFile(j), "x.egprj");
+  check(back.records.length === 7 && same(back.records.find((r) => r.kind === "MFX").bytes, mfx) && same(back.presets[0].blob, blob(1)), "its file read back: the records and presets byte for byte");
+  await throws(() => P.readProject("{}", "x"), /not an EVILGENIUS project/, "a file that is not one");
+  await throws(() => P.readProject(JSON.stringify({ ...j, version: 9 }), "x"), /newer manager/, "a newer file");
+  check(P.projectName(j) === "JAM ONE.egprj", "its file's name");
+
+  // into another FM-1's slot 2: SQR is there already (another id), a different SAW holds id 0x180
+  const dst = build([snd("SAW", 2, { id: 0x180 }), snd("SQR", 2, { id: 0x200, place: 5 })], [
+    { key: RK(1, 0, 0), bytes: set() }, { key: RK(2, 0, 0), bytes: hdr("KEEP ME") }, { key: RK(3, 0, 0), bytes: pat(400) },
+    { key: RK(2, 1, 0), bytes: hdr("OLD TWO") }, { key: RK(3, 1, 40), bytes: pat(300) }, { key: RK(4, 1, 9), bytes: ref(0x180) }]);
+  const r = P.insertProject(dst, 2, j);
+  const t = S.readImage(r.image);
+  check(r.replaced === "OLD TWO" && t.projects.map((x) => `${x.slot}:${x.name}`).join() === "1:KEEP ME,2:JAM ONE", "slot 2 replaced, slot 1 kept");
+  check(r.reused.length === 1 && r.reused[0].id === 0x200 && r.added.length === 1 && r.added[0].name === "SAW" && r.added[0].id === 0x201, "SQR found there (its id), SAW (a different patch there) added with a new id");
+  const sawThere = t.presets.find((x) => x.id === 0x201);
+  check(sawThere && same(sawThere.blob, blob(1)) && sawThere.imported && t.idNext === 0x202, "the added preset whole, marked imported, the next id kept");
+  const prj = S.mount(r.image, S.LAYOUT.prj.base, S.LAYOUT.prj.nsec, "EGB2"), g16 = (b, o) => b[o] | (b[o + 1] << 8);
+  const p0 = S.get(prj, RK(3, 1, 0)), p17 = S.get(prj, RK(3, 1, 17));
+  check(g16(p0, 12) === 0x201 && g16(p0, 14) === 3 && g16(p17, 22) === 0x200, "the patterns' references: to the ids they got (a factory one as it was)");
+  check(g16(S.get(prj, RK(4, 1, 1)), 2) === 0x200 && g16(S.get(prj, RK(4, 1, 2)), 2) === 0xFFFF && g16(S.get(prj, RK(4, 1, 3)), 2) === 5, "the pool's references: rewritten; one to a preset gone stays gone");
+  check(!S.get(prj, RK(3, 1, 40)) && !S.get(prj, RK(4, 1, 9)) && same(S.get(prj, RK(7, 1, 0)), mfx), "the old project's records are gone, the new one's MIDI FX is there");
+  check(same(S.get(prj, RK(3, 0, 0)), pat(400)) && same(S.get(prj, RK(1, 0, 0)), set()), "the other project and the settings byte for byte");
+  const again = P.insertProject(r.image, 2, P.extractProject(r.image, 2));
+  check(!again.added.length && again.reused.length === 2, "the project sent again: its presets all found, none added");
+  await throws(() => P.insertProject(build([], [{ key: RK(1, 0, 0), bytes: set() }], "EGB3"), 1, j), "store", "a store of another version");
+  const full = build(Array.from({ length: 128 }, (_, k) => snd(`P${k}`, 3, { id: 0x300 + k })), [{ key: RK(1, 0, 0), bytes: set() }]);
+  await throws(() => P.insertProject(full, 1, j), "full", "MY PRESETS full");
+  const blank = P.insertProject(new Uint8Array(S.LAYOUT.size).fill(0xFF), 4, j);
+  check(S.readImage(blank.image).projects.map((x) => x.slot).join() === "4" && blank.added.length === 2, "into an erased store: the project and its presets");
 }
 
 // ---- the transport: the panel's PLAY and REC pressed as the remote presses them (channel 16, CC 30 / 31)

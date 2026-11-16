@@ -48,6 +48,15 @@ EVILGENIUS began as FIZZ 0.12.0-beta.17 with another engine and another face; FI
   last 12 backups in the browser to restore or save again, saves PRESETS ONLY, and imports sounds one by one into MY
   PRESETS, the pool or a track, without rewriting the store. LIBRARY says who uses a preset (USED BY).
 - **Undo works after a full lock pool is cleared** on the Bluetooth firmware; every edit after it had no undo before.
+- **The virtual FM-1: the manager runs EVILGENIUS itself, no FM-1 needed.** VIRTUAL (top bar) starts the Bluetooth
+  firmware in the browser: it plays through the computer, HOME shows its screen, every page works on it as on the
+  unit, and what you make on it is still there next time you open the page.
+- **Projects kept in the browser, as many as you like** (PROJECTS, IN THIS BROWSER). SAVE HERE copies a slot's
+  project, with the MY PRESETS it uses, into the browser; SEND TO SLOT puts one onto a slot of the FM-1 or the
+  virtual one, replacing what is there: the store is backed up to CABINET first, and the project's sounds are added
+  to MY PRESETS where they are missing. EXPORT and IMPORT share them as .egprj files. CABINET now keeps the last 12
+  backups of each FM-1, so the virtual one's never push out your unit's.
+
 ## 0.1.1 (2026-11-15)
 
 - **The same firmware as 0.1.0**, released again so that RemoteFM1 takes it: its nightly update read 0.1.0 as older

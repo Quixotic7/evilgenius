@@ -27,7 +27,9 @@ export const KEYS = [
   { screen: "POOL", rows: [["ARROWS", "a place"], ["ENTER", "to the sounds (UP / DOWN, ENTER puts one there, ESC back)"], ["DELETE", "clear the place"],
     ["M", "move it (a place, ENTER)"], ["U", "who uses it"], ["/", "find a sound"], ["R", "read again"]] },
   { screen: "PROJECTS", rows: [["UP / DOWN", "a slot"], ["ENTER", "load it"], ["N", "new (an empty slot)"], ["R", "rename it"], ["C / M", "copy / move it (then 1..8)"],
-    ["DELETE", "delete it (its name typed)"], ["P", "read its patterns"]] },
+    ["DELETE", "delete it (its name typed)"], ["P", "read its patterns"], ["B", "save the slot's project in this browser"],
+    ["U", "send the browser's picked project to the slot (replaces it)"], ["SHIFT + UP / DOWN", "pick in this browser"],
+    ["E / I", "export / import a .egprj file"]] },
   { screen: "CABINET", rows: [["B", "back up"], ["P", "presets only"], ["R", "restore a file"], ["K", "the kept backups"], ["I", "import sound files"],
     ["D / T", "where they go / the track"], ["S / C", "send / clear them"]] },
 ];

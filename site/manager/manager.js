@@ -16,6 +16,7 @@ import { mountCabinet } from "./egcabinet.js";
 import { mountPool } from "./egpool.js";
 import { mountProjects } from "./egprojects.js";
 import { mountTransport } from "./egtransport.js";
+import { startVirtual } from "./egvirtual.js";
 import { mountEdit } from "./egedit.js";
 import { mountLibrary } from "./eglibrary.js";
 import { mountSeq } from "./egseqtab.js";
@@ -31,7 +32,7 @@ const $ = (id) => document.getElementById(id);
 const still = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 const plural = (n, one, many = one + "s") => `${n} ${n === 1 ? one : many}`;
 
-let access = null, link = null, working = false;
+let access = null, link = null, working = false, vu = null;   // (vu: the virtual FM-1, egvirtual.js, while it runs)
 const log = (line) => console.log(`[manager] ${line}`);
 
 // ---- the console: one line of what is happening, the bar, a refusal; the scene beside them
@@ -75,6 +76,8 @@ function bar(f) {
 function keys() {
   $("connect").disabled = working || (!navigator.requestMIDIAccess && !SIM);
   $("connect").classList.toggle("hide", !!link);
+  $("virtual").classList.toggle("hide", !!link);
+  $("virtual").disabled = working;
   $("disconnect").classList.toggle("hide", !link);
   $("disconnect").disabled = working;
   for (const x of [edit, library, seq, pool, projects, cabinet, transport]) if (x) x.render();
@@ -114,6 +117,7 @@ function download(name, data, type) {
 function gone() {
   if (link) link.close();
   link = null;
+  if (vu) { vu.stop(); vu = window.__vu = null; if (home) home.unit(null); }
   for (const x of [edit, seq, home, mix, pool, projects, cabinet, transport]) if (x) x.gone();
   $("unitpill").textContent = "NO FM-1"; $("unitpill").classList.remove("on");
   if (library) library.clear();
@@ -133,6 +137,26 @@ function changed() {
     else if (cur === "pool") await pool.load();
     else if (cur === "mix") await mix.load();
   });
+}
+
+// the virtual FM-1: the firmware itself in this page (egvirtual.js), talked to as an FM-1 on USB; its store kept here
+async function connectVirtual() {
+  say("Starting the virtual FM-1", "busy");
+  vu = await startVirtual({ log });
+  window.__vu = vu;                                         // (for the tests, as window.__sim)
+  link = vu.link;
+  try {
+    const version = await link.version();
+    await cabinet.connected(`${version || "EVILGENIUS"} (VIRTUAL)`);
+    await library.load({ quiet: true }).catch((e) => log(`LIST: ${e.message}`));
+    $("unitpill").textContent = "● VIRTUAL FM-1"; $("unitpill").classList.add("on");
+    home.unit(vu);
+    if (!$("tab-home").hidden) await home.load().catch((e) => log(`HOME: ${e.message}`));
+    if (!$("tab-mix").hidden) await mix.load().catch((e) => log(`MIX: ${e.message}`));
+    if (!$("tab-pool").hidden) await pool.load().catch((e) => log(`POOL: ${e.message}`));
+    if (!$("tab-projects").hidden) await projects.load().catch((e) => log(`PROJECTS: ${e.message}`));
+    say(vu.savedAt ? `The virtual FM-1 is on, its store as you left it (${new Date(vu.savedAt).toLocaleString()}).` : "The virtual FM-1 is on, with a new store. What you make is kept in this browser.", "ok");
+  } catch (e) { gone(); throw e; }
 }
 
 async function connect() {
@@ -222,5 +246,6 @@ if (!navigator.requestMIDIAccess && !SIM) {
   say("This browser has no Web MIDI.");
 }
 $("connect").addEventListener("click", () => job(connect));
+$("virtual").addEventListener("click", () => job(connectVirtual));
 $("disconnect").addEventListener("click", () => { gone(); say("Not connected."); });
 keys();

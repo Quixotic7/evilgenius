@@ -218,6 +218,12 @@ body.app { background: var(--lightblue); }
 .pjacts { margin: calc(var(--px) * 3) 0; }
 .pjto { margin: 0 0 calc(var(--px) * 3); }
 .pjmain { margin: 0; }
+.pjright { display: flex; flex-direction: column; gap: calc(var(--px) * 4); min-width: 0; }
+.pjshelf { margin: 0; }
+.pjshlist { display: grid; gap: var(--px); max-height: 28vh; overflow-y: auto; }
+.pjshlist .pjslot { grid-template-columns: minmax(0, 1fr) auto; row-gap: 2px; }
+.pjshlist .pjslot > :nth-child(3) { grid-column: 1 / -1; }
+.pjshlist .pjname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pjgrid .key { cursor: default; }
 /* CABINET */
 .cabgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: calc(var(--px) * 4); align-items: start; }
@@ -478,6 +484,10 @@ button.sqsl.on { color: var(--yellow); border-color: var(--yellow); }
 .sqts.lk::after { content: ""; position: absolute; top: 2px; right: 2px; width: 5px; height: 5px; background: var(--yellow); }
 .sqtband { position: absolute; bottom: 2px; height: 4px; background: var(--cyan); pointer-events: none; }
 .sqtml { width: 180px; }
+
+/* the virtual FM-1's screen (HOME) */
+.vscreen { width: min(100%, 360px); aspect-ratio: 1; image-rendering: pixelated; border: var(--px) solid var(--cyan); background: #000; }
+.jar.virtual px-sprite { display: none; }
 </style>
 <script type="module" src="../js/px.js"></script>
 <script type="module" src="./manager.js"></script>
@@ -501,6 +511,7 @@ button.sqsl.on { color: var(--yellow); border-color: var(--yellow); }
       <div id="transport" class="transport" role="group" aria-label="Transport"></div>
       <span id="unitpill" class="pill">NO FM-1</span>
       <button id="connect" class="key go" type="button"><px-text font="big" scale="2" color="white">CONNECT</px-text></button>
+      <button id="virtual" class="key plain" type="button" title="The firmware itself in this page: play and make projects with no FM-1"><px-text font="big" scale="2" color="cyan">VIRTUAL</px-text></button>
       <button id="disconnect" class="key plain hide" type="button"><px-text font="big" scale="2" color="white">DISCONNECT</px-text></button>
       <button id="helpkey" class="key plain" type="button" aria-label="Every key (?)"><px-text font="big" scale="2" color="white">?</px-text></button>
     </div>

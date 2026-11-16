@@ -32,7 +32,8 @@ export function mountHome(ctx) {
   root.innerHTML = `
     <div class="homegrid">
       <section class="hbrain" aria-label="The Evil Genius">
-        <div class="jar box"><px-sprite name="GENIUS_BIG" scale="4"></px-sprite>
+        <div class="jar box" id="h-jar"><px-sprite name="GENIUS_BIG" scale="4"></px-sprite>
+          <canvas id="h-unit" class="vscreen" width="240" height="240" hidden aria-label="The virtual FM-1's screen"></canvas>
           <p class="awake" id="h-awake"></p></div>
         <div class="box hsays"><p class="lab">THE GENIUS SAYS</p><p id="h-says" class="says" aria-live="polite"></p></div>
       </section>
@@ -72,7 +73,7 @@ export function mountHome(ctx) {
   }
   function render() {
     const l = ctx.link();
-    $("h-awake").textContent = l ? `AWAKE · ${l.id} ON USB${S.pattern >= 0 ? ` · PATTERN ${"ABCD"[S.pattern >> 4]}${String((S.pattern & 15) + 1).padStart(2, "0")}` : ""}` : "ASLEEP · NO FM-1";
+    $("h-awake").textContent = l ? `AWAKE · ${l.virtual ? "THE VIRTUAL FM-1, IN THIS PAGE" : `${l.id} ON USB`}${S.pattern >= 0 ? ` · PATTERN ${"ABCD"[S.pattern >> 4]}${String((S.pattern & 15) + 1).padStart(2, "0")}` : ""}` : "ASLEEP · NO FM-1";
     $("h-awake").classList.toggle("on", !!l);
     if (!$("h-says").textContent) says(S.said);
     // the chip: the picked track's sound as three voices
@@ -113,8 +114,26 @@ export function mountHome(ctx) {
     else if (e.key.toLowerCase() === "r" && ctx.link()) { ctx.job(load); e.preventDefault(); }
   });
   says(QUIPS[0]);
+  // the virtual FM-1's own screen in the jar's place (its frames: 240 x 240 RGB565, as the unit draws them)
+  let unsub = null;
+  const img = $("h-unit").getContext("2d").createImageData(240, 240);
+  function unit(vu) {
+    if (unsub) { unsub(); unsub = null; }
+    $("h-unit").hidden = !vu;
+    $("h-jar").classList.toggle("virtual", !!vu);
+    if (!vu) return;
+    unsub = vu.onFrame((m) => {
+      if (!m.fb) return;
+      const d = img.data, fb = m.fb;
+      for (let i = 0; i < fb.length; i++) {
+        const v = fb[i], o = i * 4;
+        d[o] = ((v >> 11) & 31) * 255 / 31; d[o + 1] = ((v >> 5) & 63) * 255 / 63; d[o + 2] = (v & 31) * 255 / 31; d[o + 3] = 255;
+      }
+      $("h-unit").getContext("2d").putImageData(img, 0, 0);
+    });
+  }
   return {
-    load, render, says,
+    load, render, says, unit,
     show(on) { S.shown = on; if (on && ctx.link() && !S.tracks) ctx.job(load); render(); },
     gone() { S.tracks = null; S.sounds = []; S.pattern = -1; says(QUIPS[1 + Math.floor(Math.random() * 2)]); render(); },
     stale() { S.tracks = null; S.sounds = []; S.pattern = -1; },

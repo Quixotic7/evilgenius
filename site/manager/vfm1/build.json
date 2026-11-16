@@ -1,0 +1,17 @@
+{
+  "commit": "02d309722fdbf3af01a5c385b5d2a47f4cecc302",
+  "dirty": false,
+  "with": "the commit that adds this build: firmware/app/app.c, fz_port.c and web/emu/worklet.js (the browser's store and SysEx)",
+  "package": "ble",
+  "built": "firmware/build.py --web --ble",
+  "files": {
+    "app.wasm": {
+      "bytes": 709318,
+      "sha256": "1cac76bdacaed1af5dc6ba878a5058cf84161b6157e78034591b47e6effa77c3"
+    },
+    "worklet.js": {
+      "bytes": 8448,
+      "sha256": "0c2d3ad027393c0abc0a8da858a59bbf68cb04f6a037dbf009c5c955e2163e98"
+    }
+  }
+}

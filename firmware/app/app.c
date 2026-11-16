@@ -133,6 +133,9 @@ static int fz_usb_sx_send(const uint8_t *p, uint32_t n)
     return 0;
 }
 #define FZ_USB_SX_SEND(p, n) (void)fz_usb_sx_send((p), (n))
+#elif defined(PLAT_WEB)
+void eg_web_reply(const uint8_t *p, uint32_t n);   /* (the browser build: the replies to the page, fz_port.c) */
+#define FZ_USB_SX_SEND(p, n) eg_web_reply((p), (n))
 #else
 #define FZ_USB_SX_SEND(p, n) plat_sysex_send((p), (n))
 #endif
@@ -735,6 +738,8 @@ static void fz_sx_send(const uint8_t *f, uint32_t n)   /* the port's own replies
     else
         FZ_USB_SX_SEND(f, n);
 }
+#elif defined(PLAT_WEB)
+#define fz_sx_send FZ_USB_SX_SEND
 #else
 #define fz_sx_send plat_sysex_send
 #endif
@@ -770,7 +775,7 @@ static void fz_sysex_out(void)           /* FIZZ's replies, taken under the lock
             fz_host_sx_st = fz_sx_buf[5] == 0x52u && k >= 9 ? fz_sx_buf[7] : fz_sx_buf[5] == 0x50u ? fz_sx_buf[6] : -1;
         }
 #endif
-#if QD_PKG_BLE
+#if QD_PKG_BLE || defined(PLAT_WEB)
         FZ_USB_SX_SEND(fz_sx_buf, (uint32_t)k);
 #else
         plat_sysex_send(fz_sx_buf, (uint32_t)k);

@@ -21,6 +21,12 @@
 
 static qd_app_t fz_app;
 static int fz_up;
+#ifdef PLAT_WEB
+static uint32_t fz_web_writes;           /* (the browser build: the store's flash writes, for the page to keep it) */
+#define FZ_WEB_WROTE() (fz_web_writes++)
+#else
+#define FZ_WEB_WROTE() ((void)0)
+#endif
 
 /* ---------------------------------------------------------------- the flash (persist.h, store.h) --- */
 #if FZ_FLASH
@@ -83,12 +89,14 @@ static int fz_ferase(void *c, uint32_t off)
     fz_fl_time(t0, 1);
 #endif
     fz_flash_done();
+    FZ_WEB_WROTE();
     return r;
 }
 static int fz_fprog(void *c, uint32_t off, const void *src, uint32_t n)
 {
     (void)c;
     fz_watchdog();
+    FZ_WEB_WROTE();
     while (n) {                          /* (P2.7: a flash page at a time, each with the LED lines dark: fm1-base's
                                           * write turns the interrupts on between its pages, and the scan lights
                                           * them again) */
@@ -1050,3 +1058,38 @@ typedef char fz_nview_ok[QD_NVIEW <= FZ_NVIEW + 1 ? 1 : -1];   /* (2026-11-10: O
                                          * last slot with TRACKS: 4 x 16 B of RAM more were not there) */
 /* (P2.13) the store's region, for its backup and restore over USB (app.c): its flash offset and size */
 void fz_store_region(uint32_t *off, uint32_t *size) { *off = FZ_STORE_LO, *size = FZ_STORE_SECTORS * 4096u; }
+#ifdef PLAT_WEB
+/* 2026-11-15, the browser build (the manager's virtual FM-1, site/manager/egvirtual.js): the store's flash itself, so
+ * the page keeps it (IndexedDB) and gives it back before boot (a write before web_boot, as a backup restored); its
+ * flash offset (as FZBI says it), its size and the count of writes (the page saves when it moves) */
+__attribute__((used, visibility("default"))) uint8_t *eg_web_store(void) { return (uint8_t *)plat_data(FZ_STORE_LO); }
+__attribute__((used, visibility("default"))) uint32_t eg_web_store_off(void) { return FZ_STORE_LO; }
+__attribute__((used, visibility("default"))) uint32_t eg_web_store_len(void) { return FZ_STORE_SECTORS * 4096u; }
+__attribute__((used, visibility("default"))) uint32_t eg_web_store_writes(void) { return fz_web_writes; }
+/* a SysEx frame from the page (the bytes between F0 and F7), as fm1-base's USB device hands one to app_sysex on the
+ * unit; its replies go out as USB-MIDI packets (web_out_pkts), as on the unit */
+int app_sysex(const uint8_t *p, uint32_t n);
+static uint8_t eg_web_sx[1024];
+__attribute__((used, visibility("default"))) uint8_t *eg_web_sx_buf(void) { return eg_web_sx; }
+/* the replies, as fm1-base's USB device would send them: whole frames (F0 .. F7) one after another, for the page to
+ * take (eg_web_out_n bytes at eg_web_out_buf, then eg_web_out_clear); a reply with no room is dropped (counted) */
+static uint8_t eg_web_out[16384];
+static uint32_t eg_web_out_k, eg_web_out_lost;
+void eg_web_reply(const uint8_t *p, uint32_t n)
+{
+    if (!n || eg_web_out_k + n > sizeof eg_web_out) {
+        eg_web_out_lost++;
+        return;
+    }
+    memcpy(eg_web_out + eg_web_out_k, p, n);
+    eg_web_out_k += n;
+}
+__attribute__((used, visibility("default"))) uint8_t *eg_web_out_buf(void) { return eg_web_out; }
+__attribute__((used, visibility("default"))) uint32_t eg_web_out_n(void) { return eg_web_out_k; }
+__attribute__((used, visibility("default"))) void eg_web_out_clear(void) { eg_web_out_k = 0; }
+__attribute__((used, visibility("default"))) uint32_t eg_web_lost(void) { return eg_web_out_lost; }
+__attribute__((used, visibility("default"))) int eg_web_sysex(uint32_t n)
+{
+    return app_sysex(eg_web_sx, n > sizeof eg_web_sx ? (uint32_t)sizeof eg_web_sx : n);
+}
+#endif

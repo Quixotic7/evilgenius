@@ -68,8 +68,8 @@ export const kept = {
   async add(rec) {
     try {
       await tx("readwrite", (s) => s.add(rec));
-      const all = await kept.list();
-      for (const old of all.slice(KEEP_MAX)) await kept.remove(old.id);
+      const all = (await kept.list()).filter((k) => k.unit === rec.unit);   // (the limit is each unit's: the virtual
+      for (const old of all.slice(KEEP_MAX)) await kept.remove(old.id);    // FM-1's backups never push out the FM-1's)
       return true;
     } catch (_) { return false; }
   },
@@ -95,7 +95,7 @@ export function mountCabinet(ctx) {
       </section>
       <section class="box" aria-labelledby="cb-h2">
         <p class="lab" id="cb-h2">BACKUPS</p>
-        <p>A backup is the FM-1's whole store in one <code>.egbak</code> file: every project and all of MY PRESETS. It goes to your downloads, and a copy stays in this browser (the last ${KEEP_MAX}). Restoring one <strong>replaces everything</strong> on the FM-1. Stop the FM-1 first.</p>
+        <p>A backup is the FM-1's whole store in one <code>.egbak</code> file: every project and all of MY PRESETS. It goes to your downloads, and a copy stays in this browser (the last ${KEEP_MAX} of each FM-1). Restoring one <strong>replaces everything</strong> on the FM-1. Stop the FM-1 first.</p>
         <div class="keys">
           <button id="backup" class="key" type="button" disabled><px-sprite name="ICON_DISK" scale="2"></px-sprite><px-text font="big" scale="2" color="white">BACK UP</px-text></button>
           <button id="presetsonly" class="key plain" type="button" disabled><px-text font="big" scale="2" color="white">PRESETS ONLY</px-text></button>

@@ -38,8 +38,8 @@ export const PRESET_MINE0 = 0x100, NFACTORY = 23, IMPORTED = 0x01;      // sound
 export const TAGS = ["BASS", "KEYS", "PLUCK", "PAD", "LEAD", "DRUMS", "FX"];   // sounds.c qd_preset_kind_name
 export const BLOB_MAGIC = 0x53, BLOB_VERSIONS = [1, 2];    // quad_voice.c: 'S', VERSION 2 (1 read too: no SAY)
 
-const RK = { SET: 1, HDR: 2, PAT: 3, SND: 4, LIB: 5, FTAG: 6, MFX: 7 };   // persist.h QD_RK_*
-const rkey = (kind, p, i) => ((kind << 24) | (p << 16) | i) >>> 0;
+export const RK = { SET: 1, HDR: 2, PAT: 3, SND: 4, LIB: 5, FTAG: 6, MFX: 7 };   // persist.h QD_RK_*
+export const rkey = (kind, p, i) => ((kind << 24) | (p << 16) | i) >>> 0;
 const err = (code, msg) => Object.assign(new Error(msg), { code });
 
 const g16 = (b, o) => b[o] | (b[o + 1] << 8);
@@ -196,7 +196,7 @@ export function writeStore(img, base, nsec, recs, magic, reserve) {
 }
 
 // ---- the records
-const cstr = (b, o, n) => { let s = ""; for (let i = 0; i < n && b[o + i]; i++) s += String.fromCharCode(b[o + i]); return s; };
+export const cstr = (b, o, n) => { let s = ""; for (let i = 0; i < n && b[o + i]; i++) s += String.fromCharCode(b[o + i]); return s; };
 
 // a packed sound a firmware of today reads (quad_voice.c qd_quad_unpack: its length, 'S', its version)
 export const blobOk = (blob) => blob instanceof Uint8Array && blob.length === BLOB && blob[0] === BLOB_MAGIC && BLOB_VERSIONS.includes(blob[1]);
@@ -222,7 +222,7 @@ export function presetRecord(s) {
 }
 export const tagNames = (mask) => TAGS.filter((_, k) => (mask >> k) & 1);
 
-function libraryOf(lib) {
+export function libraryOf(lib) {
   const presets = [];
   for (let k = 0; k < LAYOUT.nlib; k++) { const p = parsePreset(get(lib, rkey(RK.LIB, 0, k)), k + 1); if (p) presets.push(p); }
   // the factory tags' record ('F' 2: a byte a factory preset, then the next MY preset id: persist.c)
@@ -270,7 +270,7 @@ export function readLibrary(bytes) {
   return { magic: eg[0] || "", ...libraryOf(lib), used: { lib: [lib.live, lib.total] } };
 }
 
-const sameBlob = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
+export const sameBlob = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
 
 // the sounds ({name, blob, tags, pan, chorus, delay, reverb}) into MY PRESETS' free places of a copy of the image. A
 // sound already there (the same name and the same patch) is skipped. Each new preset gets an id no preset had before
@@ -303,7 +303,13 @@ export function addPresets(image, sounds, { magic = "" } = {}) {
   }
   const out = Uint8Array.from(image);
   if (!added.length) return { image: out, added, skipped };
-  // the next id kept with the factory tags (none yet: a record of the classifier's tags, zeros)
+  writeLibrary(out, recs, next, mg);
+  return { image: out, added, skipped };
+}
+
+// MY PRESETS' store written again from its records (a Map key -> bytes), the next MY preset id kept with the factory
+// tags (none yet: a record of the classifier's tags, zeros): persist.c ser_ftag 'F' 2
+export function writeLibrary(img, recs, next, magic) {
   const fk = rkey(RK.FTAG, 0, 0), f0 = recs.get(fk);
   if (!f0 || (f0.length === 2 + NFACTORY + 2 && f0[0] === 0x46 && f0[1] === 2)) {
     const f = f0 ? Uint8Array.from(f0) : new Uint8Array(2 + NFACTORY + 2);
@@ -312,8 +318,7 @@ export function addPresets(image, sounds, { magic = "" } = {}) {
     recs.set(fk, f);
   }
   const list = [...recs.keys()].sort((a, b) => a - b).map((key) => ({ key, bytes: recs.get(key) }));
-  writeStore(out, LAYOUT.lib.base, LAYOUT.lib.nsec, list, mg, LAYOUT.lib.reserve);
-  return { image: out, added, skipped };
+  return writeStore(img, LAYOUT.lib.base, LAYOUT.lib.nsec, list, magic, LAYOUT.lib.reserve);
 }
 
 // 2026-11-15 (SEQUENCE's patterns, docs/SEQ-SYSEX-PLAN.md phase 4's overview): which of a project's 64 patterns the
