@@ -105,6 +105,11 @@ $(B)/gen_values: $(B)/gen_values.o $(CORE_OBJ) $(PVG_OBJ)
 	$(CC) -o $@ $^ -lm
 values: $(B)/gen_values
 	$(B)/gen_values > $(ROOT)/site/manager/egvalues.js
+seqnames: $(B)/gen_values
+	$(B)/gen_values --seq > $(ROOT)/site/manager/egseqnames.js
+seqnames-check: $(B)/gen_values
+	@$(B)/gen_values --seq | cmp -s - $(ROOT)/site/manager/egseqnames.js || { echo "site/manager/egseqnames.js is not the core's: make -C tools seqnames"; exit 1; }
+	@echo "seqnames-check: site/manager/egseqnames.js is the core's"
 stats-names:
 	python3 $(ROOT)/tools/gen_stats_names.py
 stats-names-check:
@@ -224,7 +229,7 @@ DNSND_DIR ?= $(abspath $(ROOT)/../DigitonePresets)
 TESTS := $(B)/test_quad $(B)/test_fz_dsp $(B)/test_pool $(B)/test_seq $(B)/test_app $(B)/test_ctl $(B)/test_quad_bitexact $(B)/test_fx_bitexact \
          $(B)/test_store $(B)/test_persist $(B)/test_sysex $(B)/test_mfx $(B)/test_tools $(B)/test_midi
 TESTS += $(B)/test_fx_packed
-test: test-host test-dev test-dev16 test-dev-fast test-dev-fb8 test-dev-ble test-gfx-fast budget-ratchet values-check stats-names-check
+test: test-host test-dev test-dev16 test-dev-fast test-dev-fb8 test-dev-ble test-gfx-fast budget-ratchet values-check seqnames-check stats-names-check
 	@echo "make test: all passed (host and device sizes, the device's drawing too)"
 
 # P2.0: the same tests at the device's sizes (core/qd_config.h QD_DEVICE), built into build/dev; the timelines into

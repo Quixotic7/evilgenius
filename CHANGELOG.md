@@ -19,6 +19,16 @@ EVILGENIUS began as FIZZ 0.12.0-beta.17 with another engine and another face; FI
   onto a value to route it; LIVE changes the track as you go; SEND TO TRACK / PUT TRACK BACK try a sound on a track
   without keeping it; SAVE AS NEW, REPLACE, REVERT, EXPORT; the computer's keys play the track. Works with this
   firmware and the releases before it (0.1.0 and later).
+- **The manager is a full-screen app now**, loading as a program on a C64 would. F1..F6 (or ALT + 1..6) switch
+  between HOME, LIBRARY, SOUND, SEQUENCE, MIX and CABINET, and ? lists every key. HOME shows the SID-chip brain, the
+  picked track's sound as the chip's three voices and the open pattern's six tracks. SOUND draws each section as the
+  unit does: the waves, the envelopes, the filter's curve, the LFOs. MIX changes each track's pan, delay, reverb and
+  chorus live.
+- **The manager edits the sequence** (with this firmware): SEQUENCE is a piano roll of the open pattern, with
+  velocity, any parameter lock, the sound lock, chance and condition in lanes below it, every field of a step, the
+  track's settings, copy and paste, and undo on the unit. PATTERNS shows the project's 64 patterns; click one to go
+  there.
+- **Undo works after a full lock pool is cleared** on the Bluetooth firmware; every edit after it had no undo before.
 ## 0.1.1 (2026-11-15)
 
 - **The same firmware as 0.1.0**, released again so that RemoteFM1 takes it: its nightly update read 0.1.0 as older

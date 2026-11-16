@@ -19,6 +19,8 @@ import { SimUnit as EgSim } from "../../site/manager/egsim.js";
 import { Live, plan, destOf, unroute, PADS } from "../../site/manager/eglive.js";
 import { filterRows } from "../../site/manager/eglibrary.js";
 import { help } from "../../site/manager/eghelp.js";
+import * as Q from "../../site/manager/egseq.js";
+import { SeqEditor } from "../../site/manager/egseqedit.js";
 const FX = JSON.parse(readFileSync(new URL("./fixtures/sysex_frames.json", import.meta.url)));
 
 let fails = 0, checks = 0;
@@ -479,6 +481,219 @@ console.log("edit");
   check(unroute({ kind: "mod", k: 3 }).join() === [N.mod(3, 0), 0].join(), "a route removed: the slot's SOURCE off");
   check(destOf(N.ID.W1) === -1 && PADS.includes(1) && PADS.includes(12), "a WAVE is no destination; PITCH and PAN are pads");
   check(VALUES.every((_, id) => help(id).length > 10), "every value has its help line");
+}
+
+// ---------------------------------------------------------------- the open pattern, read (docs/SEQ-SYSEX-PLAN.md phase 1)
+console.log("seq");
+{
+  const st = { ...Q.emptyStep(), ovr: 0x16b, on: true, locked: true, type: 3, slots: [36, 40, 43, 0, 0, 0], vel: 99, len: 7, micro: -23,
+    ratch: 8, ramp: 3, chance: 75, cond: 43, sound: 128, strum: 23, func: 158, mfx: 6 };
+  check(JSON.stringify(Q.stepOf(Q.stepWire(st))) === JSON.stringify(st), "a step: its 20 bytes and back (every field at its edge)");
+  const sim = new EgSim();
+  const ts = sim.pat.tracks[2].set;
+  check(JSON.stringify(Q.tsetOf(Q.tsetBytes(ts))) === JSON.stringify({ ...ts, rate: ts.rbase * 3 + ts.rtype }), "a track's settings: its 44 bytes and back");
+  check(Q.loopSteps(ts).length === 32 && Q.loopSteps(ts)[16] === 16, "the loop: pages 1 and 2, 32 steps in order");
+  const pl = Q.played(sim.pat.tracks[1].steps[4], sim.pat.tracks[1].set);
+  check(pl.notes.join() === "36,40,43" && pl.chance === 75 && Q.condName(pl.cond) === "1:2" && pl.sound === 7 && pl.micro === 3 && pl.len === 4,
+    "a step as it plays: its own notes, chance, condition (1:2), sound lock; the track's length");
+  check(Q.played(Q.emptyStep(), sim.pat.tracks[0].set).notes.join() === "60" && Q.lenName(4) === "1" && Q.rateName(12) === "1/16" &&
+    Q.lockName(31) === "CUTOFF" && Q.lockName(128) === "TV" && Q.funcName(1) === "RESTART", "the names: the core's own (egseqnames.js)");
+  check(Q.played({ ...Q.emptyStep(), on: true, ovr: 1 << Q.PM.TRIG, type: 0 }, sim.pat.tracks[0].set).type === 1, "a trig with no type plays a NOTE");
+
+  const link = quick(await findUnit(sim.access));
+  const info = await link.patternInfo();
+  check(info && info.pattern === 0 && info.rev === 1 && info.bpm === 120 && info.tracks.length === 6 && info.wire === 20 &&
+    info.tsetSize === 44 && info.tracks[0].name === "ZAP" && info.nlock === 6, "PATTERN INFO: the pattern, its revision, its six tracks");
+  const pat = Q.patternOf(info);
+  check(pat.tracks[2].set.loop === 3 && pat.tracks[1].set.chan === 1, "PATTERN INFO: each track's settings decoded");
+  const r = await link.steps(1, { locks: true });
+  check(r && r.steps.length === 128 && r.steps.every(Boolean) && r.locks.length === 6, "STEPS: track 2's 128 steps and its 6 locks");
+  Q.putSteps(pat, 1, 0, r.steps); Q.putLocks(pat, 1, r.locks);
+  check(JSON.stringify(pat.tracks[1].steps) === JSON.stringify(sim.pat.tracks[1].steps) && pat.tracks[1].locks.find((l) => l.id === 119).value === -20,
+    "STEPS: every step as the unit holds it, a negative lock value");
+  const part = await link.steps(2, { first: 16, count: 8 });
+  check(part && part.steps.length === 8 && Q.stepOf(part.steps[0]).slots[0] === 60 && part.locks === null, "STEPS: a range, no locks asked");
+  sim.editPat((P) => { for (let s = 0; s < 128; s++) for (const id of [31, 32]) P.tracks[3].locks.push({ step: s, id, value: s * 7 + id }); });
+  const many = await link.steps(3, { locks: true });
+  check(many.locks.length === 256 && many.rev === 2 && many.locks[255].value === 127 * 7 + 32, "STEPS: 256 locks over three replies, the revision moved");
+  const sts = await link.status();
+  check(sts.rev === 2 && sts.package === "ble" && sts.nlib === 128, "STATUS: the revision last");
+  check((await link.steps(9)).old === false && (await link.steps(9)).statusName === "BAD TRACK", "STEPS: track 10: BAD TRACK");
+  link.close();
+  // the core's own replies (core/tests/test_sysex.c --seq-frames: the host core's PATTERN INFO and STEPS of a track
+  // with 271 locks) read by the page's parsers, against what the core holds
+  const SF = JSON.parse(readFileSync(new URL("./fixtures/seq_frames.json", import.meta.url)));
+  const ci = X.parseReply(hex(SF.pinfo));
+  check(ci && ci.kind === "pinfo" && ci.pattern === SF.pattern && ci.rev === SF.rev && ci.bpm === SF.bpm && ci.nlock === SF.nlock &&
+    same(ci.tracks[1].tset, hex(SF.tset1)) && ci.tracks[1].name === SF.name1, "the core's PATTERN INFO read: track 2's settings byte for byte");
+  const cs = [], cl = [];
+  let clast = false;
+  for (const f of SF.steps) {
+    const r = X.parseReply(hex(f));
+    if (r && r.kind === "steps") r.steps.forEach((w, k) => { cs[r.first + k] = w; });
+    if (r && r.kind === "locks") { cl.push(...r.locks); clast = r.last; }
+  }
+  check(cs.length === 128 && cs.every((w, k) => same(w, hex(SF.wire1[k]))), "the core's STEPS read: 128 steps, each the core's 20 bytes");
+  check(clast && cl.length === SF.locks1.length && cl.every((l, k) => l.step === SF.locks1[k][0] && l.id === SF.locks1[k][1] && l.value === SF.locks1[k][2]),
+    `the core's LOCKS read: ${cl.length} locks (ids past 127, negative values), the last marked`);
+  check(Q.tsetOf(hex(SF.tset1)).pend[0] === 15 && Q.stepOf(hex(SF.wire1[0])).slots.slice(0, 3).join() === "36,40,43", "the core's bytes decoded: a page's end, a chord's slots");
+  // an EVILGENIUS without them (0.1.x): BAD COMMAND, said as {old}
+  const oldUnit = new SimUnit({ image: makeImage() });
+  oldUnit.sem = { cmds: [], params: [], tags: [], names: [], stores: [] };
+  const ol = quick(await findUnit(accessOf(oldUnit)));
+  check((await ol.patternInfo()).old === true && (await ol.steps(0)).old === true, "a firmware without them: {old}");
+  check(X.parseStatus(hex(FX.status[0])).rev === undefined, "STATUS of 0.1.x: no revision");
+  ol.close();
+}
+
+// ---------------------------------------------------------------- the open pattern, written (phase 2)
+console.log("seq write");
+{
+  // the page's frames, byte for byte the frames the core's own test sends (core/tests/test_sysex.c --seq-writes)
+  const SW = JSON.parse(readFileSync(new URL("./fixtures/seq_writes.json", import.meta.url)));
+  check(same(X.stepSetRequest({ pattern: SW.pattern, track: 3, steps: [0, 4, 8],
+    fields: [[X.FIELD.TRIG, X.TRIG_ON], [X.FIELD.NOTES, [48, 52, 55]], [X.FIELD.VEL, 99]] }), hex(SW.chord[0])),
+    "STEP SET: the page's frame is the core test's (a chord, a trig, a velocity on 1, 5, 9)");
+  check(same(X.lockSetRequest({ pattern: SW.pattern, track: 3, steps: [0, 4],
+    entries: [{ op: "set", id: 31, value: 1600 }, { op: "set", id: 128, value: 80 }] }), hex(SW.locks[0])),
+    "LOCK SET: the page's frame is the core test's (CUTOFF 1600, TV 80)");
+  check(X.maskOf([0, 6, 7, 127]).join() === [65, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2].join(), "the step mask: bit s % 7 of byte s / 7");
+  let threw = 0;
+  try { X.stepsPutRequest({ pattern: 0, track: 0, first: 0, wires: new Array(25).fill(new Uint8Array(20)) }); } catch (_) { threw++; }
+  try { X.lockSetRequest({ pattern: 0, track: 0, steps: [0], entries: new Array(17).fill({ op: "set", id: 1, value: 1 }) }); } catch (_) { threw++; }
+  check(threw === 2, "STEPS PUT over 24 steps, LOCK SET over 16 entries: refused before sending");
+  check(X.stepsPutRequest({ pattern: 0, track: 0, first: 0, wires: new Array(24).fill(new Uint8Array(20)) }).length <= 640,
+    "STEPS PUT of 24 steps fits the unit's 640-byte inbound frame");
+
+  // the link against the simulated unit
+  const sim = new EgSim();
+  const link = quick(await findUnit(sim.access));
+  const P = sim.pat.pattern;
+  let a = await link.stepSet({ pattern: P, track: 3, steps: [0, 4, 8], fields: [[X.FIELD.TRIG, X.TRIG_ON], [X.FIELD.NOTES, [48, 52, 55]], [X.FIELD.VEL, 99]] });
+  let st = sim.pat.tracks[3].steps[4];
+  check(a.status === 0 && a.a === 4 && a.b === 3 && st.on && st.slots.slice(0, 3).join() === "48,52,55" && st.vel === 99,
+    "stepSet: a chord on three steps (ACK a 4, b 3)");
+  a = await link.stepSet({ pattern: P + 1, track: 3, steps: [1], fields: [[X.FIELD.VEL, 50]] });
+  check(a.statusName === "BAD PATTERN" && a.b === P + 1, "stepSet for another pattern: BAD PATTERN, b the open one");
+  a = await link.stepSet({ pattern: P, track: 3, steps: [1], fields: [[X.FIELD.VEL, 200]] });
+  check(a.statusName === "BAD VALUE", "stepSet velocity 200: BAD VALUE");
+  a = await link.lockSet({ pattern: P, track: 3, steps: [0, 4], entries: [{ op: "set", id: 31, value: 1600 }, { op: "set", id: 128, value: 80 }] });
+  check(a.status === 0 && sim.pat.tracks[3].locks.filter((l) => l.id === 128).length === 2 && sim.pat.tracks[3].steps[0].locked,
+    "lockSet: CUTOFF and TV on two steps");
+  a = await link.lockSet({ pattern: P, track: 3, steps: [0, 4], entries: [{ op: "set", id: 32, value: 99 }] });
+  check(a.statusName === "BAD VALUE", "lockSet RESO 99: BAD VALUE (the core's range, egseqnames.js)");
+  const w = [0, 4, 8].map((s) => Q.stepWire(sim.pat.tracks[0].steps[s]));
+  sim.hist && sim.closeGesture();
+  await new Promise((r) => setTimeout(r, 520));
+  a = await link.stepsPut({ pattern: P, track: 3, first: 8, wires: w });
+  check(a.status === 0 && a.b === 3 && sim.pat.tracks[3].steps[8].slots[0] === 36, "stepsPut: three steps pasted");
+  a = await link.undo();
+  check(a.status === 0 && sim.pat.tracks[3].steps[8].slots.slice(0, 3).join() === "48,52,55", "undo: the paste undone");
+  a = await link.undo(true);
+  check(a.status === 0 && sim.pat.tracks[3].steps[8].slots[0] === 36, "redo: the paste again");
+  for (let k = 0; k < 6; k++) a = await link.undo();
+  check(a.statusName === "NOT FOUND" && !sim.pat.tracks[3].steps[4].on, "undo past the first level: NOT FOUND, the track as it was");
+  // what the page reads back is what it wrote
+  await link.stepSet({ pattern: P, track: 2, steps: [5], fields: [[X.FIELD.TRIG, X.TRIG_ON], [X.FIELD.COND, 9], [X.FIELD.CHANCE, 50], [X.FIELD.RATCH, 3 | (1 << 4)]] });
+  const back = await link.steps(2, { first: 5, count: 1 });
+  const b0 = Q.stepOf(back.steps[0]);
+  check(b0.on && Q.condName(b0.cond) === "1:2" && b0.chance === 50 && b0.ratch === 3 && b0.ramp === 1, "written, then read back: 1:2, 50 %, x3 rising");
+  link.close();
+}
+
+// ---------------------------------------------------------------- phase 3: a track's settings, another pattern
+console.log("seq phase 3");
+{
+  const sim = new EgSim();
+  const link = quick(await findUnit(sim.access));
+  const P = sim.pat.pattern;
+  let a = await link.trackSet({ pattern: P, track: 2, fields: [[X.TFIELD.LOOP, 3], [X.TFIELD.PEND, (1 << 4) | 7], [X.TFIELD.RATE, 9],
+    [X.TFIELD.TRANSPOSE, -12], [X.TFIELD.DEF, (1 << 8) | 77], [X.TFIELD.DEFNOTE, 50]] });
+  const info = Q.patternOf(await link.patternInfo()), ts = info.tracks[2].set;
+  check(a.status === 0 && a.b === 6 && ts.loop === 3 && ts.pend[1] === 7 && Q.rateName(ts.rate) === "1/8" && ts.transpose === -12 &&
+    ts.def.vel === 77 && ts.def.slots[0] === 50 && Q.loopSteps(ts).length === 24, "trackSet: loop, a page's end, 1/8, -12, the defaults; read back");
+  a = await link.trackSet({ pattern: P, track: 2, fields: [[X.TFIELD.PSTART, (1 << 4) | 9]] });
+  check(a.statusName === "BAD VALUE", "trackSet: a page's start past its end: BAD VALUE");
+  a = await link.gotoPattern(5);
+  const st = await link.status(), pi = await link.patternInfo();
+  check(a.status === 0 && a.a === 6 && st.pattern === 5 && pi.pattern === 5, "gotoPattern(6): STATUS and PATTERN INFO say pattern 6");
+  a = await link.stepSet({ pattern: 0, track: 0, steps: [0], fields: [[X.FIELD.VEL, 50]] });
+  check(a.statusName === "BAD PATTERN" && a.b === 6, "a write for the pattern left: BAD PATTERN, b the open one");
+  check(X.gotoRequest(5).length === 9 && X.trackSetRequest({ pattern: 0, track: 2, fields: [[0, 3]] }).length === 15, "the frames' sizes (GO TO 9 bytes, TRACK SET of one field 15)");
+  link.close();
+}
+
+// ---------------------------------------------------------------- phase 4's overview: the project's patterns in the store
+console.log("patterns");
+{
+  const img = new Uint8Array(S.LAYOUT.size).fill(0xFF);
+  const patRec = (used) => { const b = new Uint8Array(40); b[0] = 0x50; b[1] = 6; b[2] = 20; b[3] = 44; b[7] = used; return b; };
+  S.writeStore(img, S.LAYOUT.prj.base, S.LAYOUT.prj.nsec, [{ key: RK(1, 0, 0), bytes: set() }, { key: RK(3, 0, 2), bytes: patRec(1) },
+    { key: RK(3, 0, 5), bytes: patRec(0) }, { key: RK(3, 1, 3), bytes: patRec(1) }], "EGB2", S.LAYOUT.prj.reserve);
+  const p1 = S.patternsOf(img, 1), p2 = S.patternsOf(img.subarray(S.LAYOUT.prj.base, S.LAYOUT.prj.base + S.LAYOUT.prj.nsec * S.SECTOR), 2);
+  check(p1.length === 64 && p1[2].used && p1[5].there && !p1[5].used && !p1[3].there, "project 1: A03 has steps, A06 is there but empty, A04 not there");
+  check(p2[3].used && !p2[2].there, "project 2's from the projects' sectors alone: A04");
+}
+
+// ---------------------------------------------------------------- SEQUENCE's editing model, against the simulated unit
+console.log("seq editor");
+{
+  const sim = new EgSim();
+  const link = quick(await findUnit(sim.access));
+  const errs = [];
+  const ed = new SeqEditor({ link, onError: (m) => errs.push(m) });
+  await ed.load();
+  check(ed.pat.tracks.length === 6 && ed.pat.tracks[1].locks.length === 6 && ed.played(4, 1).notes.join() === "36,40,43", "load: six tracks, their locks, a chord as it plays");
+  ed.track = 3;
+  ed.addNote(2, 60); ed.addNote(2, 64); ed.addNote(2, 67);
+  await ed.idle();
+  check(sim.pat.tracks[3].steps[2].slots.slice(0, 3).join() === "60,64,67" && ed.played(2).notes.join() === "60,64,67", "addNote x3: a chord on the page and on the unit");
+  ed.removeNote(2, 64);
+  await ed.idle();
+  check(sim.pat.tracks[3].steps[2].slots.filter(Boolean).join() === "60,67", "removeNote: the chord's middle note gone, on the unit too");
+  for (let v = 10; v <= 120; v += 10) ed.setField([2], X.FIELD.VEL, v);
+  await ed.idle();
+  check(sim.pat.tracks[3].steps[2].vel === 120 && sim.counts.cmds[0x34] < 8, `a velocity drag: the unit ends on 120, ${sim.counts.cmds[0x34]} STEP SETs in all`);
+  ed.setField([2, 6], X.FIELD.COND, 9); ed.setField([2, 6], X.FIELD.CHANCE, 50); ed.setField([6], X.FIELD.SOUND, 7);
+  ed.setLock([2, 6], 31, 1200); ed.setLock([2], 125, 90);
+  await ed.idle();
+  const sp = sim.pat.tracks[3];
+  check(sp.steps[6].cond === 9 && sp.steps[6].chance === 50 && sp.steps[6].sound === 7 && sp.locks.length === 3 && sp.steps[2].locked,
+    "fields on two steps, a sound lock, CUTOFF and ROBOT locks: on the unit");
+  ed.clearLock([2, 6], 31);
+  await ed.idle();
+  check(sp.locks.length === 1 && sp.locks[0].id === 125, "clearLock: CUTOFF gone from both, ROBOT kept");
+  const copied = [2, 3, 4, 5, 6].map((s) => ({ ...ed.steps()[s] }));
+  ed.paste(16, copied, ed.locksAt(2).map((l) => ({ ...l, step: 0 })));
+  await ed.idle();
+  check(sp.steps[16].slots.filter(Boolean).join() === "60,67" && sp.steps[20].sound === 7 && sp.locks.some((l) => l.step === 16 && l.id === 125),
+    "paste: five steps at 17 with the first one's lock");
+  ed.setTrack(X.TFIELD.LOOP, 3); ed.setTrack(X.TFIELD.TRANSPOSE, 5);
+  await ed.idle();
+  check(sp.set.loop === 3 && sp.set.transpose === 5, "setTrack: loop pages 1..2, transpose +5 on the unit");
+  // the page and the unit agree: read again, compare
+  const mine = JSON.stringify(ed.pat.tracks[3].steps), locks = JSON.stringify(ed.pat.tracks[3].locks);
+  await ed.load();
+  check(JSON.stringify(ed.pat.tracks[3].steps) === mine && JSON.stringify(ed.pat.tracks[3].locks) === locks, "the page's model and the unit's, read again: the same");
+  ed.clear([16]);
+  await ed.idle();
+  check(!sp.steps[16].on && !sp.locks.some((l) => l.step === 16), "clear: the step and its lock gone");
+  // the unit changed under the page: poll reads it again
+  await new Promise((r) => setTimeout(r, 850));
+  sim.editPat((P) => { P.tracks[0].steps[3] = { ...Q.emptyStep(), on: true }; });
+  check(await ed.poll() && ed.pat.tracks[0].steps[3].on, "poll: the unit's own edit (revision moved) read in");
+  check(!(await ed.poll()), "poll: nothing moved, nothing read");
+  // the unit on another pattern: the next write is refused and the page reads the unit again
+  const keep = ed.pat.pattern;
+  await link.gotoPattern(9);
+  ed.setField([1], X.FIELD.VEL, 66);
+  await ed.idle();
+  check(errs.some((m) => /pattern 10/.test(m)) && ed.pat.pattern === 9 && keep === 0, "a write for the pattern left: said, and the unit read again (pattern 10)");
+  const a = await ed.gotoPattern(0);
+  check(a.status === 0 && ed.pat.pattern === 0 && ed.pat.tracks[3].set.transpose === 5, "gotoPattern(1): back, its edits there");
+  await ed.undo();
+  check(errs.length === 1, "undo through the editor: no new refusal");
+  link.close();
 }
 
 console.log(fails ? `${fails} of ${checks} checks FAILED` : `all ${checks} checks pass`);

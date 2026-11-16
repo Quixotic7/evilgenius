@@ -25,13 +25,21 @@
 //   link.tags / rename / remove / swap / poolRef / users / projects / project / flush / param / browse -> the ACK
 //     ({status, statusName, a, b}) or the reply asked for; {old: true} when this EVILGENIUS has no such command
 //   link.note(ch, n, vel)  a note (no reply)
+//   link.patternInfo() -> parsePinfo | {old: true} (a firmware without it) | null;  link.steps(track, {first, count,
+//     locks}) -> {pattern, rev, first, steps: [20-byte wire], locks: [{step, id, value}] | null} | {old: true} | null
+//     (docs/SEQ-SYSEX-PLAN.md phase 1: the pattern open on the unit, read)
+//   link.stepSet({pattern, track, steps, fields}), link.lockSet({pattern, track, steps, entries}),
+//   link.stepsPut({pattern, track, first, wires}), link.undo(redo) -> the ACK {status, statusName, a, b} | {old}
+//     (phase 2: one at a time, each its ACK; a run within half a second is one undo level on the unit)
+//   link.trackSet({pattern, track, fields: [[TFIELD.LOOP, 3], ..]}), link.gotoPattern(p) -> the ACK (phase 3)
 // Every failure is an Error with a code: "lost" (unplugged), "timeout", "nobulk", "changed", "fzer", "badreq".
 import { HS_QUERY, CHUNK, PULL, FZER, crc32, rd32, bulkFrame, parseBulk, parseRequest, response, parseIdentity,
   firmwareName, egIdentityRequest, parseEgIdentity } from "./egwire.js";
 import { LIB_BYTES } from "./egstore.js";
 import { CMD, CMD1, parseReply, parseList, parseDump, statusRequest, flushRequest, listRequest, dumpRequest, tagsRequest,
   renameRequest, deleteRequest, swapRequest, poolRefRequest, usersRequest, projectsRequest, projectRequest, paramRequest,
-  browseRequest } from "./egsysex.js";
+  browseRequest, CMD_SEQ, pinfoRequest, stepsRequest, parsePinfo, parseSteps, parseLocks, stepSetRequest, lockSetRequest,
+  stepsPutRequest, undoRequest, trackSetRequest, gotoRequest } from "./egsysex.js";
 const MORE = Symbol("more");
 
 export const GAP_MS = 3;
@@ -255,6 +263,48 @@ export class EgLink {
   // a value set sent again is harmless)
   param(track, id, value) { return this.cmd(paramRequest({ track, id, value, ack: true }), CMD.PARAM, { timeout: 1000, tries: 2, wake: false }); }
   browse(track, id) { return this.cmd(browseRequest({ track, id }), CMD.BROWSE, { timeout: 3000 }); }
+  // ---- the open pattern, read (2026-11-15)
+  patternInfo() {
+    return this.turn(async () => {
+      this.io.drain();
+      await this.wake1();
+      return this.ask(pinfoRequest(), (p) => {
+        const r = parseReply(p);
+        if (r && r.kind === "pinfo") return r;
+        return r && r.kind === "error" && r.command === CMD_SEQ.PINFO ? { old: r.status === 7, status: r.status, statusName: r.statusName } : undefined;
+      }, { timeout: 1000, tries: 3 });
+    });
+  }
+  steps(track, { first = 0, count = 0, locks = false } = {}) {
+    const want = count || 128 - first;
+    return this.turn(async () => {
+      this.io.drain();
+      await this.wake1();
+      const out = { pattern: -1, rev: -1, first, steps: new Array(want).fill(null), locks: locks ? [] : null };
+      let got = 0, done = false;
+      return this.askMany(stepsRequest({ track, first, count, locks }), (p) => {
+        const st = parseSteps(p);
+        if (st) {
+          out.pattern = st.pattern; out.rev = st.rev; out.track = st.track;
+          st.steps.forEach((w, k) => { if (st.first + k - first < want) out.steps[st.first + k - first] = w; });
+          got += st.steps.length;
+          return got >= want && !locks ? out : MORE;
+        }
+        const lk = parseLocks(p);
+        if (lk && locks) { out.locks.push(...lk.locks); done = lk.last; return done ? out : MORE; }
+        const r = parseReply(p);
+        return r && r.kind === "error" && r.command === CMD_SEQ.STEPS ? { old: r.status === 7, status: r.status, statusName: r.statusName } : undefined;
+      }, { timeout: 1500, tries: 2, partial: () => (got >= want && (!locks || done) ? out : null) });
+    });
+  }
+  // ---- the open pattern, written (2026-11-15, phase 2): no wake STATUS before each (a drag's run stays quick)
+  stepSet(o) { return this.cmd(stepSetRequest(o), CMD_SEQ.STEPSET, { timeout: 1500, tries: 2, wake: false }); }   // (a value set: sent again is harmless)
+  lockSet(o) { return this.cmd(lockSetRequest(o), CMD_SEQ.LOCKSET, { timeout: 1500, tries: 2, wake: false }); }
+  stepsPut(o) { return this.cmd(stepsPutRequest(o), CMD_SEQ.STEPSPUT, { timeout: 2000, tries: 2 }); }
+  undo(redo = false) { return this.cmd(undoRequest(redo), CMD_SEQ.UNDO, { timeout: 2000, tries: 1 }); }
+  // phase 3: a track's settings; the pattern the unit goes to
+  trackSet(o) { return this.cmd(trackSetRequest(o), CMD_SEQ.TRACKSET, { timeout: 1500, tries: 2, wake: false }); }
+  gotoPattern(p) { return this.cmd(gotoRequest(p), CMD_SEQ.GOTO, { timeout: 2000, tries: 1 }); }
   note(ch, n, vel) { this.io.send(vel ? [0x90 | (ch & 15), n & 127, vel & 127] : [0x80 | (ch & 15), n & 127, 0]); }
 
   version() {

@@ -720,6 +720,10 @@ static void pool_remove(qd_pattern_t *p, int t, int at, int n)
         return;
     memmove(&p->lock[at], &p->lock[at + n], (size_t)(p->nlock - at - n) * sizeof p->lock[0]);
     p->nlock = (uint16_t)(p->nlock - n);
+    memset(&p->lock[p->nlock], 0, (size_t)n * sizeof p->lock[0]);   /* (2026-11-15: the freed entries zero, so the pattern
+                                                         * compresses as it did: a pool filled and cleared left ~1000 stale
+                                                         * entries, and the Bluetooth package's 7 KB undo log could no longer
+                                                         * hold the pattern's copy: every edit after it, no undo level) */
     p->lock_n[t] = (uint16_t)(p->lock_n[t] - n);
     for (k = t + 1; k < QD_PAT_NTRACK; k++)
         p->lock_start[k] = (uint16_t)(p->lock_start[k] - n);

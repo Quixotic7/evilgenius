@@ -267,6 +267,486 @@ static int locks_of(int p, int k)                       /* the steps of pattern 
     return n;
 }
 
+/* 2026-11-15 (docs/SEQ-SYSEX-PLAN.md phase 1): PATTERN INFO and STEPS read the open pattern exactly as the core holds
+ * it; the revision moves when (and only when) the undo sees the pattern change */
+static uint8_t SQ[QD_NSTEP * QD_STEP_WIRE];             /* the steps read back */
+static qd_lock_t SL[QD_NLOCK];
+static int sq_n, sl_n, sq_frames, sl_frames, sq_last;
+static FILE *sq_out;                                    /* (--seq-frames FILE: the replies and what they hold, as JSON,
+                                                         * for tools/eg/manager_test.mjs: the page's parsers on the core's
+                                                         * own bytes) */
+static void sq_hex(void)
+{
+    int i;
+    if (!sq_out)
+        return;
+    fprintf(sq_out, "%s\"", sq_frames + sl_frames > 1 ? "," : "");
+    for (i = 0; i < rn; i++)
+        fprintf(sq_out, "%02x", R[i]);
+    fprintf(sq_out, "\"");
+}
+static void steps_take(int t)                           /* the replies in R: steps into SQ, locks into SL */
+{
+    uint8_t un[32];
+    if (!reply_ok())
+        return;
+    if (R[5] == QD_SX_R_STEPS && R[7] == t) {
+        const int first = R[8], n = R[9];
+        int k;
+        sq_frames++;
+        sq_hex();
+        for (k = 0; k < n; k++) {
+            qd_sx_unpack7(R + 12 + k * 23, 23, un);
+            memcpy(SQ + (first + k) * QD_STEP_WIRE, un, QD_STEP_WIRE);
+        }
+        sq_n += n;
+    } else if (R[5] == QD_SX_R_LOCKS && R[7] == t) {
+        const int n = R[10];
+        int k;
+        sl_frames++;
+        sq_hex();
+        sq_last = R[9];
+        for (k = 0; k < n && sl_n < QD_NLOCK; k++, sl_n++) {
+            const uint8_t *e = R + 11 + k * 6;
+            SL[sl_n].step = e[0];
+            SL[sl_n].id = (uint8_t)(e[1] << 7 | e[2]);
+            SL[sl_n].value = (int16_t)((e[3] << 14 | e[4] << 7 | e[5]) - QD_SXP_OFS);
+        }
+    }
+}
+static void steps_read(int t, int first, int count, int flags)
+{
+    const uint8_t b[4] = {(uint8_t)t, (uint8_t)first, (uint8_t)count, (uint8_t)flags};
+    uint32_t ms = 2000;
+    sq_n = sl_n = sq_frames = sl_frames = sq_last = 0;
+    memset(SQ, 0xEE, sizeof SQ);
+    if (cmd(QD_SX_STEPS, b, 4))
+        steps_take(t == QD_SXP_SELECTED ? A.sel : t);
+    while (ms--) {
+        if ((rn = qd_app_sysex_take(&A, R, sizeof R)))
+            steps_take(t == QD_SXP_SELECTED ? A.sel : t);
+        else if (!A.sx.job)
+            break;
+        else
+            run(1);
+    }
+}
+static void seq_read_tests(void)
+{
+    qd_pattern_t *p;
+    uint8_t un[64], w[QD_STEP_WIRE];
+    int s, k, ok, n, total;
+    uint16_t r0;
+    fresh();
+    p = qd_ctl_pat(&A);
+    for (s = 0; s < QD_NSTEP; s += 3) {                 /* track 2: a chord every third step, two locks on each */
+        const uint8_t ch[3] = {(uint8_t)(36 + s % 12), (uint8_t)(40 + s % 12), (uint8_t)(43 + s % 12)};
+        qd_step_set_notes(p, 1, s, ch, 3);
+        qd_step_set_vel(p, 1, s, 20 + s % 100);
+        qd_step_set_micro(p, 1, s, (s % 47) - 23);
+        if (s % 9 == 0)
+            qd_lock_set(p, 1, s, QD_LK_TV, 127);       /* (id 128: past 7 bits) */
+    }
+    for (s = 0; s < QD_NSTEP; s++) {                    /* .. and two locks on every step (256: two 74 replies) */
+        qd_lock_set(p, 1, s, QD_QP_FREQ, 100 + s * 10);
+        qd_lock_set(p, 1, s, QD_LK_PAN, -64 + s % 128);
+    }
+    /* PATTERN INFO */
+    cmd(QD_SX_PINFO, 0, 0);
+    ok = reply_ok() && R[5] == QD_SX_R_PINFO && R[6] == A.seq.cur && (R[7] << 7 | R[8]) == A.undo.rev &&
+         (R[9] << 7 | R[10]) == p->bpm && R[11] == p->swing && (R[12] << 14 | R[13] << 7 | R[14]) == p->master &&
+         (R[15] << 7 | R[16]) == p->nlock && R[18] == QD_PAT_NTRACK && R[19] == QD_STEP_WIRE && R[20] == sizeof(qd_tset_t);
+    for (k = 0, n = 21; ok && k < QD_PAT_NTRACK; k++) {
+        const uint32_t m = (uint32_t)sizeof(qd_tset_t) + ((uint32_t)sizeof(qd_tset_t) + 6u) / 7u;
+        ok &= qd_sx_unpack7(R + n, m, un) == sizeof(qd_tset_t) && !memcmp(un, &p->trk[k], sizeof(qd_tset_t));
+        n += (int)m;
+        ok &= !memcmp(R + n, p->snd[k].name, strlen(p->snd[k].name));
+        n += QD_SX_NAME;
+    }
+    if (sq_out) {
+        int i;
+        fprintf(sq_out, "{\"pinfo\": \"");
+        for (i = 0; i < rn; i++)
+            fprintf(sq_out, "%02x", R[i]);
+        fprintf(sq_out, "\", \"pattern\": %d, \"rev\": %u, \"bpm\": %u, \"nlock\": %u, \"tset1\": \"", A.seq.cur, A.undo.rev, p->bpm, p->nlock);
+        for (i = 0; i < (int)sizeof(qd_tset_t); i++)
+            fprintf(sq_out, "%02x", ((const uint8_t *)&p->trk[1])[i]);
+        fprintf(sq_out, "\", \"name1\": \"%s\",\n \"steps\": [", p->snd[1].name);
+    }
+    CHECK(ok && n == rn - 2, "PATTERN INFO: 72, the pattern, its revision, bpm .. nlock, each track's settings as the record "
+                             "holds them and its sound's name (%d bytes)", rn);
+    /* STEPS: track 2 whole, with its locks */
+    steps_read(1, 0, 0, QD_SXP_LOCKS);
+    for (ok = sq_n == QD_NSTEP, s = 0; s < QD_NSTEP; s++) {
+        qd_step_wire(&p->step[1][s], w);
+        ok &= !memcmp(w, SQ + s * QD_STEP_WIRE, QD_STEP_WIRE);
+    }
+    if (sq_out) {
+        int ln, i;
+        fprintf(sq_out, "],\n \"wire1\": [");
+        for (s = 0; s < QD_NSTEP; s++) {
+            qd_step_wire(&p->step[1][s], w);
+            fprintf(sq_out, "%s\"", s ? "," : "");
+            for (i = 0; i < QD_STEP_WIRE; i++)
+                fprintf(sq_out, "%02x", w[i]);
+            fprintf(sq_out, "\"");
+        }
+        fprintf(sq_out, "],\n \"locks1\": [");
+        for (n = 0, s = 0; s < QD_NSTEP; s++) {
+            const qd_lock_t *lk = qd_locks(p, 1, s, &ln);
+            for (i = 0; i < ln; i++)
+                fprintf(sq_out, "%s[%d,%d,%d]", n++ ? "," : "", s, lk[i].id, lk[i].value);
+        }
+        fprintf(sq_out, "]}\n");
+        fclose(sq_out);
+        sq_out = 0;
+    }
+    CHECK(ok && sq_frames == 4, "STEPS: track 2's 128 steps in 4 replies, each the core's 20 bytes (%d steps, %d)", sq_n, sq_frames);
+    for (total = 0, ok = 1, s = 0; s < QD_NSTEP; s++) {
+        int ln, i;
+        const qd_lock_t *lk = qd_locks(p, 1, s, &ln);
+        for (i = 0; i < ln; i++, total++)
+            if (!(total < sl_n && SL[total].step == s && SL[total].id == lk[i].id && SL[total].value == lk[i].value)) {
+                if (ok)
+                    printf("  (lock %d: step %d id %d value %d; read %d %d %d)\n", total, s, lk[i].id, lk[i].value,
+                           SL[total].step, SL[total].id, SL[total].value);
+                ok = 0;
+            }
+    }
+    CHECK(ok && total == sl_n && total > QD_SX_LOCKS_PER && sl_frames == (total + QD_SX_LOCKS_PER - 1) / QD_SX_LOCKS_PER && sq_last,
+          "STEPS: its %d locks (TV's id 128, PAN's negative values) in %d replies, the last marked", total, sl_frames);
+    steps_read(1, 120, 5, 0);
+    for (ok = sq_n == 5 && sl_frames == 0, s = 120; s < 125; s++) {
+        qd_step_wire(&p->step[1][s], w);
+        ok &= !memcmp(w, SQ + s * QD_STEP_WIRE, QD_STEP_WIRE);
+    }
+    CHECK(ok, "STEPS: a range (121..125), no locks asked: none sent");
+    steps_read(0, 1, 1, QD_SXP_LOCKS);
+    CHECK(sq_n == 1 && sl_frames == 1 && sl_n == 0 && sq_last, "STEPS: a step with no locks: one empty 74, the last");
+    A.sel = 1;
+    steps_read(QD_SXP_SELECTED, 0, 16, 0);
+    CHECK(sq_n == 16 && !memcmp(SQ, SQ, 1), "STEPS: track 127, the selected one");
+    A.sel = 0;
+    {
+        const uint8_t bt[4] = {6, 0, 0, 0}, bs[4] = {0, 120, 20, 0};
+        cmd(QD_SX_STEPS, bt, 4);
+        CHECK(reply_ok() && R[5] == QD_SX_R_ERROR && R[6] == QD_SX_BAD_TRACK && R[7] == QD_SX_STEPS, "STEPS: track 7: BAD TRACK");
+        cmd(QD_SX_STEPS, bs, 4);
+        CHECK(reply_ok() && R[5] == QD_SX_R_ERROR && R[6] == QD_SX_BAD_SLOT, "STEPS: steps 121..140: BAD SLOT");
+        cmd(QD_SX_STEPS, bs, 2);
+        CHECK(reply_ok() && R[5] == QD_SX_R_ERROR && R[6] == QD_SX_BAD_LENGTH, "STEPS: too short: BAD LENGTH");
+    }
+    /* the revision: a gesture that changes the pattern moves it, one that does not leaves it; an undo moves it */
+    run(3000);
+    r0 = A.undo.rev;
+    qd_undo_input(&A, 0);
+    qd_undo_close(&A);
+    CHECK(A.undo.rev == r0, "the revision: a gesture with no change leaves it (%u)", r0);
+    qd_undo_input(&A, 0);
+    qd_step_set_vel(qd_ctl_pat(&A), 0, 0, 77);
+    qd_step_set_trig(qd_ctl_pat(&A), 0, 0, QD_TRIG_NOTE);
+    qd_undo_close(&A);
+    CHECK(A.undo.rev != r0, "the revision: an edit moves it (%u -> %u)", r0, A.undo.rev);
+    r0 = A.undo.rev;
+    qd_undo_step(&A, -1);
+    CHECK(A.undo.rev != r0, "the revision: an undo moves it");
+    cmd(QD_SX_PINFO, 0, 0);
+    CHECK(reply_ok() && (R[7] << 7 | R[8]) == A.undo.rev, "PATTERN INFO: the revision as it is now");
+    steps_read(0, 0, 1, 0);
+    CHECK(sq_frames == 1 && (R[10] << 7 | R[11]) == A.undo.rev && R[6] == A.seq.cur, "STEPS: the pattern and the revision in each 73");
+}
+
+/* 2026-11-15 (phase 2): STEP SET, LOCK SET, STEPS PUT, UNDO on the open pattern */
+static uint8_t WM[QD_SX_MASK];
+static void mask_of(const int *steps, int n)
+{
+    memset(WM, 0, sizeof WM);
+    while (n-- > 0)
+        WM[steps[n] / 7] |= (uint8_t)(1u << (steps[n] % 7));
+}
+static FILE *sw_out;                                    /* (--seq-writes FILE: the write frames sent, for manager_test) */
+static int sw_n, sw_rec;
+static int cmdn(int c, const uint8_t *body, uint32_t n)  /* a long command (cmd's frame is 64 bytes) */
+{
+    static uint8_t f[700];
+    const uint32_t m = frame(f, c, body, n);
+    if (sw_out && sw_rec) {
+        uint32_t i;
+        fprintf(sw_out, "%s\"f0", sw_n++ ? "," : "");
+        for (i = 0; i < m; i++)
+            fprintf(sw_out, "%02x", f[i]);
+        fprintf(sw_out, "f7\"");
+    }
+    return send(f, m);
+}
+static uint32_t put_s21(uint8_t *b, uint32_t o, int32_t v)
+{
+    const uint32_t x = (uint32_t)(v + QD_SXP_OFS);
+    b[o] = (uint8_t)(x >> 14 & 0x7F), b[o + 1] = (uint8_t)(x >> 7 & 0x7F), b[o + 2] = (uint8_t)(x & 0x7F);
+    return o + 3u;
+}
+/* STEP SET's frame body: pattern, track, the mask, then (field, value) pairs (NOTES: field, count, notes) */
+static uint32_t stepset_body(uint8_t *b, int pat, int t, const int *fv, int nf)
+{
+    uint32_t o = 0;
+    int k, i;
+    b[o++] = (uint8_t)pat, b[o++] = (uint8_t)t;
+    memcpy(b + o, WM, QD_SX_MASK), o += QD_SX_MASK;
+    b[o++] = (uint8_t)nf;
+    for (k = 0, i = 0; k < nf; k++) {
+        b[o++] = (uint8_t)fv[i];
+        if (fv[i] == QD_SXF_NOTES) {
+            const int c = fv[i + 1];
+            b[o++] = (uint8_t)c;
+            memcpy(b + o, (const uint8_t[6]){(uint8_t)fv[i + 2], (uint8_t)fv[i + 3], (uint8_t)fv[i + 4], 0, 0, 0}, (size_t)c);
+            o += (uint32_t)c, i += 5;
+        } else
+            o = put_s21(b, o, fv[i + 1]), i += 2;
+    }
+    return o;
+}
+static uint32_t lockset_body(uint8_t *b, int pat, int t, const int *e, int ne)   /* e: op, id, value .. */
+{
+    uint32_t o = 0;
+    int k;
+    b[o++] = (uint8_t)pat, b[o++] = (uint8_t)t;
+    memcpy(b + o, WM, QD_SX_MASK), o += QD_SX_MASK;
+    b[o++] = (uint8_t)ne;
+    for (k = 0; k < ne; k++) {
+        b[o++] = (uint8_t)e[3 * k], b[o++] = (uint8_t)(e[3 * k + 1] >> 7), b[o++] = (uint8_t)(e[3 * k + 1] & 0x7F);
+        o = put_s21(b, o, e[3 * k + 2]);
+    }
+    return o;
+}
+static int seq_same_track(const qd_pattern_t *x, const qd_pattern_t *y, int t)   /* steps and locks byte for byte */
+{
+    int s, nx, ny;
+    for (s = 0; s < QD_NSTEP; s++) {
+        uint8_t wx[QD_STEP_WIRE], wy[QD_STEP_WIRE];
+        const qd_lock_t *lx = qd_locks(x, t, s, &nx), *ly = qd_locks(y, t, s, &ny);
+        qd_step_wire(&x->step[t][s], wx), qd_step_wire(&y->step[t][s], wy);
+        if (memcmp(wx, wy, sizeof wx) || nx != ny || (nx && memcmp(lx, ly, (size_t)nx * sizeof *lx)))
+            return 0;
+    }
+    return 1;
+}
+static void seq_write_tests(void)
+{
+    static qd_pattern_t before, mid;
+    static uint8_t b[700];
+    qd_pattern_t *p;
+    qd_rstep_t r;
+    int16_t v;
+    int pat, lv0, k, ok, s;
+    fresh();
+    run(1000);
+    p = qd_ctl_pat(&A);
+    pat = A.seq.cur;
+    memcpy(&before, p, sizeof before);
+    lv0 = A.undo.n;
+    {   /* a chord on steps 1, 5, 9 of track 4: a trig, its notes, its velocity: one command */
+        const int st[3] = {0, 4, 8}, fv[] = {QD_SXF_TRIG, QD_SXF_TRIG_ON, QD_SXF_NOTES, 3, 48, 52, 55, QD_SXF_VEL, 99};
+        mask_of(st, 3);
+        if (sw_out)
+            fprintf(sw_out, "{\"pattern\": %d, \"chord\": [", pat), sw_rec = 1, sw_n = 0;
+        cmdn(QD_SX_STEPSET, b, stepset_body(b, pat, 3, fv, 3));
+        if (sw_out)
+            fprintf(sw_out, "]"), sw_rec = 0;
+        qd_step_resolve(qd_ctl_pat(&A), 3, 4, &r);
+        CHECK(ack(QD_SX_STEPSET) == QD_SX_OK && ack_v1() == 4 && ack_v2() == 3 && r.on && r.nn == 3 && r.notes[0] == 48 &&
+                  r.notes[2] == 55 && r.vel == 99 && !memcmp(&before.step[3][1], &qd_ctl_pat(&A)->step[3][1], sizeof(qd_step_t)),
+              "STEP SET: a chord at velocity 99 on steps 1, 5, 9 of track 4 (ack %d, b %d; on %d, %d notes %d %d %d, vel %d)",
+              ack(QD_SX_STEPSET), ack_v2(), r.on, r.nn, r.notes[0], r.notes[1], r.notes[2], r.vel);
+    }
+    {   /* a run of them (a drag): one undo level */
+        const int st[1] = {4};
+        mask_of(st, 1);
+        for (k = 100; k <= 120; k += 5) {
+            const int fv[] = {QD_SXF_VEL, k, QD_SXF_MICRO, k - 110};
+            cmdn(QD_SX_STEPSET, b, stepset_body(b, pat, 3, fv, 2));
+            run(20);
+        }
+        qd_step_resolve(qd_ctl_pat(&A), 3, 4, &r);
+        run(QD_UNDO_QUIET_MS + 100);
+        CHECK(r.vel == 120 && r.micro == 10 && A.undo.n == lv0 + 1, "STEP SET: a drag's run, one undo level (%d levels)", A.undo.n - lv0);
+    }
+    memcpy(&mid, qd_ctl_pat(&A), sizeof mid);
+    {   /* refusals: another pattern, another track, a value out of range, a short frame */
+        const int st[1] = {2}, fv[] = {QD_SXF_VEL, 50}, bad[] = {QD_SXF_VEL, 200}, cf[] = {QD_SXF_COND, 44};
+        mask_of(st, 1);
+        cmdn(QD_SX_STEPSET, b, stepset_body(b, (pat + 1) % QD_NPAT, 3, fv, 1));
+        CHECK(ack(QD_SX_STEPSET) == QD_SX_BAD_PATTERN && ack_v2() == pat + 1, "STEP SET for another pattern: BAD PATTERN, b the open one");
+        cmdn(QD_SX_STEPSET, b, stepset_body(b, pat, 6, fv, 1));
+        CHECK(ack(QD_SX_STEPSET) == QD_SX_BAD_TRACK, "STEP SET on track 7: BAD TRACK");
+        cmdn(QD_SX_STEPSET, b, stepset_body(b, pat, 3, bad, 1));
+        CHECK(ack(QD_SX_STEPSET) == QD_SX_BAD_VALUE, "STEP SET velocity 200: BAD VALUE");
+        cmdn(QD_SX_STEPSET, b, stepset_body(b, pat, 3, cf, 1));
+        CHECK(ack(QD_SX_STEPSET) == QD_SX_BAD_VALUE, "STEP SET condition 44 (of 0..43): BAD VALUE");
+        cmdn(QD_SX_STEPSET, b, stepset_body(b, pat, 3, fv, 1) - 2);
+        CHECK(ack(QD_SX_STEPSET) == QD_SX_BAD_LENGTH, "STEP SET cut short: BAD LENGTH");
+        CHECK(seq_same_track(&mid, qd_ctl_pat(&A), 3), "the refusals changed nothing");
+    }
+    {   /* LOCK SET: CUTOFF and TV (id 128) on steps 1, 5; one cleared; all cleared */
+        const int st[2] = {0, 4}, e[] = {0, QD_QP_FREQ, 1600, 0, QD_LK_TV, 80}, c1[] = {1, QD_QP_FREQ, 0}, ca[] = {2, 0, 0},
+                  oor[] = {0, QD_QP_RESO, 99};
+        mask_of(st, 2);
+        if (sw_out)
+            fprintf(sw_out, ", \"locks\": ["), sw_n = 0, sw_rec = 1;
+        cmdn(QD_SX_LOCKSET, b, lockset_body(b, pat, 3, e, 2));
+        if (sw_out)
+            fprintf(sw_out, "]}\n"), fclose(sw_out), sw_out = 0, sw_rec = 0;
+        p = qd_ctl_pat(&A);
+        CHECK(ack(QD_SX_LOCKSET) == QD_SX_OK && ack_v2() == 4 && qd_lock_get(p, 3, 4, QD_QP_FREQ, &v) && v == 1600 &&
+                  qd_lock_get(p, 3, 0, QD_LK_TV, &v) && v == 80, "LOCK SET: CUTOFF 1600 and TV 80 on steps 1 and 5");
+        cmdn(QD_SX_LOCKSET, b, lockset_body(b, pat, 3, c1, 1));
+        CHECK(ack(QD_SX_LOCKSET) == QD_SX_OK && !qd_lock_get(qd_ctl_pat(&A), 3, 4, QD_QP_FREQ, &v) &&
+                  qd_lock_get(qd_ctl_pat(&A), 3, 4, QD_LK_TV, &v), "LOCK SET: CUTOFF cleared, TV kept");
+        cmdn(QD_SX_LOCKSET, b, lockset_body(b, pat, 3, oor, 1));
+        CHECK(ack(QD_SX_LOCKSET) == QD_SX_BAD_VALUE, "LOCK SET: RESO 99 (of 0..15): BAD VALUE");
+        cmdn(QD_SX_LOCKSET, b, lockset_body(b, pat, 3, ca, 1));
+        CHECK(ack(QD_SX_LOCKSET) == QD_SX_OK && qd_lock_count(qd_ctl_pat(&A), 3, 0) == 0 && qd_lock_count(qd_ctl_pat(&A), 3, 4) == 0,
+              "LOCK SET: every lock of steps 1 and 5 cleared");
+    }
+    run(QD_UNDO_QUIET_MS + 100);
+    memcpy(&mid, qd_ctl_pat(&A), sizeof mid);
+    lv0 = A.undo.n;
+    {   /* STEPS PUT: three steps of track 1 pasted over steps 9..11 of track 4 (which had a lock): one level */
+        uint32_t o = 0;
+        const int st[1] = {8}, e[] = {0, QD_QP_RESO, 7};
+        mask_of(st, 1);
+        cmdn(QD_SX_LOCKSET, b, lockset_body(b, pat, 3, e, 1));
+        run(QD_UNDO_QUIET_MS + 100);
+        memcpy(&mid, qd_ctl_pat(&A), sizeof mid);
+        lv0 = A.undo.n;
+        b[o++] = (uint8_t)pat, b[o++] = 3, b[o++] = 8, b[o++] = 3;
+        for (k = 0; k < 3; k++) {
+            uint8_t w[QD_STEP_WIRE];
+            qd_step_wire(&qd_ctl_pat(&A)->step[0][k * 4], w);
+            o += qd_sx_pack7(w, QD_STEP_WIRE, b + o);
+        }
+        cmdn(QD_SX_STEPSPUT, b, o);
+        p = qd_ctl_pat(&A);
+        for (ok = 1, k = 0; k < 3; k++) {
+            uint8_t w0[QD_STEP_WIRE], w1[QD_STEP_WIRE];
+            qd_step_wire(&p->step[0][k * 4], w0), qd_step_wire(&p->step[3][8 + k], w1);
+            w0[2] &= 0x7F, w1[2] &= 0x7F;
+            ok &= !memcmp(w0, w1, sizeof w0);
+        }
+        run(QD_UNDO_QUIET_MS + 100);
+        CHECK(ack(QD_SX_STEPSPUT) == QD_SX_OK && ack_v2() == 3 && ok && qd_lock_count(p, 3, 8) == 0 && A.undo.n == lv0 + 1,
+              "STEPS PUT: 3 steps pasted byte for byte, the old lock gone, one undo level (ack %d, ok %d, locks %d, levels %d -> %d, used %u)",
+              ack(QD_SX_STEPSPUT), ok, qd_lock_count(p, 3, 8), lv0, A.undo.n, (unsigned)A.undo.used);
+    }
+    {   /* UNDO / REDO: the unit's own history */
+        b[0] = 0;
+        cmd(QD_SX_UNDO, b, 1);
+        CHECK(ack(QD_SX_UNDO) == QD_SX_OK && ack_v2() == QD_UK_PASTE + 1 && seq_same_track(&mid, qd_ctl_pat(&A), 3),
+              "UNDO: the paste undone, track 4 byte for byte as before it (kind %d)", ack_v2() - 1);
+        b[0] = 1;
+        cmd(QD_SX_UNDO, b, 1);
+        CHECK(ack(QD_SX_UNDO) == QD_SX_OK && qd_lock_count(qd_ctl_pat(&A), 3, 8) == 0, "REDO: the paste again");
+        for (k = 0, b[0] = 0; k < 20; k++)
+            cmd(QD_SX_UNDO, b, 1);
+        CHECK(ack(QD_SX_UNDO) == QD_SX_NOT_FOUND, "UNDO with nothing left: NOT FOUND");
+        CHECK(seq_same_track(&before, qd_ctl_pat(&A), 3), "every level undone: track 4 as it was before the first command");
+    }
+    {   /* while playing: taken at once, as the panel's edits */
+        const int st[1] = {12}, fv[] = {QD_SXF_TRIG, QD_SXF_TRIG_ON, QD_SXF_VEL, 77};
+        qd_app_play(&A);
+        run(200);
+        mask_of(st, 1);
+        cmdn(QD_SX_STEPSET, b, stepset_body(b, pat, 3, fv, 2));
+        qd_step_resolve(qd_ctl_pat(&A), 3, 12, &r);
+        CHECK(ack(QD_SX_STEPSET) == QD_SX_OK && r.on && r.vel == 77, "STEP SET while playing: taken at once");
+        qd_app_stop(&A);
+    }
+    {   /* the pool full: 128 steps x 16 ids is 2048, the pattern holds 1024 */
+        int all[QD_NSTEP], e[3 * QD_SX_LOCKSET_PER];
+        for (s = 0; s < QD_NSTEP; s++)
+            all[s] = s;
+        for (k = 0; k < QD_SX_LOCKSET_PER; k++)
+            e[3 * k] = 0, e[3 * k + 1] = QD_QP_PW1 + k % 3 * 5 + (k / 3) * 0, e[3 * k + 2] = 10 + k;
+        for (k = 0; k < QD_SX_LOCKSET_PER; k++)
+            e[3 * k + 1] = QD_QP_LFO0 + k;              /* (16 different ids) */
+        mask_of(all, QD_NSTEP);
+        cmdn(QD_SX_LOCKSET, b, lockset_body(b, pat, 5, e, QD_SX_LOCKSET_PER));
+        CHECK(ack(QD_SX_LOCKSET) == QD_SX_FULL && qd_ctl_pat(&A)->nlock == QD_NLOCK && ack_v2() < 2048,
+              "LOCK SET past the pool: FULL, the pattern's %d locks used, %d went in", qd_ctl_pat(&A)->nlock, ack_v2());
+        cmdn(QD_SX_LOCKSET, b, lockset_body(b, pat, 5, (const int[]){2, 0, 0}, 1));
+        CHECK(ack(QD_SX_LOCKSET) == QD_SX_OK, "(track 6's locks cleared again)");
+    }
+    {   /* after the pool was full and cleared: an edit is one undo level again */
+        const int st[1] = {14}, fv[] = {QD_SXF_TRIG, QD_SXF_TRIG_ON, QD_SXF_VEL, 33};
+        run(QD_UNDO_QUIET_MS + 100);
+        lv0 = A.undo.n;
+        mask_of(st, 1);
+        cmdn(QD_SX_STEPSET, b, stepset_body(b, pat, 3, fv, 2));
+        run(QD_UNDO_QUIET_MS + 100);
+        {
+            const qd_pattern_t *q = qd_ctl_cpat(&A);
+            int stale = 0, i;
+            for (i = q->nlock; i < QD_NLOCK; i++)
+                stale += q->lock[i].step || q->lock[i].id || q->lock[i].value;
+            CHECK(!stale, "the cleared locks' entries zero (%d stale)", stale);
+        }
+        CHECK(A.undo.n == lv0 + 1, "after the pool was full and cleared, an edit is undoable again (levels %d -> %d, log %u)", lv0,
+              A.undo.n, (unsigned)A.undo.used);
+    }
+}
+
+/* 2026-11-15 (phase 3): TRACK SET, GO TO PATTERN */
+static void seq_phase3_tests(void)
+{
+    static uint8_t b[64];
+    uint32_t o;
+    qd_tset_t *ts;
+    int pat, q;
+    fresh();
+    run(1000);
+    pat = A.seq.cur;
+    b[0] = (uint8_t)pat, b[1] = 2, b[2] = 6;            /* (pattern, track 3, six fields: field, value) */
+    o = 3;
+    b[o++] = QD_SXT_LOOP, o = put_s21(b, o, 3);
+    b[o++] = QD_SXT_PEND, o = put_s21(b, o, 1 << 4 | 7);
+    b[o++] = QD_SXT_RATE, o = put_s21(b, o, 3 * 3 + 0);
+    b[o++] = QD_SXT_TRANSPOSE, o = put_s21(b, o, -12);
+    b[o++] = QD_SXT_DEF, o = put_s21(b, o, QD_PM_VEL << 8 | 77);
+    b[o++] = QD_SXT_DEFNOTE, o = put_s21(b, o, 0 << 8 | 50);
+    cmdn(QD_SX_TRACKSET, b, o);
+    ts = &qd_ctl_pat(&A)->trk[2];
+    CHECK(ack(QD_SX_TRACKSET) == QD_SX_OK && ack_v2() == 6 && ts->loop == 3 && ts->pend[1] == 7 && qd_tset_rate(ts) == 9 &&
+              ts->transpose == -12 && ts->def.vel == 77 && ts->def.note[0] == 50 && qd_track_len(ts) == 16 + 8,
+          "TRACK SET: pages 1..2 looped, page 2 to its step 8, 1/8, -12, default velocity 77, note 50 (loop %d steps)", qd_track_len(ts));
+    o = 3, b[2] = 1;
+    b[o++] = QD_SXT_PSTART, o = put_s21(b, o, 1 << 4 | 9);   /* (page 2 starts after its end: refused) */
+    cmdn(QD_SX_TRACKSET, b, o);
+    CHECK(ack(QD_SX_TRACKSET) == QD_SX_BAD_VALUE && ts->pstart[1] == 0, "TRACK SET: a page's start past its end: BAD VALUE");
+    o = 3, b[2] = 1, b[0] = (uint8_t)((pat + 1) % QD_NPAT);
+    b[o++] = QD_SXT_MUTE, o = put_s21(b, o, 1);
+    cmdn(QD_SX_TRACKSET, b, o);
+    CHECK(ack(QD_SX_TRACKSET) == QD_SX_BAD_PATTERN && !ts->mute, "TRACK SET for another pattern: BAD PATTERN");
+    /* GO TO PATTERN: stopped, at once (or once it is read in) */
+    q = (pat + 5) % QD_NPAT;
+    b[0] = (uint8_t)q;
+    cmd(QD_SX_GOTO, b, 1);
+    CHECK(ack(QD_SX_GOTO) == QD_SX_OK && ack_v1() == q + 1, "GO TO PATTERN %d: taken", q + 1);
+    run(200);
+    CHECK(A.seq.cur == q, "GO TO PATTERN stopped: the unit is on pattern %d (cur %d)", q + 1, A.seq.cur + 1);
+    cmd(QD_SX_PINFO, 0, 0);
+    CHECK(reply_ok() && R[6] == q, "PATTERN INFO after it: pattern %d", q + 1);
+    /* .. playing: queued as the unit's own pattern keys (the project's launch) */
+    qd_app_play(&A);
+    run(100);
+    b[0] = (uint8_t)pat;
+    cmd(QD_SX_GOTO, b, 1);
+    CHECK(ack(QD_SX_GOTO) == QD_SX_OK && (A.seq.cur == pat || qd_seq_queued(&A.seq) == pat),
+          "GO TO PATTERN while playing: queued (or taken) as the pattern keys do (cur %d, queued %d)", A.seq.cur + 1, qd_seq_queued(&A.seq) + 1);
+    qd_app_stop(&A);
+    b[0] = 64;
+    cmd(QD_SX_GOTO, b, 1);
+    CHECK(ack(QD_SX_GOTO) == QD_SX_BAD_PATTERN, "GO TO PATTERN 65: BAD PATTERN");
+}
+
 static void phase1_tests(void)
 {
     uint8_t b[32];
@@ -277,8 +757,12 @@ static void phase1_tests(void)
     /* STATUS, PROJECTS */
     cmd(QD_SX_STATUS, 0, 0);
     CHECK(reply_ok() && R[5] == QD_SX_R_STATUS && R[6] == 1 && R[7] == QD_NTRACK && !(R[8] & QD_SXT_NOSTORE) &&
-              !(R[8] & QD_SXT_PLAYING) && R[9] == 0 && R[11] == 1 && rn == 7 + 24 + 4 * QD_PKG_BLE,
+              !(R[8] & QD_SXT_PLAYING) && R[9] == 0 && R[11] == 1 && rn == 7 + 30,
           "STATUS: 42, protocol 1, 6 tracks, the store attached, stopped, project 1 worked on, one project (%d bytes)", rn);
+    CHECK((R[33] << 7 | R[34]) == A.undo.rev, "STATUS: the pattern's revision last (2026-11-15)");
+#if !QD_PKG_BLE
+    CHECK(R[29] == 0 && R[30] == QD_NPROJ && (R[31] << 7 | R[32]) == QD_NLIB, "STATUS: the USB package's byte (0) and counts");
+#endif
 #if QD_PKG_BLE
     CHECK(R[29] == QD_SXK_BLE && R[30] == QD_NPROJ && (R[31] << 7 | R[32]) == QD_NLIB,
           "STATUS: the Bluetooth package's byte, its 4 projects, its 128 MY PRESETS' places (%02X %02X %02X %02X)", R[29],
@@ -936,6 +1420,10 @@ int main(int argc, char **argv)
         qd_shutdown();
         return 0;
     }
+    if (argc == 3 && !strcmp(argv[1], "--seq-frames"))  /* (2026-11-15) */
+        sq_out = fopen(argv[2], "w");
+    if (argc == 3 && !strcmp(argv[1], "--seq-writes"))
+        sw_out = fopen(argv[2], "w");
     if (argc == 3 && !strcmp(argv[1], "--feed")) {
         feed(argv[2]);
         qd_shutdown();
@@ -1343,6 +1831,9 @@ int main(int argc, char **argv)
         CHECK(ok3, "the 256 stored back into an empty library: every one the same (name, patch, tags, pan, sends)");
     }
     phase1_tests();
+    seq_read_tests();
+    seq_write_tests();
+    seq_phase3_tests();
     p2b_tests();
     msnd_tests();
     browse_tests();

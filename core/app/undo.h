@@ -107,6 +107,9 @@ typedef struct {
     qd_pattern_t snap, pclip;
 #endif
     int snap_ok, pclip_ok;
+    uint16_t rev;                      /* 2026-11-15: the open pattern's revision (14 bits): moves whenever a gesture's
+                                        * close finds a change (or cannot tell), an undo / redo applies, a pattern's levels
+                                        * are forgotten, the project is loaded; the manager's PATTERN INFO / STEPS carry it */
 } qd_hist_t;
 
 struct qd_app;

@@ -16,6 +16,11 @@ import { LAYOUT, LIB_BYTES, readImage, readLibrary, addPresets, tagNames } from 
 import { backupName, soundName, soundsName, soundFile, soundsFile, readSounds } from "./egfiles.js";
 import { mountEdit } from "./egedit.js";
 import { mountLibrary } from "./eglibrary.js";
+import { mountSeq } from "./egseqtab.js";
+import { mountHome } from "./eghome.js";
+import { mountMix } from "./egmix.js";
+import { mountKeys, SCREENS } from "./egkeys.js";
+import { runBoot } from "./egboot.js";
 
 const SIM = new URLSearchParams(location.search).has("sim");
 let sim = null;
@@ -47,6 +52,7 @@ function scene(kind) {
 function say(text, kind = "") {
   const s = $("status");
   s.textContent = text;
+  if (home && kind !== "busy") home.says(text);
   s.className = `status ${kind === "busy" ? "busy" : kind === "ok" ? "ok" : ""}`.trim();
   $("alert").textContent = "";
   scene(kind);
@@ -79,6 +85,7 @@ function keys() {
   for (const b of document.querySelectorAll("#presetrows button, #restorego, #importgo, #restoreno, #importno")) b.disabled = !on;
   if (edit) edit.render();
   if (library) library.render();
+  if (seq) seq.render();
 }
 // one job at a time; while the unit's store is being written, leaving the page asks first
 async function job(fn, { writes = false } = {}) {
@@ -122,6 +129,10 @@ function gone() {
   if (link) link.close();
   link = null; lib = null; toRestore = null; toImport = null;
   if (edit) edit.gone();
+  if (seq) seq.gone();
+  if (home) home.gone();
+  if (mix) mix.gone();
+  $("unitpill").textContent = "NO FM-1"; $("unitpill").classList.remove("on");
   if (library) library.clear();
   $("unit").textContent = "No FM-1 yet.";
   $("restoreplan").hidden = true; $("importplan").hidden = true;
@@ -176,6 +187,7 @@ async function connect() {
   say("Looking for an FM-1", "busy");
   link = await findUnit(access, { log });
   link.log = log;
+  if (SIM) link.gap = 0;                                  // (the simulated unit drops nothing: no spacing, no timers)
   try {
     const info = await link.info();
     if (!info) throw new Error(`${link.id} did not say where its store is. Start the FM-1 normally (not in safe mode) and try again`);
@@ -185,6 +197,9 @@ async function connect() {
     await readPresets();
     $("unit").textContent = `${version || "EVILGENIUS"} on an FM-1 (${link.id}), MIDI port "${link.port}"${SIM ? " (SIMULATED)" : ""}. Store ${lib.magic || "empty"}.`;
     await library.load({ quiet: true }).catch((e) => log(`LIST: ${e.message}`));
+    $("unitpill").textContent = `● ${link.id} USB${SIM ? " (SIM)" : ""}`; $("unitpill").classList.add("on");
+    if (!$("tab-home").hidden) await home.load().catch((e) => log(`HOME: ${e.message}`));
+    if (!$("tab-mix").hidden) await mix.load().catch((e) => log(`MIX: ${e.message}`));
     say(`Connected. ${plural(lib.presets.length, "preset")} in MY PRESETS.`, "ok");
   } catch (e) {
     const lost = e && e.code === "lost";
@@ -298,35 +313,42 @@ async function importNow() {
 }
 
 // ---- the tabs
-let edit = null, library = null;
+let edit = null, library = null, seq = null, home = null, mix = null;
 const ctx = { $, log, say, refuse, link: () => link, busy: () => working, job: (fn) => job(fn), download };
 library = mountLibrary({ ...ctx, edit: (snd, origin) => { edit.open(snd, origin); tab("edit"); } });
 edit = mountEdit({ ...ctx, onSaved: () => { library.load({ quiet: true }).catch(() => {}); } });
-const TABS = ["cabinet", "library", "edit"];
+seq = mountSeq(ctx);
+home = mountHome({ ...ctx, toSound: (t) => { tab("edit"); edit.readTrackOf(t); }, toSeq: (t) => { seq.track(t); tab("seq"); } });
+mix = mountMix(ctx);
+const TABS = SCREENS;
 function tab(name) {
   for (const t of TABS) {
     $(`t-${t}`).setAttribute("aria-selected", String(t === name));
     $(`tab-${t}`).hidden = t !== name;
   }
   edit.shown(name === "edit");
+  seq.show(name === "seq");
+  home.show(name === "home");
+  mix.show(name === "mix");
+  $("view").scrollTop = 0;
   try { sessionStorage.setItem("eg-tab", name); } catch (_) { /* (no storage: the first tab) */ }
 }
 for (const t of TABS) $(`t-${t}`).addEventListener("click", () => tab(t));
-$("tab-edit").parentElement.querySelector(".tabs").addEventListener("keydown", (e) => {
+mountKeys({ $, tab, current: () => TABS.find((t) => !$(`tab-${t}`).hidden) });
+document.querySelector(".fkeys").addEventListener("keydown", (e) => {
   const k = TABS.indexOf(document.activeElement.id.slice(2));
   if (k < 0 || (e.key !== "ArrowRight" && e.key !== "ArrowLeft")) return;
   const n = TABS[(k + (e.key === "ArrowRight" ? 1 : TABS.length - 1)) % TABS.length];
   tab(n); $(`t-${n}`).focus();
 });
-try { const t = sessionStorage.getItem("eg-tab"); if (TABS.includes(t)) tab(t); } catch (_) { /* (none) */ }
-// the console follows the page down: EDIT's strip of sources sits under it
-if (window.ResizeObserver) new ResizeObserver(() => document.documentElement.style.setProperty("--consoleh", `${$("console").offsetHeight}px`)).observe($("console"));
+try { const t = sessionStorage.getItem("eg-tab"); tab(TABS.includes(t) ? t : "home"); } catch (_) { tab("home"); }
+runBoot({ $, sim: SIM }).catch(() => {});
 // EDIT's read-back: the track followed while the unit changes it (one request a second at most, never during a job)
 let polling = false;
 setInterval(async () => {
   if (polling || working || !link) return;
   polling = true;
-  try { await edit.poll(); } catch (e) { if (e.code === "lost") { gone(); refuse("the FM-1 was unplugged"); } else log(`read-back: ${e.message}`); }
+  try { await edit.poll(); await seq.poll(); } catch (e) { if (e.code === "lost") { gone(); refuse("the FM-1 was unplugged"); } else log(`read-back: ${e.message}`); }
   finally { polling = false; }
 }, 1000);
 

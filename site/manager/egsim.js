@@ -5,6 +5,8 @@
 // preview, headless checks) and the Node tests. It answers what the page asks the way the unit does:
 //   - fm1-base's update handshake (the identity FM-1_4500) and EvilGenius's IDENTITY;
 //   - the port's bulk commands over a blank store of the unit's layout (FZBI, FZBR; FZSR refused: nothing restores here);
+//   - (2026-11-15) the open pattern read: PATTERN INFO, STEPS with their locks (a demo pattern: sim.pat; sim.editPat(fn)
+//     changes it and moves its revision, as the unit's undo would);
 //   - EvilGenius's own SysEx (egsysex.js): STATUS, PROJECTS, LIST, DUMP (MY PRESETS, the factory's, a track's), STORE6
 //     (into MY PRESETS, onto a track, an AUDITION), PARAM, TAGS, RENAME, DELETE, SWAP, BROWSE, USERS, FLUSH. Its
 //     factory presets and tracks are the unit's own (egsimdata.js); MY PRESETS starts empty.
@@ -16,9 +18,17 @@ import { LAYOUT } from "./egstore.js";
 import { CMD, CMD1, ST, SOURCE_TRACK, FLAGS, MIX_ID, unpack7, pack7, parseDump } from "./egsysex.js";
 import { valuesOf, blobOf, NP } from "./egsound.js";
 import { SIM_FACTORY, SIM_TRACKS } from "./egsimdata.js";
+import { emptyStep, stepWire, stepOf, tsetBytes, PM } from "./egseq.js";
+import { LOCKS, FUNCS } from "./egseqnames.js";
+const FUNCS_N = FUNCS.length;
 
 const hex = (s) => Uint8Array.from(s.match(/../g).map((x) => parseInt(x, 16)));
-const later = (fn) => setTimeout(fn, 1);
+// each reply on a later turn: a MessageChannel's (not a timer's: a hidden tab throttles timers to a second; Node: setImmediate)
+const later = typeof setImmediate === "function" ? setImmediate : (() => {
+  const ch = new MessageChannel(), q = [];
+  ch.port1.onmessage = () => { const fn = q.shift(); if (fn) fn(); };
+  return (fn) => { q.push(fn); ch.port2.postMessage(0); };
+})();
 const MIX_KEY = { [MIX_ID.PAN]: "pan", [MIX_ID.DELAY]: "delay", [MIX_ID.REVERB]: "reverb", [MIX_ID.CHORUS]: "chorus" };
 const u14 = (v) => [(v >> 7) & 127, v & 127];
 const nm12 = (s) => Array.from({ length: 12 }, (_, i) => (i < s.length ? s.charCodeAt(i) & 127 : 32));
@@ -36,10 +46,30 @@ export class SimUnit {
     this.projects = [{ name: "", there: true }, { name: "", there: true }, { there: false }, { there: false }];
     this.input = { name, state: "connected", onmidimessage: null, open: async () => {}, close: async () => {} };
     this.output = { name, state: "connected", open: async () => {}, close: async () => {}, send: (b) => this.take(Array.from(b)) };
+    this.pat = demoPattern(this.tracks.map((t) => t.name));
     this.access = { inputs: new Map([[name, this.input]]), outputs: new Map([[name, this.output]]), onstatechange: null, sysexEnabled: true };
   }
   out(bytes) { later(() => { if (this.input.onmidimessage && this.input.state === "connected") this.input.onmidimessage({ data: Uint8Array.from(bytes) }); }); }
   unplug() { this.input.state = this.output.state = "disconnected"; if (this.access.onstatechange) this.access.onstatechange({}); }
+  editPat(fn) { fn(this.pat); this.pat.rev = (this.pat.rev + 1) & 0x3FFF; }
+  // the unit's undo, as the sim keeps it: a level a gesture (writes within QUIET_MS of each other), a paste or a clear its
+  // own; each level the tracks before and after
+  gesture(own = false) {
+    const now = Date.now(), snap = () => JSON.stringify(this.pat.tracks.map((t) => ({ steps: t.steps, locks: t.locks })));
+    if (!this.hist) this.hist = { levels: [], pos: 0, open: null, last: 0 };
+    const h = this.hist;
+    if (h.open && (own || now - h.last > 500)) this.closeGesture();
+    if (!h.open) h.open = { before: snap() };
+    h.last = now;
+  }
+  closeGesture() {
+    const h = this.hist;
+    if (!h || !h.open) return;
+    const after = JSON.stringify(this.pat.tracks.map((t) => ({ steps: t.steps, locks: t.locks })));
+    if (after !== h.open.before) { h.levels.length = h.pos; h.levels.push({ before: h.open.before, after, kind: h.open.kind || 0 }); h.pos++; this.pat.rev = (this.pat.rev + 1) & 0x3FFF; }
+    h.open = null;
+  }
+  restore(json) { JSON.parse(json).forEach((t, k) => { this.pat.tracks[k].steps = t.steps; this.pat.tracks[k].locks = t.locks; }); this.pat.rev = (this.pat.rev + 1) & 0x3FFF; }
   // the unit's own hands: a knob turned on a track (the editor follows it), SELECT
   turn(t, id, v) { this.setValue(this.tracks[t], id, v); this.tracks[t].edited = true; }
   select(t) { this.sel = t; }
@@ -80,8 +110,8 @@ export class SimUnit {
   }
   status() {
     const used = this.mine.filter(Boolean).length;
-    return W.egFrame(0x42, [1, 6, (this.playing ? 1 : 0), this.project - 1, 0, this.projects.filter((p) => p.there).length, ...u14(used), ...u14(0),
-      0, 0, 0, ...u14(used * 2), ...u14(165), ...u14(48), ...u14(570), 0, this.sel, 1, LAYOUT.nproj, ...u14(LAYOUT.nlib)]);
+    return W.egFrame(0x42, [1, 6, (this.playing ? 1 : 0), this.project - 1, this.pat.pattern & 127, this.projects.filter((p) => p.there).length, ...u14(used), ...u14(0),
+      0, 0, 0, ...u14(used * 2), ...u14(165), ...u14(48), ...u14(570), 0, this.sel, 1, LAYOUT.nproj, ...u14(LAYOUT.nlib), ...u14(this.pat.rev)]);
   }
   rows(factory) {
     const out = [];
@@ -151,6 +181,131 @@ export class SimUnit {
         this.out(W.egFrame(0x50, [0, 0, ...u14(k + 1)]));
         return;
       }
+      case 0x32: {                                                    // PATTERN INFO
+        const P = this.pat, m = P.master;
+        const body = [P.pattern, ...u14(P.rev), ...u14(P.bpm), P.swing, (m >> 14) & 127, ...u14(m), ...u14(P.nlock()), 1, 6, 20, 44];
+        P.tracks.forEach((t) => body.push(...pack7(Array.from(tsetBytes(t.set))), ...nm12(t.name)));
+        this.out(W.egFrame(0x72, body));
+        return;
+      }
+      case 0x33: {                                                    // STEPS
+        const t = b[0] === 127 ? this.sel : b[0], first = b[1], end = b[2] ? first + b[2] : 128;
+        if (b.length < 4) { this.error(cmd, ST.BAD_LENGTH); return; }
+        if (t > 5) { this.error(cmd, ST.BAD_TRACK); return; }
+        if (end > 128) { this.error(cmd, ST.BAD_SLOT); return; }
+        const P = this.pat, tr = P.tracks[t];
+        for (let s = first; s < end; s += 32) {
+          const n = Math.min(32, end - s), body = [P.pattern, t, s, n, ...u14(P.rev)];
+          for (let k = 0; k < n; k++) body.push(...pack7(Array.from(stepWire(tr.steps[s + k]))));
+          this.out(W.egFrame(0x73, body));
+        }
+        if (b[3] & 1) {
+          const lk = tr.locks.filter((l) => l.step >= first && l.step < end);
+          let part = 0;
+          for (let i = 0; i === 0 || i < lk.length; i += 127, part++) {
+            const chunk = lk.slice(i, i + 127), last = i + 127 >= lk.length;
+            this.out(W.egFrame(0x74, [P.pattern, t, part, last ? 1 : 0, chunk.length,
+              ...chunk.flatMap((l) => { const v = l.value + (1 << 20); return [l.step, ...u14(l.id), (v >> 14) & 127, ...u14(v)]; })]));
+            if (last) break;
+          }
+        }
+        return;
+      }
+      case 0x34: case 0x35: case 0x36: {                              // STEP SET, LOCK SET, STEPS PUT
+        const P = this.pat, t = b[1] === 127 ? this.sel : b[1];
+        if (b[0] !== P.pattern) { this.ack(cmd, 12, t + 1, P.pattern + 1); return; }
+        if (t > 5) { this.ack(cmd, ST.BAD_TRACK, t + 1, 0); return; }
+        const tr = P.tracks[t], inMask = (s) => (b[2 + Math.floor(s / 7)] >> (s % 7)) & 1;
+        const s21 = (o) => ((b[o] << 14) | (b[o + 1] << 7) | b[o + 2]) - (1 << 20);
+        if (cmd === 0x36) {
+          const first = b[2], n = b[3];
+          if (b.length !== 4 + n * 23 || n > 24) { this.ack(cmd, ST.BAD_LENGTH, 0, 0); return; }
+          if (first + n > 128) { this.ack(cmd, ST.BAD_SLOT, t + 1, 0); return; }
+          this.gesture(true);
+          for (let k = 0; k < n; k++) {
+            const st = stepOf(unpack7(b.slice(4 + k * 23, 4 + k * 23 + 23)));
+            st.locked = false;
+            tr.steps[first + k] = st;
+            tr.locks = tr.locks.filter((l) => l.step !== first + k);
+          }
+          this.ack(cmd, 0, t + 1, n);
+          return;
+        }
+        let bad = 0, count = 0;
+        if (cmd === 0x34) {
+          this.gesture(false);
+          for (let k = 0, o = 22; k < b[21]; k++) {
+            const f = b[o];
+            const notes = f === 1 ? Array.from(b.slice(o + 2, o + 2 + b[o + 1])) : null, v = f === 1 ? 0 : s21(o + 1);
+            for (let s = 0; s < 128; s++) {
+              if (!inMask(s)) continue;
+              const ok = simField(tr, s, f, v, notes);
+              if (!ok) bad = bad || 13; else if (k === 0) count++;
+            }
+            o += f === 1 ? 2 + b[o + 1] : 4;
+          }
+        } else {
+          this.gesture(false);
+          for (let k = 0; k < b[21]; k++) {
+            const o = 22 + k * 6, op = b[o], id = (b[o + 1] << 7) | b[o + 2], v = s21(o + 3), r = LOCKS[id];
+            if (op > 2 || (op < 2 && !r) || (op === 0 && (v < r[1] || v > r[2]))) { bad = bad || 13; continue; }
+            for (let s = 0; s < 128; s++) {
+              if (!inMask(s)) continue;
+              if (op === 0) {
+                if (!tr.locks.some((l) => l.step === s && l.id === id) && P.nlock() >= 1024) { bad = 1; break; }
+                tr.locks = tr.locks.filter((l) => !(l.step === s && l.id === id)).concat([{ step: s, id, value: v }]);
+              } else tr.locks = tr.locks.filter((l) => !(l.step === s && (op === 2 || l.id === id)));
+              tr.steps[s].locked = tr.locks.some((l) => l.step === s);
+              count++;
+            }
+            if (bad === 1) break;
+          }
+          tr.locks.sort((x, y) => x.step - y.step || x.id - y.id);
+        }
+        this.ack(cmd, bad, t + 1, count);
+        return;
+      }
+      case 0x37: {                                                    // TRACK SET
+        const P = this.pat, t = b[1] === 127 ? this.sel : b[1];
+        if (b[0] !== P.pattern) { this.ack(cmd, 12, t + 1, P.pattern + 1); return; }
+        if (t > 5) { this.ack(cmd, ST.BAD_TRACK, t + 1, 0); return; }
+        if (b.length !== 3 + 4 * b[2]) { this.ack(cmd, ST.BAD_LENGTH, 0, 0); return; }
+        this.gesture(false);
+        const ts = P.tracks[t].set;
+        let bad = 0, done = 0;
+        for (let k = 0; k < b[2]; k++) {
+          const f = b[3 + 4 * k], o = 4 + 4 * k, v = ((b[o] << 14) | (b[o + 1] << 7) | b[o + 2]) - (1 << 20), pg = (v >> 4) & 7, st = v & 15;
+          const ok = f === 0 ? v >= 1 && v <= 255 && ((ts.loop = v), true)
+            : f === 1 ? v >= 0 && v < 128 && st <= ts.pend[pg] && ((ts.pstart[pg] = st), true)
+            : f === 2 ? v >= 0 && v < 128 && st >= ts.pstart[pg] && ((ts.pend[pg] = st), true)
+            : f === 3 ? v >= 0 && v < 21 && ((ts.rbase = Math.floor(v / 3)), (ts.rtype = v % 3), true)
+            : f === 4 ? (v === 0 || v === 1) && ((ts.swing = v), true)
+            : f === 5 ? v >= -48 && v <= 48 && ((ts.transpose = v), true)
+            : f === 6 ? (v === 0 || v === 1) && ((ts.mute = v), true)
+            : f === 7 ? simDef(ts.def, v >> 8, v & 255)
+            : f === 8 ? (v >> 8) < 6 && (v & 255) <= 127 && ((ts.def.slots[v >> 8] = v & 255), true) : false;
+          if (ok) done++; else bad = bad || 13;
+        }
+        this.ack(cmd, bad, t + 1, done);
+        return;
+      }
+      case 0x38: {                                                    // GO TO PATTERN (the sim has one pattern's content)
+        if (b[0] > 63) { this.ack(cmd, 12, 0, this.pat.pattern + 1); return; }
+        this.closeGesture && this.hist && this.closeGesture();
+        if (b[0] !== this.pat.pattern) { const keep = this.pat; this.pats = this.pats || {}; this.pats[keep.pattern] = keep;
+          this.pat = this.pats[b[0]] || emptyPattern(keep, b[0]); }
+        this.ack(cmd, 0, b[0] + 1, 1);
+        return;
+      }
+      case 0x39: {                                                    // UNDO / REDO
+        this.closeGesture();
+        const h = this.hist || { levels: [], pos: 0 };
+        if (b[0] ? h.pos >= h.levels.length : h.pos <= 0) { this.ack(cmd, ST.NOT_FOUND, b[0] ? 1 : 0, 0); return; }
+        const l = b[0] ? h.levels[h.pos++] : h.levels[--h.pos];
+        this.restore(b[0] ? l.after : l.before);
+        this.ack(cmd, 0, b[0] ? 1 : 0, l.kind + 1);
+        return;
+      }
       case CMD.PARAM: {
         const t = t0(b[0]), id = b[1], v = ((b[2] << 14) | (b[3] << 7) | b[4]) - (1 << 20);
         this.counts.params++;
@@ -203,4 +358,70 @@ export class SimUnit {
       default: this.error(cmd, ST.BAD_COMMAND);
     }
   }
+}
+
+// the simulated unit's open pattern: track 1 a four-on-the-floor, track 2 a bass line with a chord and locks, track 3 an
+// arpeggio over two pages; the others empty (QD_TSET: 1/16, a page of 16 looped, C4 at velocity 100)
+function demoPattern(names) {
+  const tset = () => ({ def: { slots: [60, 0, 0, 0, 0, 0], vel: 100, len: 4, micro: 0, ratch: 1, ramp: 0, chance: 100, cond: 0, type: 1, strum: 0 },
+    chan: 0, limit: 8, reserve: 0, rbase: 4, swing: 0, transpose: 0, mute: 0, loop: 1, pstart: [0, 0, 0, 0, 0, 0, 0, 0],
+    pend: [15, 15, 15, 15, 15, 15, 15, 15], scale: 0, root: 0, keyGlobal: 1, rtype: 0, mfx: 0, mout: 0 });
+  const tracks = names.map((name, k) => ({ name, set: { ...tset(), chan: k }, steps: Array.from({ length: 128 }, emptyStep), locks: [] }));
+  const note = (t, s, slots, vel = 100, more = {}) => {
+    const st = tracks[t].steps[s];
+    Object.assign(st, { on: true, type: 1, slots: [...slots, 0, 0, 0, 0, 0, 0].slice(0, 6), vel, ...more });
+    st.ovr |= (1 << PM.NOTE) | (1 << PM.VEL) | (more.len !== undefined ? 1 << PM.LEN : 0) | (more.cond !== undefined ? 1 << PM.COND : 0) |
+      (more.chance !== undefined ? 1 << PM.CHANCE : 0) | (more.sound !== undefined ? 1 << PM.SOUND : 0) | (more.micro !== undefined ? 1 << PM.MICRO : 0);
+  };
+  for (let s = 0; s < 16; s += 4) note(0, s, [36], 120);
+  [[0, [36], 110], [2, [48], 70], [4, [36, 40, 43], 100, { chance: 75, cond: 9, micro: 3, sound: 7 }], [7, [48], 60], [8, [39], 120],
+    [10, [51], 70], [12, [41], 105, { len: 6 }], [15, [48], 60]].forEach(([s, n, v, m]) => note(1, s, n, v, m));
+  tracks[1].locks.push({ step: 4, id: 31, value: 1600 }, { step: 4, id: 32, value: 9 }, { step: 4, id: 125, value: 80 },
+    { step: 8, id: 31, value: 700 }, { step: 12, id: 31, value: 1900 }, { step: 12, id: 119, value: -20 });
+  tracks[1].locks.forEach((l) => { tracks[1].steps[l.step].locked = true; });
+  for (let s = 0; s < 32; s += 2) note(2, s, [60 + [0, 3, 7, 10, 12, 10, 7, 3][(s / 2) % 8]], 90);
+  tracks[2].set.loop = 3;
+  return { pattern: 0, rev: 1, bpm: 120, swing: 50, master: 0, tracks, nlock() { return this.tracks.reduce((n, t) => n + t.locks.length, 0); } };
+}
+
+// one STEP SET field on one step of the simulated pattern, as the core's setters (pattern.c: own() makes a trig)
+function simField(tr, s, f, v, notes) {
+  const st = tr.steps[s];
+  const own = (pm) => { st.on = true; st.ovr |= 1 << pm; };
+  const inr = (x, lo, hi) => Number.isInteger(x) && x >= lo && x <= hi;
+  switch (f) {
+    case 0:
+      if (v === 4) { st.on = true; return true; }
+      if (v === 0) { tr.steps[s] = emptyStep(); tr.locks = tr.locks.filter((l) => l.step !== s); return true; }
+      if (!inr(v, 1, 3)) return false;
+      st.on = true; st.type = v; st.ovr |= 1 << PM.TRIG; return true;
+    case 1:
+      if (!notes.length) { st.ovr &= ~(1 << PM.NOTE); return true; }
+      if (notes.some((n) => !inr(n, 1, 127)) || new Set(notes).size !== notes.length) return false;
+      own(PM.NOTE); st.slots = [...notes, 0, 0, 0, 0, 0, 0].slice(0, 6); return true;
+    case 2: if (!inr(v, 1, 127)) return false; own(PM.VEL); st.vel = v; return true;
+    case 3: if (!inr(v, 0, 19)) return false; own(PM.LEN); st.len = v; return true;
+    case 4: if (!inr(v, -23, 23)) return false; own(PM.MICRO); st.micro = v; return true;
+    case 5: if (!inr(v & 15, 1, 8)) return false; own(PM.RATCH); st.ratch = v & 15; st.ramp = (v >> 4) & 3; return true;
+    case 6: if (!inr(v, 0, 43)) return false; own(PM.COND); st.cond = v; return true;
+    case 7: if (!inr(v, 0, 100)) return false; own(PM.CHANCE); st.chance = v; return true;
+    case 8: if (!inr(v, 0, 128)) return false; if (v) own(PM.SOUND); else st.ovr &= ~(1 << PM.SOUND); st.sound = v; return true;
+    case 9: if (!inr(v, 0, 23)) return false; own(PM.STRUM); st.strum = v; return true;
+    case 10: if (!inr(v, 0, FUNCS_N - 1)) return false; st.on = true; st.func = v; return true;
+    case 11: if (!inr(v, 0, 6)) return false; st.on = true; st.mfx = v; return true;
+    case 12: if (!inr(v, 0, 9)) return false; st.ovr &= ~(1 << v); return true;
+    case 13: tr.steps[s] = emptyStep(); tr.locks = tr.locks.filter((l) => l.step !== s); return true;
+    default: return false;
+  }
+}
+
+function simDef(d, pm, v) {
+  const r = { 1: ["vel", 1, 127], 2: ["len", 0, 19], 3: ["micro", -23, 23], 5: ["chance", 0, 100], 6: ["cond", 0, 43], 9: ["strum", 0, 23] }[pm];
+  if (!r || v < r[1] || v > r[2]) return false;
+  d[r[0]] = v;
+  return true;
+}
+function emptyPattern(like, n) {
+  return { ...like, pattern: n, rev: like.rev + 1, tracks: like.tracks.map((t) => ({ name: t.name, set: JSON.parse(JSON.stringify(t.set)),
+    steps: Array.from({ length: 128 }, emptyStep), locks: [] })) };
 }

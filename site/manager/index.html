@@ -4,7 +4,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>EVILGENIUS manager: back up an FM-1, move its presets</title>
+<title>EVILGENIUS Manager</title>
 <meta name="description" content="Back up and restore an M-VAVE FM-1 running EVILGENIUS, edit its sounds live, keep its library, export and import its presets, from the browser over USB.">
 <link rel="stylesheet" href="../css/eg.css">
 <style>
@@ -43,7 +43,7 @@
 .edname { display: flex; flex-wrap: wrap; gap: calc(var(--px) * 3); align-items: center; margin: calc(var(--px) * 3) 0; }
 .edname input { width: 14ch; text-transform: uppercase; }
 .edtags { display: inline-flex; gap: var(--px); flex-wrap: wrap; }
-.edroute { display: flex; flex-wrap: wrap; gap: calc(var(--px) * 2); align-items: center; padding: calc(var(--px) * 2); border: var(--px) dashed var(--blue); margin: 0 0 calc(var(--px) * 3); position: sticky; top: var(--consoleh, 0px); z-index: 1; background: var(--black); }
+.edroute { display: flex; flex-wrap: wrap; gap: calc(var(--px) * 2); align-items: center; padding: calc(var(--px) * 2); border: var(--px) dashed var(--blue); margin: 0 0 calc(var(--px) * 3); position: sticky; top: calc(var(--px) * -3); z-index: 1; background: var(--black); }
 .edroute .pads { display: inline-flex; flex-wrap: wrap; gap: var(--px); }
 .chip { cursor: grab; padding: var(--px) calc(var(--px) * 2); border: var(--px) solid var(--c, var(--grey)); background: var(--black); line-height: 0; }
 .chip[aria-pressed="true"] { background: var(--blue); outline: var(--px) solid var(--yellow); }
@@ -67,6 +67,53 @@
 .edpick .pl { display: flex; flex-wrap: wrap; gap: var(--px); margin-top: calc(var(--px) * 2); max-height: 50vh; overflow: auto; }
 .edpick .key { padding: var(--px) calc(var(--px) * 2); box-shadow: none; }
 .edpick .key.on { border-color: var(--yellow); background: var(--blue); }
+/* SEQUENCE */
+.sqpats { display: grid; grid-template-columns: repeat(16, minmax(0, 1fr)); gap: 3px; margin: 0 0 calc(var(--px) * 3); }
+.sqpats .key { padding: 3px 0; font: 11px var(--mono); box-shadow: none; justify-content: center; color: var(--grey); }
+.sqpats .key.used { color: var(--white); border-color: var(--lightblue); }
+.sqpats .key.on { border-color: var(--yellow); background: var(--blue); color: var(--yellow); }
+@media (max-width: 700px) { .sqpats { grid-template-columns: repeat(8, minmax(0, 1fr)); } }
+.sqtop, .sqtracks { display: flex; flex-wrap: wrap; gap: calc(var(--px) * 2); align-items: center; margin: 0 0 calc(var(--px) * 3); }
+.sqtop .key, .sqtracks .key, .sqinsp .key, .sqoct .key { padding: var(--px) calc(var(--px) * 2); box-shadow: none; font-family: var(--mono); font-size: 13px; line-height: 1.2; }
+.sqtracks .key.on, .seg .key.inloop { border-color: var(--yellow); }
+.seg .key.inloop[aria-pressed="false"] { background: #0c0b2a; }
+.sqbody { display: flex; flex-wrap: wrap; gap: calc(var(--px) * 4); align-items: flex-start; }
+.sqmain { flex: none; overflow-x: auto; max-width: 100%; }
+.sqroll { display: flex; }
+.sqkeys { width: 44px; flex: none; }
+.sqk { height: 14px; box-sizing: border-box; background: var(--lightgrey); border-bottom: 1px solid var(--grey); color: var(--black); font-size: 9px; line-height: 13px; padding-left: 3px; }
+.sqk.b { background: var(--darkgrey); }
+.sqgrid { position: relative; background: #0c0b2a; flex: none; cursor: crosshair; touch-action: none; }
+.sqrow { position: absolute; left: 0; right: 0; height: 14px; border-bottom: 1px solid #1a1846; }
+.sqrow.b { background: #06051a; }
+.sqcol { position: absolute; top: 0; bottom: 0; width: 24px; border-left: 1px solid #262363; pointer-events: none; }
+.sqcol.beat { border-left-color: var(--blue); }
+.sqcol.page { border-left: 3px solid var(--yellow); }
+.sqcol.out { background: rgba(0, 0, 0, 0.45); }
+.sqcol.sel { background: rgba(237, 241, 113, 0.12); }
+.sqn { position: absolute; height: 12px; padding: 0; border: 2px solid var(--black); cursor: pointer; }
+.sqn.v0 { background: var(--blue); } .sqn.v1 { background: var(--lightblue); } .sqn.v2 { background: var(--cyan); } .sqn.v3 { background: var(--lightred); }
+.sqn.lk { border-bottom-color: var(--yellow); }
+.sqn.sel { border-color: var(--yellow); }
+.sqoct { display: flex; gap: var(--px); align-items: center; margin: var(--px) 0 0 44px; }
+.sqlane { display: flex; border-top: 3px dotted var(--blue); margin-top: var(--px); }
+.sqll { width: 44px; flex: none; font-size: 9px; line-height: 11px; color: var(--grey); padding-top: 4px; }
+.sqll select { width: 44px; font-size: 9px; padding: 1px; border-width: 2px; }
+.sqlv { position: relative; height: 46px; flex: none; cursor: ns-resize; touch-action: none; }
+.sqtext .sqlv { height: 24px; cursor: default; }
+.sqbar { position: absolute; bottom: 2px; width: 16px; background: var(--lightblue); }
+.sqbar.sel { background: var(--yellow); }
+.sqbar.lock { background: var(--cyan); }
+.sqtag { position: absolute; top: 4px; font-size: 10px; color: var(--cyan); white-space: nowrap; }
+.sqtag.snd { color: var(--lightred); }
+.sqinsp { flex: 1 1 260px; min-width: 0; border: var(--px) solid var(--blue); padding: calc(var(--px) * 3); font-size: 13px; }
+.sqinsp h3 { line-height: 1.3; color: var(--yellow); margin: calc(var(--px) * 2) 0; font-size: 13px; }
+.sqf { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 3px 0; }
+.sqf span { color: var(--grey); font-size: 11px; }
+.sqf input, .sqf select, .sqlk input, .sqlk select { width: 9em; padding: 2px 4px; border-width: 2px; font-size: 12px; }
+.sqlk { display: flex; gap: 4px; align-items: center; margin: 3px 0; }
+.sqlk span { flex: 1; }
+@media (max-width: 900px) { .sqbody { flex-direction: column; } .sqinsp { width: 100%; box-sizing: border-box; } }
 @media (max-width: 640px) {
   .tiles { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); }
   .edroute { position: static; }
@@ -76,62 +123,156 @@
   #lb-table td:nth-child(3) { grid-column: 2; color: var(--grey); }
   #lb-table td.acts { grid-column: 1 / -1; justify-content: flex-start; border-bottom: 2px solid var(--blue); padding-bottom: 10px; }
 }
+
+
+/* HOME */
+.homegrid { display: grid; grid-template-columns: minmax(280px, 0.8fr) minmax(0, 1.2fr); gap: calc(var(--px) * 4); }
+@media (max-width: 900px) { .homegrid { grid-template-columns: 1fr; } }
+.hbrain { display: flex; flex-direction: column; gap: calc(var(--px) * 3); }
+.jar { display: flex; flex-direction: column; align-items: center; gap: 8px; margin: 0; }
+.jar px-sprite canvas { max-width: 100%; height: auto !important; }
+.awake { margin: 0; font-size: 12px; color: var(--grey); }
+.awake.on { color: var(--lightgreen); }
+.hsays { border-color: var(--green); margin: 0; }
+.lab { font-size: 12px; color: var(--lightblue); letter-spacing: 1px; margin: 0 0 6px; }
+.hsays .says { font-size: 18px; line-height: 1.4; color: var(--lightgreen); margin: 0; max-width: none; }
+.hsays .cur { display: inline-block; width: 0.6em; height: 1em; background: var(--lightgreen); margin-left: 6px; vertical-align: -2px; animation: blink 1s steps(2) infinite; }
+.hright { display: flex; flex-direction: column; gap: calc(var(--px) * 3); min-width: 0; }
+.hright .box { margin: 0; }
+.hhead { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; font-size: 12px; }
+.voices { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: calc(var(--px) * 2); }
+.voice { border: var(--px) solid var(--darkgrey); padding: 6px; line-height: 0; }
+.voice p { line-height: 1.3; font-size: 12px; margin: 4px 0 0; }
+.htracks { display: flex; flex-direction: column; gap: 4px; }
+.htrack { display: grid; grid-template-columns: 30px minmax(70px, 130px) 70px minmax(120px, 1fr); gap: 10px; align-items: center; padding: 4px 6px; border: var(--px) solid var(--black); background: var(--black); color: var(--white); font: 13px var(--mono); text-align: left; cursor: pointer; }
+.htrack.on { border-color: var(--yellow); background: #0c0b2a; }
+.htrack .hn { background: var(--blue); text-align: center; padding: 3px 0; }
+.htrack .hwave svg { height: 30px; }
+.hsteps { display: grid; grid-template-columns: repeat(16, minmax(0, 1fr)); gap: 3px; }
+.hsteps i { display: block; height: 16px; border: 2px solid var(--blue); }
+.hsteps i.on { background: var(--lightblue); }
+.htrack.on .hsteps i.on { background: var(--yellow); }
+/* SOUND's pictures */
+.edsec .pic { border: var(--px) solid var(--lightblue); margin: 0 0 calc(var(--px) * 2); background: var(--black); }
+/* MIX */
+.mxcols { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: calc(var(--px) * 3); margin: calc(var(--px) * 3) 0; }
+@media (max-width: 700px) { .mxcols { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.mxcol { border: var(--px) solid var(--blue); padding: 8px; }
+.mxcol.on { border-color: var(--yellow); }
+.mxbars { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; height: 220px; }
+.mxbar { position: relative; background: repeating-linear-gradient(180deg, #000 0 6px, #2e2c9b 6px 8px); border: 2px solid var(--blue); cursor: ns-resize; touch-action: none; }
+.mxbar.cur { border-color: var(--yellow); }
+.mxbar i { position: absolute; left: 2px; right: 2px; bottom: 0; }
+.mxnames { margin: 4px 0 0; font-size: 11px; color: var(--grey); letter-spacing: 0.9em; }
+.mxtrack { margin: 4px 0 0; color: var(--white); font-size: 13px; }
+
+
+/* SOUND as the mockup lays it out: a rail of the sound's controls, the pages a grid of panels (picture over values) */
+#tab-edit:not([hidden]) { display: grid; grid-template-columns: 300px minmax(0, 1fr); column-gap: calc(var(--px) * 4); align-items: start; }
+#ed-body:not([hidden]) { display: contents; }
+#tab-edit .edtop, #tab-edit .edname, #tab-edit .edacts, #tab-edit .edroute, #tab-edit .edjump, #tab-edit .edkeys { grid-column: 1; }
+#tab-edit .edpanel { grid-column: 2; grid-row: 1 / span 12; display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: calc(var(--px) * 3); align-content: start; }
+#tab-edit .edpanel .edsec { margin: 0; }
+#tab-edit .edhelp { grid-column: 1 / -1; }
+#tab-edit .edtop .key, #tab-edit .edacts .key { padding: calc(var(--px) * 1.5) calc(var(--px) * 2.5); }
+#tab-edit .edtop .keys, #tab-edit .edacts { gap: calc(var(--px) * 2); }
+#tab-edit .edroute { position: static; }
+#tab-edit .tiles { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); }
+@media (max-width: 1000px) {
+  #tab-edit:not([hidden]) { display: block; }
+}
+
+/* ---- THE APP (2026-11-15, the mockup "EVILGENIUS Manager: C64 webapp"): the whole window one C64 screen in its light
+ * blue border, no page scroll; the F-key bar on top, the status line under, each screen scrolling inside */
+html, body { height: 100%; overflow: hidden; }
+body.app { background: var(--lightblue); }
+.frame { position: fixed; inset: 0; padding: clamp(6px, 1.6vw, 24px); display: flex; }
+.scr { flex: 1; min-width: 0; min-height: 0; background: var(--black); display: flex; flex-direction: column; }
+.topbar { flex: none; display: flex; align-items: center; gap: calc(var(--px) * 2); flex-wrap: wrap; padding: calc(var(--px) * 2) calc(var(--px) * 3); border-bottom: var(--px) dotted var(--blue); }
+.topbar .logo { text-decoration: none; line-height: 0; margin-right: calc(var(--px) * 3); }
+.fkeys { display: flex; gap: calc(var(--px) * 2); flex-wrap: wrap; }
+.fkeys button { cursor: pointer; padding: calc(var(--px) * 2) calc(var(--px) * 2); border: var(--px) solid var(--blue); background: var(--black); line-height: 0; display: inline-flex; gap: 6px; align-items: center; }
+.fkeys button[aria-selected="true"] { border-color: var(--yellow); background: var(--blue); }
+.fkeys button:hover { background: var(--blue); }
+.topbar .right { margin-left: auto; display: flex; gap: calc(var(--px) * 2); align-items: center; flex-wrap: wrap; }
+.pill { font: 12px/1.2 var(--mono); padding: 6px 10px; border: var(--px) solid var(--darkgrey); color: var(--lightgrey); }
+.pill.on { border-color: var(--green); color: var(--lightgreen); }
+.topbar .key { padding: var(--px) calc(var(--px) * 2); box-shadow: none; }
+.view { flex: 1; min-height: 0; overflow: auto; padding: calc(var(--px) * 3) calc(var(--px) * 4); }
+.view > section { min-height: 100%; }
+.statusline { flex: none; display: flex; align-items: center; gap: calc(var(--px) * 3); border-top: var(--px) dotted var(--blue); padding: calc(var(--px) * 1.5) calc(var(--px) * 3); min-height: 44px; }
+.statusline.bad { border-top-color: var(--lightred); } .statusline.good { border-top-color: var(--green); }
+.statusline .ready { flex: none; line-height: 0; }
+.statusline .says { flex: 1; min-width: 0; display: flex; align-items: center; gap: calc(var(--px) * 3); }
+.statusline .status, .statusline #alert { margin: 0; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: none; }
+.statusline #alert:empty { display: none; }
+.statusline .bar { width: 160px; flex: none; }
+.statusline .hint { flex: none; color: var(--grey); font-size: 12px; }
+.statusline .scene { display: flex; gap: 4px; align-items: flex-end; flex: none; }
+@media (max-width: 760px) { .statusline .hint, .statusline .bar { display: none; } .topbar .logo { display: none; } }
+/* the boot, the title, HELP: over everything */
+.overlay { position: fixed; inset: 0; z-index: 20; display: flex; padding: clamp(6px, 1.6vw, 24px); }
+.overlay[hidden] { display: none; }
+.boot { background: repeating-linear-gradient(180deg, #706deb 0 14px, #edf171 14px 20px, #2e2c9b 20px 31px, #c46c71 31px 36px, #75cec8 36px 47px, #706deb 47px 59px, #56ac4d 59px 63px, #8e3c97 63px 72px); background-size: 100% 72px; animation: raster 0.35s steps(6) infinite; }
+@keyframes raster { to { background-position: 0 72px; } }
+@media (prefers-reduced-motion: reduce) { .boot { animation: none; } }
+.bootscr { flex: 1; background: var(--blue); padding: clamp(16px, 4vw, 48px); font: clamp(12px, 1.6vw, 18px)/2 var(--mono); color: #b4b2ff; overflow: hidden; }
+.bootscr p { margin: 0; max-width: none; white-space: pre-wrap; }
+.bootscr .cur { display: inline-block; width: 0.7em; height: 1em; background: #b4b2ff; vertical-align: -2px; animation: blink 1s steps(2) infinite; }
+.titlescr { background: var(--lightblue); }
+.titlescr .scr { align-items: center; justify-content: center; gap: calc(var(--px) * 4); text-align: center; overflow: hidden; }
+.titlescr .press { animation: blink 1.2s steps(2) infinite; }
+.helpscr .scr { padding: calc(var(--px) * 5); overflow: auto; }
+.helpgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: calc(var(--px) * 4); }
+.helpgrid section { border: var(--px) solid var(--blue); padding: calc(var(--px) * 3); }
+.helpgrid h3 { line-height: 1.4; margin: 0 0 8px; color: var(--yellow); }
+.helpgrid dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; margin: 0; font-size: 13px; }
+.helpgrid dt { color: var(--black); background: var(--lightgrey); padding: 0 5px; border-bottom: 3px solid var(--grey); white-space: nowrap; justify-self: start; }
+.helpgrid dd { margin: 0; color: var(--white); }
 </style>
 <script type="module" src="../js/px.js"></script>
 <script type="module" src="./manager.js"></script>
 </head>
-<body>
-<div class="screen">
-  <header class="head">
-    <a href="../" aria-label="EVILGENIUS, home"><px-text font="big" scale="3" color="lightred" shadow="red">EVIL</px-text> <px-text font="big" scale="3" color="white" shadow="darkgrey">GENIUS</px-text></a>
-    <span class="where"><px-text font="small" scale="3" color="lightblue">MANAGER</px-text></span>
-    <nav class="nav" aria-label="Pages">
-      <a href="../"><px-text font="small" scale="2" color="white">HOME</px-text></a>
-      <a href="../try/"><px-text font="small" scale="2" color="white">TRY</px-text></a>
-      <a href="../install/"><px-text font="small" scale="2" color="white">INSTALL</px-text></a>
-      <a href="./" aria-current="page"><px-text font="small" scale="2" color="white">MANAGER</px-text></a>
+<body class="app">
+<div class="frame">
+<div class="scr">
+  <header class="topbar">
+    <a class="logo" href="../" aria-label="EVILGENIUS, the site"><px-text font="big" scale="2" color="lightred" shadow="red">EVIL</px-text> <px-text font="big" scale="2" color="white" shadow="darkgrey">GENIUS</px-text></a>
+    <nav class="fkeys" role="tablist" aria-label="Screens (F1..F6, or ALT + 1..6)">
+      <button id="t-home" role="tab" aria-selected="true" aria-controls="tab-home" type="button"><px-text font="small" scale="2" color="yellow">F1</px-text><px-text font="big" scale="2" color="white">HOME</px-text></button>
+      <button id="t-library" role="tab" aria-selected="false" aria-controls="tab-library" type="button"><px-text font="small" scale="2" color="yellow">F2</px-text><px-text font="big" scale="2" color="white">LIBRARY</px-text></button>
+      <button id="t-edit" role="tab" aria-selected="false" aria-controls="tab-edit" type="button"><px-text font="small" scale="2" color="yellow">F3</px-text><px-text font="big" scale="2" color="white">SOUND</px-text></button>
+      <button id="t-seq" role="tab" aria-selected="false" aria-controls="tab-seq" type="button"><px-text font="small" scale="2" color="yellow">F4</px-text><px-text font="big" scale="2" color="white">SEQUENCE</px-text></button>
+      <button id="t-mix" role="tab" aria-selected="false" aria-controls="tab-mix" type="button"><px-text font="small" scale="2" color="yellow">F5</px-text><px-text font="big" scale="2" color="white">MIX</px-text></button>
+      <button id="t-cabinet" role="tab" aria-selected="false" aria-controls="tab-cabinet" type="button"><px-text font="small" scale="2" color="yellow">F6</px-text><px-text font="big" scale="2" color="white">CABINET</px-text></button>
     </nav>
+    <div class="right">
+      <span id="unitpill" class="pill">NO FM-1</span>
+      <button id="connect" class="key go" type="button"><px-text font="big" scale="2" color="white">CONNECT</px-text></button>
+      <button id="disconnect" class="key plain hide" type="button"><px-text font="big" scale="2" color="white">DISCONNECT</px-text></button>
+      <button id="helpkey" class="key plain" type="button" aria-label="Every key (?)"><px-text font="big" scale="2" color="white">?</px-text></button>
+    </div>
   </header>
-  <hr class="rule">
 
-  <main>
-    <h1><px-text font="big" scale="3" color="yellow">THE CABINET</px-text></h1>
-    <p style="margin-top:16px">This page copies what an FM-1 running EVILGENIUS keeps: its projects and MY PRESETS. Save them to a file, put a file back, and move presets between units. <strong>LIBRARY</strong> keeps its sounds; <strong>EDIT</strong> edits one, on the unit as you go if you like. It needs <strong>Chrome or Edge on a computer</strong> (Web MIDI) and the FM-1's <strong>USB cable</strong>. Nothing is installed, and nothing leaves this computer.</p>
+  <main class="view" id="view">
     <div id="nomidi" class="box bad" hidden>
       <p><strong>This browser cannot talk to the FM-1.</strong> It has no Web MIDI. Open this page in Chrome or Edge on a computer.</p>
     </div>
-
-    <div id="console" class="box lit console">
-      <div class="scene" aria-hidden="true">
-        <px-sprite id="actor" name="AGENT_STAND" scale="3"></px-sprite>
-        <px-sprite id="prop" class="prop" name="CABINET" scale="3"></px-sprite>
-      </div>
-      <div class="says">
-        <p id="status" class="status" role="status" aria-live="polite">Not connected.</p>
-        <div class="bar" role="progressbar" aria-label="Progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="bar"><i id="barfill"></i></div>
-        <p id="alert" class="status err" role="alert"></p>
-      </div>
-    </div>
-
+    <section id="tab-home" role="tabpanel" aria-labelledby="t-home"></section>
+    <section id="tab-library" role="tabpanel" aria-labelledby="t-library" hidden></section>
+    <section id="tab-edit" role="tabpanel" aria-labelledby="t-edit" hidden></section>
+    <section id="tab-seq" role="tabpanel" aria-labelledby="t-seq" hidden></section>
+    <section id="tab-mix" role="tabpanel" aria-labelledby="t-mix" hidden></section>
+    <section id="tab-cabinet" role="tabpanel" aria-labelledby="t-cabinet" hidden>
+    <h1><px-text font="big" scale="3" color="yellow">THE CABINET</px-text></h1>
+    <p style="margin-top:16px">What an FM-1 running EVILGENIUS keeps: its projects and MY PRESETS. Save them to a file, put a file back, move presets between units. It needs <strong>Chrome or Edge on a computer</strong> (Web MIDI) and the FM-1's <strong>USB cable</strong>. Nothing is installed, and nothing leaves this computer.</p>
     <h2><px-text font="big" scale="2" color="lightblue">1 CONNECT</px-text></h2>
     <div class="box">
       <p>Plug the FM-1 into this computer with a USB <strong>data</strong> cable and switch it on. Close other tabs and apps that use MIDI. The browser asks once for permission to use MIDI devices: allow it. Bluetooth is not used here.</p>
-      <div class="keys">
-        <button id="connect" class="key go" type="button"><px-sprite name="TERMINAL" scale="2"></px-sprite><px-text font="big" scale="2" color="white">CONNECT</px-text></button>
-        <button id="disconnect" class="key plain hide" type="button"><px-text font="big" scale="2" color="white">DISCONNECT</px-text></button>
-      </div>
       <p id="unit" class="dim">No FM-1 yet.</p>
     </div>
 
-    <nav class="tabs" role="tablist" aria-label="The manager's tabs">
-      <button id="t-cabinet" role="tab" aria-selected="true" aria-controls="tab-cabinet" type="button"><px-text font="big" scale="2" color="white">CABINET</px-text></button>
-      <button id="t-library" role="tab" aria-selected="false" aria-controls="tab-library" type="button"><px-text font="big" scale="2" color="white">LIBRARY</px-text></button>
-      <button id="t-edit" role="tab" aria-selected="false" aria-controls="tab-edit" type="button"><px-text font="big" scale="2" color="white">EDIT</px-text></button>
-    </nav>
 
-    <section id="tab-library" role="tabpanel" aria-labelledby="t-library" hidden></section>
-    <section id="tab-edit" role="tabpanel" aria-labelledby="t-edit" hidden></section>
-    <section id="tab-cabinet" role="tabpanel" aria-labelledby="t-cabinet">
     <h2><px-text font="big" scale="2" color="lightblue">2 BACK UP AND RESTORE</px-text></h2>
     <div class="box">
       <p>A backup is the FM-1's whole store in one <code>.egbak</code> file: every project and all of MY PRESETS. Restoring a backup <strong>replaces everything</strong> in the store with what the file holds. Stop the FM-1 before either, and leave it alone until it is done.</p>
@@ -177,13 +318,48 @@
         <tbody id="presetrows"></tbody>
       </table>
     </div>
+    
+    <p class="foot">A backup is the file <code>firmware/tools/fizz_xdata.py backup</code> writes, so either tool reads the other's. The link is adapted from FIZZ's manager and <a href="https://github.com/charlesvestal/fm1-base">fm1-base</a>'s installer (MPL-2.0). EVILGENIUS is <a href="https://github.com/Quixotic7/evilgenius">open source</a>, MPL-2.0. Not affiliated with M-VAVE.</p>
     </section>
   </main>
 
-  <footer class="foot">
-    <hr class="rule">
-    <p>A backup is the file <code>firmware/tools/fizz_xdata.py backup</code> writes, so either tool reads the other's. The link is adapted from FIZZ's manager and <a href="https://github.com/charlesvestal/fm1-base">fm1-base</a>'s installer (MPL-2.0). EVILGENIUS is <a href="https://github.com/Quixotic7/evilgenius">open source</a>, MPL-2.0. Not affiliated with M-VAVE.</p>
+  <footer id="console" class="statusline lit">
+    <div class="scene" aria-hidden="true">
+      <px-sprite id="actor" name="AGENT_STAND" scale="2"></px-sprite>
+      <px-sprite id="prop" class="prop" name="CABINET" scale="2"></px-sprite>
+    </div>
+    <span class="ready"><px-text font="big" scale="2" color="white">READY.</px-text></span>
+    <div class="says">
+      <p id="status" class="status" role="status" aria-live="polite">Not connected.</p>
+      <p id="alert" class="status err" role="alert"></p>
+    </div>
+    <div class="bar" role="progressbar" aria-label="Progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="bar"><i id="barfill"></i></div>
+    <span class="hint" id="hint">F1..F6 THE SCREENS · ? EVERY KEY</span>
   </footer>
+</div>
+</div>
+
+<div id="boot" class="overlay boot" hidden aria-hidden="true">
+  <div class="bootscr"><div id="boot-lines"></div></div>
+</div>
+<div id="title" class="overlay titlescr" hidden>
+  <div class="scr">
+    <px-sprite name="GENIUS_BIG" scale="4"></px-sprite>
+    <div><px-text font="big" scale="6" color="lightred" shadow="red">EVIL</px-text></div>
+    <div><px-text font="big" scale="6" color="white" shadow="darkgrey">GENIUS</px-text></div>
+    <px-text font="small" scale="3" color="cyan">THE MANAGER</px-text>
+    <button id="title-go" class="key plain press" type="button"><px-text font="big" scale="2" color="yellow">PRESS SPACE</px-text></button>
+  </div>
+</div>
+<div id="help" class="overlay helpscr" hidden role="dialog" aria-modal="true" aria-labelledby="help-h">
+  <div class="scr">
+    <div style="display:flex;align-items:center;gap:16px;margin-bottom:16px">
+      <px-sprite name="GENIUS_HA" scale="3"></px-sprite>
+      <h2 id="help-h" style="margin:0"><px-text font="big" scale="3" color="yellow">EVERY KEY</px-text></h2>
+      <button id="help-close" class="key plain" type="button" style="margin-left:auto"><px-text font="big" scale="2" color="white">ESC</px-text></button>
+    </div>
+    <div class="helpgrid" id="help-grid"></div>
+  </div>
 </div>
 </body>
 </html>

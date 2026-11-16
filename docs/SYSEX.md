@@ -333,6 +333,90 @@ track's DUMP's extras `browse`. `site/manager/fizzlink.js`: `link.browse(track, 
 `sx_browse`, `core/app/ctl_presets.c` `qd_br_goto`; tests: `core/tests/test_sysex.c` `browse_tests`,
 `site/tools/test_manager.mjs` (the simulated unit's OCT keys).
 
+### `32` PATTERN INFO, `33` STEPS: the open pattern, read (EvilGenius, 2026-11-15)
+
+The manager's piano roll (docs/SEQ-SYSEX-PLAN.md, phase 1). EvilGenius's frames are `F0 7D 45 47 01 ..` (this file's
+`7D 46 5A` is FIZZ's). Both read the pattern the unit has open (the one its panel edits, STATUS's pattern); nothing
+is written, and both run while playing. An EVILGENIUS without them answers `7F 07 32` / `7F 07 33` (BAD COMMAND).
+Bytes are 7 bits; "packed" is this file's 7-bit packing (groups of 7 bytes, their top bits first).
+
+**`32` PATTERN INFO** (no body) -> `72`:
+
+| bytes | |
+| --- | --- |
+| 1 | the pattern, 0..63 (bank A..D x 16) |
+| 2 | its revision (14 bits): moves whenever the unit's undo sees the pattern change (a gesture closed with a change, an undo or redo, a pattern's levels forgotten, a project loaded); STATUS carries it too |
+| 2, 1 | bpm (30..300), swing (50..80) |
+| 3 | master length (21 bits): 0 AUTO, 16..1024, 65535 INF |
+| 2, 1 | the pattern's locks (of 1024), used |
+| 1, 1, 1 | tracks (6), a step's bytes (20), a track's settings' bytes (44) |
+| 6 x (51 + 12) | each track: its `qd_tset_t` packed (44 bytes: the step defaults, channel, voices, rate, swing, transpose, mute, the loop's pages and each page's start and end, scale, root, MIDI FX, MIDI OUT; the pattern record's own layout), then its sound's name (12, spaces) |
+
+**`33` STEPS** `<track> <first> <count> <flags>` -> `73` replies, then `74`:
+
+| field | |
+| --- | --- |
+| track | 0..5; `7F` the selected one |
+| first | 0..127 |
+| count | 1..127; 0: to step 128 |
+| flags | `01`: the steps' locks too |
+
+`73`: the pattern, the track, the first step, n (at most 32), the revision (2), then each step's 20 bytes
+(`qd_step_wire`: the override bits (2), flags (`01` a trig, `80` it has locks), the trig type, the six note slots,
+velocity, length index, micro (signed), ratchet (count - 1, ramp << 4), chance, condition, sound lock (0..128), strum,
+step function, MIDI FX) packed on their own: 23 bytes a step. `74` (with `01`): the pattern, the track, the part (0..),
+last (1 on the final one), n (at most 127), then each lock: its step, its id (2: the sound's values 0..118, then PAN
+DELAY REVERB CHORUS LEVEL CRUSH ROBOT WARP GLITCH TV, 119..128), its value + 2^20 (3). A range with no locks still
+gets one `74`, empty and last. The replies go out as the reply ring has room, as DUMP's do. Errors: `7F` BAD TRACK,
+BAD SLOT (a range past step 128), BAD LENGTH, `33`.
+
+**STATUS** (`42`) now always carries the package byte (`00` the USB package, `01` the Bluetooth one), its projects and
+MY PRESETS' places, then the open pattern's revision (2): 37 bytes from `F0` to `F7`.
+
+`site/manager/egsysex.js`: `pinfoRequest()`, `stepsRequest({track, first, count, locks})`, `parsePinfo`, `parseSteps`,
+`parseLocks`; `site/manager/egseq.js` decodes the steps and settings; `site/manager/eglink.js`: `link.patternInfo()`,
+`link.steps(track, {first, count, locks})`. Code: `core/app/fizz_sx.c` `sx_pinfo`, `sx_steps`, `sx_steps_part`;
+`core/app/undo.c` (the revision). Tests: `core/tests/test_sysex.c` `seq_read_tests` (`--seq-frames FILE` writes the
+replies for `tools/eg/manager_test.mjs`).
+
+### `34` STEP SET, `35` LOCK SET, `36` STEPS PUT, `39` UNDO: the open pattern, written (EvilGenius, 2026-11-15)
+
+Phase 2 of docs/SEQ-SYSEX-PLAN.md: the manager edits the pattern the unit has open, as its panel does, while playing
+too. Every write begins with **the pattern the page believes is open** (0..63) and the track (0..5, `7F` the
+selected): another pattern open answers BAD PATTERN (12) with b = the open pattern + 1, and changes nothing. Each write
+is an input to the unit's undo: writes within half a second of each other are **one undo level** (a drag, as a knob's
+turn); STEPS PUT and a CLEAR are a level of their own. The pattern is saved as the panel's edits are (the store hashes
+it). Values are 3 x 7 bits + 2^20, as PARAM's. The **step mask** is 19 bytes: step s is bit s % 7 of byte s / 7. The
+reply is ACK (`52`): a = the track + 1, b = the steps (or locks) changed; the status is the first refusal's: BAD
+PATTERN, BAD TRACK, BAD VALUE (13: a value the core's setter refuses), FULL (the pattern's 1024 locks), BAD LENGTH.
+
+| command | body |
+| --- | --- |
+| `34` STEP SET | pattern, track, mask, n, then n fields: field, value (3); NOTES: field, count, the notes (count bytes). Fields: 0 TRIG (0 NONE: the step and its locks cleared; 1 NOTE, 2 LOCK, 3 TIE: a trig of that type; 4 a plain trig, the tap), 1 NOTES (a chord, up to 6; count 0: the track's notes again), 2 VEL, 3 LEN (index), 4 MICRO, 5 RATCHET (count 1..8 \| ramp << 4), 6 COND, 7 CHANCE, 8 SOUND (0..128), 9 STRUM, 10 FUNC, 11 MFX, 12 RESET (a QD_PM_* back to the track's), 13 CLEAR. Setting a value on an empty step makes a trig, as on the panel |
+| `35` LOCK SET | pattern, track, mask, n (at most 16), then n entries: op (0 set, 1 clear that id, 2 clear every lock), id (2), value (3). The id's range is `qd_lock_range`'s (site/manager/egseqnames.js LOCKS). FULL stops it: what went in stays (b says how many) |
+| `36` STEPS PUT | pattern, track, first, n (at most 24), each step's 20 bytes packed on its own (23 bytes): the steps replaced, their old locks cleared (a paste; 24 steps make a 564-byte frame, under the unit's 640) |
+| `39` UNDO | 0 undo, 1 redo: the unit's own (SHIFT + F1 / F2), one history for the panel and the page; b = the level's kind + 1; NOT FOUND when there is none |
+
+`site/manager/egsysex.js`: `stepSetRequest`, `lockSetRequest`, `stepsPutRequest`, `undoRequest`, `FIELD`, `maskOf`;
+`site/manager/eglink.js`: `link.stepSet`, `link.lockSet`, `link.stepsPut`, `link.undo`. Code: `core/app/fizz_sx.c`
+`sx_stepset`, `sx_lockset`, `sx_stepsput`, `sx_undo`; tests: `core/tests/test_sysex.c` `seq_write_tests`
+(`--seq-writes FILE`: the frames it sends, which `tools/eg/manager_test.mjs` compares with the page's own).
+
+### `37` TRACK SET, `38` GO TO PATTERN (EvilGenius, 2026-11-15)
+
+Phase 3. **`37` TRACK SET** `<pattern> <track> <n>` then n fields (field, value 3 x 7 bits + 2^20), each a change of
+the track's settings in the open pattern (one undo input, as STEP SET's; BAD PATTERN, BAD TRACK, BAD VALUE as above):
+0 LOOP (the page mask, 1..255), 1 PSTART / 2 PEND (page << 4 | step: a page's first / last step, never start past
+end), 3 RATE (a rate code, base x 3 + type), 4 SWING (0 / 1), 5 TRANSPOSE (-48..48), 6 MUTE (0 / 1), 7 DEF (QD_PM_*
+<< 8 | value: a step default, `qd_tdef_set`), 8 DEFNOTE (slot << 8 | pitch). ACK b = the fields taken.
+
+**`38` GO TO PATTERN** `<pattern 0..63>`: as the unit's own pattern keys: stopped, at once (a pattern not in RAM is
+chosen once it is read in); playing, with the project's launch (END, BAR, BEAT, NOW). ACK a = the pattern + 1, b = 1
+done now, 2 later. PATTERN INFO and STATUS say which pattern is open; the writes refuse the old one (BAD PATTERN).
+
+`site/manager/egsysex.js`: `trackSetRequest`, `TFIELD`, `gotoRequest`; `eglink.js`: `link.trackSet`, `link.gotoPattern`;
+code: `core/app/fizz_sx.c` `sx_trackset`, `sx_tfield`, `sx_goto`; tests: `core/tests/test_sysex.c` `seq_phase3_tests`.
+
 ## What FIZZ does with a sound
 
 - **Stores it** in the LIBRARY slot or POOL number, with its name. A LIBRARY import becomes one of MY presets: its own

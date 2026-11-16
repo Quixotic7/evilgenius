@@ -43,7 +43,7 @@ export const FLAGS = { POOL: 0x01, BATCH: 0x02, LOAD: 0x04, DUMP: 0x08, AUDITION
 // reply, ignored as it is; P2-B: AUDITION onto the track only, OWN the owner's preset)
 export const MIX = { PAN: 0x01, CHORUS: 0x02, DELAY: 0x04, REVERB: 0x08 };
 export const STATUS = ["OK", "FULL", "BAD LENGTH", "BAD CHECKSUM", "BAD PATCH", "BAD SLOT", "BAD VERSION", "BAD COMMAND",
-  "BUSY", "NOT FOUND", "IN USE", "BAD TRACK"];   // (8..11: the web manager's Phase 1)
+  "BUSY", "NOT FOUND", "IN USE", "BAD TRACK", "BAD PATTERN", "BAD VALUE"];   // (8..11: the web manager's Phase 1)
 // the web manager's Phase 1 (docs/SYSEX.md): its commands, replies, sources, PROJECT's ops, STATUS's flags
 export const CMD1 = { STATUS: 0x02, FLUSH: 0x03, TAGS: 0x12, RENAME: 0x13, DELETE: 0x14, SWAP: 0x15, POOLREF: 0x16,
   USERS: 0x17, PROJECTS: 0x23, PROJECT: 0x24 };
@@ -237,7 +237,10 @@ export function parseStatus(bytes) {
     ...(b.length >= 31 ? { sel: b[28] } : {}),
     // the package (docs/SYSEX.md "The package"): the Bluetooth one appends its byte, its projects, its MY PRESETS'
     // places; a reply without them is the USB package's (8 and 256)
-    ...(b.length >= 35 && b[29] & 1 ? { package: "ble", nproj: b[30], nlib: r14(b, 31) } : { package: "usb", nproj: 8, nlib: 256 }) };
+    ...(b.length >= 35 && b[29] & 1 ? { package: "ble", nproj: b[30], nlib: r14(b, 31) }
+      : b.length >= 35 ? { package: "usb", nproj: b[30], nlib: r14(b, 31) } : { package: "usb", nproj: 8, nlib: 256 }),
+    // 2026-11-15: the open pattern's revision last (both packages now carry the package bytes before it)
+    ...(b.length >= 37 ? { rev: r14(b, 33) } : {}) };
 }
 export function parseUsers(bytes) {
   const b = body1(bytes, REPLY1.USERS);
@@ -255,6 +258,99 @@ export function parseProjects(bytes) {
       name: String.fromCharCode(...b.slice(o + 1, o + 13)).trimEnd(), pages: r14(b, o + 13) });
   return { current: b[6] + 1, list };
 }
+
+// ---- 2026-11-15: the pattern open on the unit, read (core/app/fizz_sx.h QD_SX_PINFO, QD_SX_STEPS; docs/SEQ-SYSEX-PLAN.md)
+//   pinfoRequest() -> 72 {pattern, rev, bpm, swing, master, nlock, used, tracks: [{tset (the record's bytes), name}]}
+//   stepsRequest({track, first, count, locks}) -> 73 {pattern, track, first, steps: [20-byte wire]} .., then (locks)
+//   74 {pattern, track, part, last, locks: [{step, id, value}]}
+export const CMD_SEQ = { PINFO: 0x32, STEPS: 0x33, STEPSET: 0x34, LOCKSET: 0x35, STEPSPUT: 0x36, TRACKSET: 0x37, GOTO: 0x38, UNDO: 0x39 };
+export const REPLY_SEQ = { PINFO: 0x72, STEPS: 0x73, LOCKS: 0x74 };
+export const STEP_WIRE = 20;
+export const pinfoRequest = () => frame(CMD_SEQ.PINFO, []);
+export function stepsRequest({ track = "selected", first = 0, count = 0, locks = false } = {}) {
+  const t = track === "selected" ? 127 : track;
+  return frame(CMD_SEQ.STEPS, [t & 0x7f, first & 0x7f, count & 0x7f, locks ? 1 : 0]);
+}
+const p7 = (n) => n + Math.floor((n + 6) / 7);
+export function parsePinfo(bytes) {
+  const b = body1(bytes, REPLY_SEQ.PINFO);
+  if (!b || b.length < 24) return null;
+  const nt = b[18], wire = b[19], tz = b[20], tracks = [];
+  let o = 21;
+  for (let t = 0; t < nt; t++) {
+    if (o + p7(tz) + NAME_LEN > b.length - 2) return null;
+    tracks.push({ tset: unpack7(b.slice(o, o + p7(tz))), name: String.fromCharCode(...b.slice(o + p7(tz), o + p7(tz) + NAME_LEN)).trimEnd() });
+    o += p7(tz) + NAME_LEN;
+  }
+  return { pattern: b[6], rev: r14(b, 7), bpm: r14(b, 9), swing: b[11], master: (b[12] << 14) | r14(b, 13), nlock: r14(b, 15),
+    used: !!b[17], wire, tsetSize: tz, tracks };
+}
+export function parseSteps(bytes) {
+  const b = body1(bytes, REPLY_SEQ.STEPS);
+  if (!b || b.length < 14) return null;
+  const n = b[9], steps = [];
+  for (let k = 0, o = 12; k < n; k++, o += p7(STEP_WIRE)) {
+    if (o + p7(STEP_WIRE) > b.length - 2) return null;
+    steps.push(unpack7(b.slice(o, o + p7(STEP_WIRE))));
+  }
+  return { pattern: b[6], track: b[7], first: b[8], rev: r14(b, 10), steps };
+}
+export function parseLocks(bytes) {
+  const b = body1(bytes, REPLY_SEQ.LOCKS);
+  if (!b || b.length < 13) return null;
+  const n = b[10], locks = [];
+  for (let k = 0, o = 11; k < n; k++, o += 6) {
+    if (o + 6 > b.length - 2) return null;
+    locks.push({ step: b[o], id: r14(b, o + 1), value: ((b[o + 3] << 14) | r14(b, o + 4)) - (1 << 20) });
+  }
+  return { pattern: b[6], track: b[7], part: b[8], last: !!b[9], locks };
+}
+
+// ---- 2026-11-15, phase 2: the open pattern written (fizz_sx.h QD_SX_STEPSET .. QD_SX_UNDO). Every write names the
+// pattern the page means (another one open: BAD PATTERN, b = the open one + 1); its ACK: a = the track + 1, b = the
+// steps (or locks) changed. The unit's undo takes a run of them within half a second as one level (a drag), a paste
+// and a clear a level of their own.
+//   stepSetRequest({pattern, track, steps: [0..127], fields: [[FIELD.VEL, 100], [FIELD.NOTES, [48, 52, 55]], ..]})
+//   lockSetRequest({pattern, track, steps, entries: [{op: "set" | "clear" | "clearAll", id, value}]})   (<= 16)
+//   stepsPutRequest({pattern, track, first, wires: [20-byte steps]})   (<= 24: a paste; their old locks cleared)
+//   undoRequest(redo)
+export const FIELD = { TRIG: 0, NOTES: 1, VEL: 2, LEN: 3, MICRO: 4, RATCH: 5, COND: 6, CHANCE: 7, SOUND: 8, STRUM: 9, FUNC: 10,
+  MFX: 11, RESET: 12, CLEAR: 13 };
+export const TRIG_ON = 4;                               // TRIG's value: a plain trig (0 NONE clears the step, 1..3 its type)
+export const MASK_LEN = 19, PUT_PER = 24, LOCKSET_PER = 16;
+export function maskOf(steps) {
+  const m = new Array(MASK_LEN).fill(0);
+  for (const s of steps) if (s >= 0 && s < 128) m[Math.floor(s / 7)] |= 1 << (s % 7);
+  return m;
+}
+const s21 = (v) => { const x = (Math.round(v) + (1 << 20)) >>> 0; return [(x >> 14) & 0x7f, (x >> 7) & 0x7f, x & 0x7f]; };
+const head = (pattern, track) => [pattern & 0x7f, (track === "selected" ? 127 : track) & 0x7f];
+export function stepSetRequest({ pattern, track, steps, fields }) {
+  const body = [...head(pattern, track), ...maskOf(steps), fields.length];
+  for (const [f, v] of fields) {
+    if (f === FIELD.NOTES) { const n = (v || []).slice(0, 6); body.push(f, n.length, ...n.map((x) => x & 0x7f)); }
+    else body.push(f, ...s21(v ?? 0));
+  }
+  return frame(CMD_SEQ.STEPSET, body);
+}
+const LOCK_OP = { set: 0, clear: 1, clearAll: 2 };
+export function lockSetRequest({ pattern, track, steps, entries }) {
+  if (entries.length > LOCKSET_PER) throw new Error(`LOCK SET: ${LOCKSET_PER} entries at most`);
+  return frame(CMD_SEQ.LOCKSET, [...head(pattern, track), ...maskOf(steps), entries.length,
+    ...entries.flatMap((e) => [LOCK_OP[e.op] ?? 0, ((e.id || 0) >> 7) & 0x7f, (e.id || 0) & 0x7f, ...s21(e.value || 0)])]);
+}
+export function stepsPutRequest({ pattern, track, first, wires }) {
+  if (wires.length > PUT_PER) throw new Error(`STEPS PUT: ${PUT_PER} steps at most`);
+  return frame(CMD_SEQ.STEPSPUT, [...head(pattern, track), first & 0x7f, wires.length, ...wires.flatMap((w) => pack7(Array.from(w)))]);
+}
+export const undoRequest = (redo = false) => frame(CMD_SEQ.UNDO, [redo ? 1 : 0]);
+// phase 3: a track's settings (TFIELD; PSTART / PEND: page << 4 | step; DEF: pm << 8 | value; DEFNOTE: slot << 8 |
+// pitch), and the pattern the unit goes to (as its pattern keys; ACK b 1 now, 2 queued or once read in)
+export const TFIELD = { LOOP: 0, PSTART: 1, PEND: 2, RATE: 3, SWING: 4, TRANSPOSE: 5, MUTE: 6, DEF: 7, DEFNOTE: 8 };
+export function trackSetRequest({ pattern, track, fields }) {
+  return frame(CMD_SEQ.TRACKSET, [...head(pattern, track), fields.length, ...fields.flatMap(([f, v]) => [f, ...s21(v)])]);
+}
+export const gotoRequest = (pattern) => frame(CMD_SEQ.GOTO, [pattern & 0x7f]);
 
 export function parseReply(bytes) {
   const b = Array.from(bytes);
@@ -274,6 +370,9 @@ export function parseReply(bytes) {
   if (kind === REPLY1.STATUS) return { kind: "status", ...parseStatus(bytes) };
   if (kind === REPLY1.USERS) return { kind: "users", ...parseUsers(bytes) };
   if (kind === REPLY1.PROJECTS) return { kind: "projects", ...parseProjects(bytes) };
+  if (kind === REPLY_SEQ.PINFO) { const r = parsePinfo(bytes); return r && { kind: "pinfo", ...r }; }
+  if (kind === REPLY_SEQ.STEPS) { const r = parseSteps(bytes); return r && { kind: "steps", ...r }; }
+  if (kind === REPLY_SEQ.LOCKS) { const r = parseLocks(bytes); return r && { kind: "locks", ...r }; }
   return null;
 }
 

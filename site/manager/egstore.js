@@ -315,3 +315,20 @@ export function addPresets(image, sounds, { magic = "" } = {}) {
   writeStore(out, LAYOUT.lib.base, LAYOUT.lib.nsec, list, mg, LAYOUT.lib.reserve);
   return { image: out, added, skipped };
 }
+
+// 2026-11-15 (SEQUENCE's patterns, docs/SEQ-SYSEX-PLAN.md phase 4's overview): which of a project's 64 patterns the
+// store holds, and which of those have content (persist.c ser_pat: 'P', its version, the step's and the settings'
+// sizes, master (2), swing, used). prjBytes: the projects' sectors alone (LAYOUT.prj), or a whole image
+//   patternsOf(bytes, project 1..4) -> [{k, there, used}] x 64
+export function patternsOf(bytes, project) {
+  let img = bytes;
+  if (bytes.length === LAYOUT.prj.nsec * SECTOR) {           // (the projects' sectors read alone: placed in an image)
+    img = new Uint8Array(LAYOUT.size).fill(0xFF);
+    img.set(bytes, LAYOUT.prj.base);
+  }
+  const st = mount(img, LAYOUT.prj.base, LAYOUT.prj.nsec);
+  return Array.from({ length: 64 }, (_, k) => {
+    const r = get(st, rkey(RK.PAT, project - 1, k));
+    return { k, there: !!r, used: !!(r && r.length > 7 && r[0] === 0x50 && r[7]) };
+  });
+}

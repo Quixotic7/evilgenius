@@ -23,6 +23,7 @@ import { SECTIONS, MIX, ID, NLFO, MOD_SOURCES, info, text, clampV, defaults, blo
 import { parseDump, trackFrame, TAGS } from "./egsysex.js";
 import { Live, destOf, plan, unroute, PADS } from "./eglive.js";
 import { help } from "./eghelp.js";
+import { picture } from "./egpics.js";
 import { soundFile, soundName, readSounds, cleanName } from "./egfiles.js";
 
 const LFO_COL = ["cyan", "yellow", "lightred"];          // (the unit's LFO 3 is violet: the page's purple is too dark on black)
@@ -41,7 +42,8 @@ const srcName = (src) => (src.kind === "lfo" ? `LFO ${src.k + 1}` : MOD_SOURCES[
 export function mountEdit(ctx) {
   const { $, log, say, refuse } = ctx;
   const S = { snd: null, base: null, baseFrame: null, origin: null, live: null, liveOn: false, armed: null, lastEdit: 0,
-    chan: 0, target: 0, kept: null, oct: 4, held: new Map(), shown: false, tiles: new Map(), auditioned: false };
+    chan: 0, target: 0, kept: null, oct: 4, held: new Map(), shown: false, tiles: new Map(), auditioned: false,
+    pics: new Map(), picsDue: false };
   const root = $("tab-edit");
 
   // ---- the frame of the tab (built once)
@@ -112,6 +114,12 @@ export function mountEdit(ctx) {
       const box = el("section", "box edsec");
       box.id = `ed-sec-${sec.key}`;
       const h = el("h3"); h.append(px(sec.title, "big", 2, "yellow")); box.append(h);
+      if (picture(sec.key, defaults())) {                 // (the unit's picture of this page, over its values)
+        const pic = el("div", "pic");
+        pic.dataset.key = sec.key;
+        S.pics.set(sec.key, pic);
+        box.append(pic);
+      }
       sec.rows.forEach((row, r) => {
         if (sec.labels[r]) { const l = el("div", "rowl"); l.append(px(sec.labels[r], "small", 2, "grey")); box.append(l); }
         const g = el("div", "tiles");
@@ -271,6 +279,7 @@ export function mountEdit(ctx) {
     S.lastEdit = now();
     if (!quiet) renderTile(id);
     if (id >= ID.LFO0 && id < ID.VMODE) renderRoutes();
+    renderPics();
     renderHead();
     sendLive(id, v);
   }
@@ -314,7 +323,18 @@ export function mountEdit(ctx) {
       }
     }
   }
-  function renderTiles() { for (const id of S.tiles.keys()) renderTile(id); renderRoutes(); }
+  function renderTiles() { for (const id of S.tiles.keys()) renderTile(id); renderRoutes(); renderPics(); }
+  // the pictures, drawn again at most once a frame while values move
+  function renderPics() {
+    if (S.picsDue) return;
+    S.picsDue = true;
+    const draw = () => {
+      S.picsDue = false;
+      if (!S.snd || S.snd.midi) return;
+      for (const [key, node] of S.pics) node.innerHTML = picture(key, S.snd.values);
+    };
+    if (typeof requestAnimationFrame === "function") requestAnimationFrame(draw); else draw();
+  }
   const describe = (o) => !o ? "" : o.kind === "track" ? `TRACK ${o.track === "selected" ? `${S.target + 1} (SELECTED)` : o.track + 1} OF THE FM-1`
     : o.kind === "mine" ? `MY PRESETS ${o.slot}` : o.kind === "factory" ? `FACTORY ${o.slot}` : o.kind === "file" ? `FILE ${o.name}` : "NEW (INIT)";
   const mineSlot = () => (S.origin && S.origin.kind === "mine" ? S.origin.slot : S.saved || 0);
@@ -497,6 +517,7 @@ export function mountEdit(ctx) {
 
   return {
     open, poll, render, state: S, readTrack,
+    readTrackOf(t) { $("ed-track").value = String(t); if (ctx.link()) ctx.job(() => readTrack()); },
     shown(v) { S.shown = v; if (!v) { allOff(); closePick(); arm(null); } },
     gone() { S.live = null; S.kept = null; S.auditioned = false; S.liveOn = false; if (S.origin && S.origin.kind === "track") S.origin = { kind: "file", name: "the FM-1's track (unplugged)" }; render(); },
   };

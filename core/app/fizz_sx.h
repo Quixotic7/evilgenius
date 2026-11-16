@@ -96,6 +96,58 @@ enum { QD_SXP_LOAD = 1, QD_SXP_NEW, QD_SXP_COPY, QD_SXP_DELETE };   /* PROJECT's
  * bits). ACK (a = the track + 1, b = the browser's place + 1): BAD TRACK, NOT FOUND (no such preset), BUSY (a name
  * being typed on the unit), BAD LENGTH */
 #define QD_SX_BROWSE 0x31
+/* 2026-11-15 (docs/SEQ-SYSEX-PLAN.md, phase 1: reading the pattern open on the unit, the one qd_ctl_pat edits):
+ *   PATTERN INFO (32 -> 72): no body. Reply: the pattern (0..63), its revision (2 x 7 bits: qd_hist_t.rev, moves when
+ *     the unit's undo sees the pattern change), bpm (2), swing, master (3: 0 AUTO, 16..1024, 65535 INF), nlock (2),
+ *     used, tracks (6), QD_STEP_WIRE (20), sizeof (qd_tset_t) (44); then each track: its qd_tset_t's bytes packed 7 bits
+ *     a byte (as the store's pattern record holds them), its sound's name (12, spaces).
+ *   STEPS (33 -> 73, then 74): track (0..5, 127 the selected), first step (0..127), count (1..127; 0: to step 128),
+ *     flags (01: their locks too). Replies, paced as DUMP's (the ring's room): 73 pattern, track, first, n (<= 32),
+ *     revision (2), each step's QD_STEP_WIRE bytes packed on their own (23 bytes a step); then, with 01, 74 pattern,
+ *     track, part, last, n (<= QD_SX_LOCKS_PER), each lock: step, id (2), value + 2^20 (3). An error: 7F BAD TRACK /
+ *     BAD SLOT / BAD LENGTH, 33 */
+#define QD_SX_PINFO 0x32
+#define QD_SX_STEPS 0x33
+/* phase 2 (writing the open pattern; every write starts with the pattern the page believes is open: another one is
+ * BAD PATTERN, b = the open pattern + 1; each write is an input to the undo, so a run of them within its quiet time is
+ * one level, as a knob's turn; STEPS PUT and CLEAR an operation's level of their own). The step mask: 19 bytes, step
+ * s = bit s % 7 of byte s / 7. ACK 52: a = the track + 1, b = the steps (or locks) changed; the first refusal's status:
+ *   STEP SET (34): pattern, track, mask, n, then n fields: field, value (3 x 7 bits, + 2^20); NOTES: field, count, the
+ *     notes (count bytes). Fields QD_SXF_*: each the core's setter on every step in the mask (BAD VALUE: out of range)
+ *   LOCK SET (35): pattern, track, mask, n (<= 16), then n entries: op (0 set, 1 clear the id, 2 clear every lock),
+ *     id (2 x 7 bits), value (3 x 7 bits, + 2^20). FULL: the pattern's 1024 are used (what went in stays: b says)
+ *   STEPS PUT (36): pattern, track, first, n (<= 24), the steps' QD_STEP_WIRE bytes packed on their own (23 bytes a
+ *     step): the steps replaced, their locks cleared (a paste)
+ *   UNDO (39): 0 undo, 1 redo: the unit's own (SHIFT + F1 / F2); b = the level's kind + 1, NOT FOUND: none */
+#define QD_SX_STEPSET 0x34
+#define QD_SX_LOCKSET 0x35
+#define QD_SX_STEPSPUT 0x36
+#define QD_SX_UNDO 0x39
+/* phase 3 (2026-11-15):
+ *   TRACK SET (37): pattern, track, n, then n fields: field, value (3 x 7 bits, + 2^20). Fields QD_SXT_*: LOOP (the
+ *     page mask, 1..255), PSTART / PEND (page << 4 | step: a page's first / last step, start <= end), RATE (a rate code,
+ *     qd_tset_set_rate), SWING (0 / 1), TRANSPOSE (-48..48), MUTE (0 / 1), DEF (pm << 8 | value: a step default,
+ *     qd_tdef_set), DEFNOTE (k << 8 | pitch: a default note slot, qd_tdef_set_note). One undo input, as STEP SET's
+ *   GO TO PATTERN (38): pattern (0..63): as the unit's pattern keys (the project's launch while playing; stopped and not
+ *     in RAM: chosen once it is read in). ACK b = 1 now, 2 later (queued, or once read in) */
+#define QD_SX_TRACKSET 0x37
+#define QD_SX_GOTO 0x38
+enum { QD_SXT_LOOP, QD_SXT_PSTART, QD_SXT_PEND, QD_SXT_RATE, QD_SXT_SWING, QD_SXT_TRANSPOSE, QD_SXT_MUTE, QD_SXT_DEF,
+       QD_SXT_DEFNOTE, QD_SXT_N };
+#define QD_SX_MASK 19
+#define QD_SX_PUT_PER 24
+#define QD_SX_LOCKSET_PER 16
+enum { QD_SXF_TRIG, QD_SXF_NOTES, QD_SXF_VEL, QD_SXF_LEN, QD_SXF_MICRO, QD_SXF_RATCH, QD_SXF_COND, QD_SXF_CHANCE,
+       QD_SXF_SOUND, QD_SXF_STRUM, QD_SXF_FUNC, QD_SXF_MFX, QD_SXF_RESET, QD_SXF_CLEAR, QD_SXF_N };
+/* (TRIG's value: QD_TRIG_NONE clears the step and its locks, NOTE / LOCK / TIE a trig of that type, 4 a plain trig (the
+ * tap); RATCH's: count | ramp << 4; RESET's: a QD_PM_* back to the track's) */
+#define QD_SXF_TRIG_ON 4
+#define QD_SX_R_PINFO 0x72
+#define QD_SX_R_STEPS 0x73
+#define QD_SX_R_LOCKS 0x74
+#define QD_SXP_LOCKS 0x01u             /* STEPS' flags: the locks too */
+#define QD_SX_STEPS_PER 32             /* a 73 reply's steps at most (32 x 23 + 10 bytes) */
+#define QD_SX_LOCKS_PER 127            /* a 74 reply's locks at most (its count is one 7-bit byte: 127 x 6 + 13 bytes) */
 /* STORE's mixmask (with LOAD): which of pan, chorus, delay, reverb the track takes */
 #define QD_SXM_PAN 0x01u
 #define QD_SXM_CHORUS 0x02u
@@ -104,7 +156,8 @@ enum { QD_SXP_LOAD = 1, QD_SXP_NEW, QD_SXP_COPY, QD_SXP_DELETE };   /* PROJECT's
 
 /* the statuses */
 enum { QD_SX_OK, QD_SX_FULL, QD_SX_BAD_LENGTH, QD_SX_BAD_CHECKSUM, QD_SX_BAD_PATCH, QD_SX_BAD_SLOT, QD_SX_BAD_VERSION,
-       QD_SX_BAD_COMMAND, QD_SX_BUSY, QD_SX_NOT_FOUND, QD_SX_IN_USE, QD_SX_BAD_TRACK };   /* (8..11: Phase 1) */
+       QD_SX_BAD_COMMAND, QD_SX_BUSY, QD_SX_NOT_FOUND, QD_SX_IN_USE, QD_SX_BAD_TRACK,   /* (8..11: Phase 1) */
+       QD_SX_BAD_PATTERN, QD_SX_BAD_VALUE };   /* (12, 13: the sequencer's writes, 2026-11-15) */
 
 #define QD_SX_NAME 12
 #define QD_SX_BLOB 96
@@ -143,6 +196,8 @@ typedef struct {
     uint32_t r, w;
     int lbl_sub;                       /* P1.6l: LABELS subscribed .. */
     int job, job_flags, job_src, job_at, job_part;   /* P1.6m: a LIST / DUMP going out (0 none): its cursor, its part */
+    int job_first, job_end, job_li, job_stage;   /* (2026-11-15) STEPS: its range, the lock within the step, steps (0)
+                                        * or locks (1) */
     uint32_t lbl_count, lbl_hash, lbl_ms;   /* .. the set's change count, its hash, when last looked at */
     const char *version;               /* the identity's version ("FIZZ 0.6.4-p1.5r"; the glue sets it) */
     uint32_t frames, errors;           /* (counters) */

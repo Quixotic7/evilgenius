@@ -35,8 +35,10 @@ void qd_undo_init(qd_app_t *a)
 #endif
 }
 
+#define UNDO_MOVED(u) ((u)->rev = (uint16_t)(((u)->rev + 1u) & 0x3FFFu))   /* (the pattern may have changed) */
 void qd_undo_reset(qd_app_t *a)
 {
+    UNDO_MOVED(&a->undo);
     a->undo.open = 0;
     a->undo.hold = 0;
     a->undo.n = a->undo.pos = 0;
@@ -377,6 +379,7 @@ static FZ_COLD void undo_close(qd_app_t *a)
     u->hold = 0;                                        /* (T1: a held gesture let go) */
 #ifdef QD_UNDO_SLOTS
     if (!u->b_ok || u->xl_over) {                       /* (the gesture's before not kept: no level) */
+        UNDO_MOVED(u);                                  /* (what changed is not known: it may have) */
         u->open = 0;
         g_free(u);
         return;
@@ -385,6 +388,7 @@ static FZ_COLD void undo_close(qd_app_t *a)
     undo_regions(a, now, was, sz);
 #ifdef QD_UNDO_SLOTS
     if (!undo_S) {                                      /* (P2.1b: no room to read the before in: no level) */
+        UNDO_MOVED(u);
         u->open = 0;
         g_free(u);
         return;
@@ -406,6 +410,7 @@ static FZ_COLD void undo_close(qd_app_t *a)
 #define LVL_TOP QD_UNDO_POOL
 #endif
     if (u->xl_over) {                                   /* (P1.5w: the other patterns' locks: too many) */
+        UNDO_MOVED(u);
         u->open = 0;
 #ifdef QD_UNDO_SLOTS
         g_free(u);
@@ -424,6 +429,7 @@ static FZ_COLD void undo_close(qd_app_t *a)
 #endif
         return;                                         /* nothing changed: no level */
     }
+    UNDO_MOVED(u);
     if (u->pos < u->n) {                                /* a new edit after undoing: the redo levels go */
         u->used = u->pos ? u->lvl[u->pos - 1].off + u->lvl[u->pos - 1].len : 0u;
         u->n = u->pos;
@@ -553,6 +559,7 @@ void qd_undo_forget_pat(qd_app_t *a, int k)
 {
     qd_hist_t *u = &a->undo;
     int i, last = -1;
+    UNDO_MOVED(u);
     for (i = 0; i < u->n; i++)
         if (u->lvl[i].pat == k)
             last = i;
@@ -584,6 +591,8 @@ int qd_undo_step(qd_app_t *a, int dir)
         u->pos++;
     }
     u->open = 0;                                        /* (the undo itself is no edit) */
+    if (k >= 0)
+        UNDO_MOVED(u);
     return k;
 }
 
