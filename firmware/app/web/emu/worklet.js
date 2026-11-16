@@ -89,6 +89,16 @@ class Fm1 extends AudioWorkletProcessor {
       this.ex.web_boot();
       this.eg.writes = this.eg.sent = this.ex.eg_web_store_writes();
       this.port.postMessage({ type: "eg-rebooted" });
+    } else if (m.type === "eg-call") {                // a call of the firmware's own (fz_port.c eg_web_mfx, eg_web_tools): its text back
+      const f = this.ex[m.fn];
+      let text = "";
+      if (f) {
+        const at = f(...(m.args || [])) >>> 0, mem = new Uint8Array(this.mem.buffer);
+        let end = at;
+        while (mem[end]) end++;
+        text = String.fromCharCode(...mem.subarray(at, Math.min(end, at + 49152)));
+      }
+      this.port.postMessage({ type: "eg-called", id: m.id, text });
     } else if (m.type === "buttons") {
       this.ex.web_buttons(m.mask >>> 0);
     } else if (m.type === "keys") {
@@ -107,7 +117,9 @@ class Fm1 extends AudioWorkletProcessor {
   publish() {
     const ex = this.ex;
     const blits = ex.web_blits();
-    const msg = { type: "frame", buttons: ex.web_lit_buttons() >>> 0, keys: ex.web_lit_keys() >>> 0 };
+    const msg = { type: "frame", buttons: ex.web_lit_buttons() >>> 0, keys: ex.web_lit_keys() >>> 0,
+      dimButtons: ex.web_dim_buttons ? ex.web_dim_buttons() >>> 0 : 0, dimKeys: ex.web_dim_keys ? ex.web_dim_keys() >>> 0 : 0,
+      view: ex.eg_web_view ? ex.eg_web_view() >>> 0 : -1 };          // (where the panel is: fz_port.c eg_web_view)
     if (this.frames >= 44100) {                       // the share of real time spent running the device
       msg.load = Math.round(100 * this.busy / (this.frames / 44.1));
       this.busy = this.frames = 0;

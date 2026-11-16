@@ -859,7 +859,8 @@ export function mountSeq(ctx) {
       if (await ed().poll() && !mine) say("The FM-1's pattern changed: read again.");
     },
     gone() { S.ed = null; S.failed = false; S.sel.clear(); render(); },
-    track(t) { S.want = t; if (ready()) { ed().track = t; S.sel.clear(); render(); } },
+    track(t) { S.want = t; if (ready() && ed().track !== t) { ed().track = t; S.sel.clear(); render(); } },
+    view(v) { if (S.view !== v) setView(v); },            // (TRACKS / STEPS / PIANO ROLL from outside: the unit's page keys)
     state: S,
   };
 }

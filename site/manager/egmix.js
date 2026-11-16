@@ -16,19 +16,32 @@ const PARTS = [{ key: "pan", name: "PAN", id: MIX_ID.PAN, min: -64, max: 63, col
 
 export function mountMix(ctx) {
   const { $ } = ctx;
-  const S = { tracks: null, sel: 0, part: 0, shown: false, lives: [] };
+  const S = { tracks: null, sel: 0, part: 0, shown: false, lives: [], setAt: 0 };
   const root = $("tab-mix");
   root.innerHTML = `<div class="hhead"><span class="lab">THE SENDS · THE TRACKS' MIX, LIVE ON THE FM-1</span><span class="dim">1..6 TRACK · LEFT / RIGHT VALUE · UP / DOWN TURN</span></div>
     <div id="mx-cols" class="mxcols" role="group" aria-label="The six tracks' mix"></div>
     <p class="dim">LEVEL and the five rooms' sends (CRUSH, ROBOT, WARP, GLITCH, TV) stay on the unit's own MIX pages for now. Every change here is a knob on the unit: SHIFT + F1 there does not undo it.</p>`;
-  async function load() {
-    const l = ctx.link();
-    if (!l) return;
+  async function read(l) {
     const tracks = [];
     for (let t = 1; t <= 6; t++) {
       const f = await l.dumpTrack(t), d = f && parseDump(f);
       tracks.push(d ? { name: d.name, pan: d.pan, delay: d.delay, reverb: d.reverb, chorus: d.chorus } : null);
     }
+    return tracks;
+  }
+  // the FM-1 in this page, followed: what its own knobs changed, unless a value here was turned just now
+  async function follow() {
+    const l = ctx.link();
+    if (!S.shown || !l || !S.tracks || performance.now() - S.setAt < 1500) return;
+    const tracks = await read(l);
+    if (performance.now() - S.setAt < 1500 || JSON.stringify(tracks) === JSON.stringify(S.tracks)) return;
+    S.tracks = tracks;
+    render();
+  }
+  async function load() {
+    const l = ctx.link();
+    if (!l) return;
+    const tracks = await read(l);
     S.tracks = tracks;
     S.lives = tracks.map((_, t) => new Live({ link: l, track: t, onError: (a) => ctx.refuse(`the FM-1 did not take it (${a.statusName})`) }));
     render();
@@ -38,6 +51,7 @@ export function mountMix(ctx) {
     v = Math.max(part.min, Math.min(part.max, Math.round(v)));
     if (!tr || tr[part.key] === v) return;
     tr[part.key] = v;
+    S.setAt = performance.now();
     S.lives[t].set(part.id, v);
     render();
   }
@@ -86,6 +100,7 @@ export function mountMix(ctx) {
   });
   return {
     load, render,
+    follow,
     show(on) { S.shown = on; if (on && ctx.link() && !S.tracks) ctx.job(load); render(); },
     gone() { S.tracks = null; S.lives = []; render(); },
   };

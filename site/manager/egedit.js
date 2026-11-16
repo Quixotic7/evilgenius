@@ -585,6 +585,7 @@ export function mountEdit(ctx) {
 
   return {
     open, poll, render, state: S, readTrack,
+    showValue(id) { const t = S.tiles.get(id); if (t && +t.closest(".edsec").dataset.k !== S.page) page(+t.closest(".edsec").dataset.k); },   // (the unit's editor page)
     readTrackOf(t) { $("ed-track").value = String(t); if (ctx.link()) ctx.job(() => readTrack()); },
     shown(v) { S.shown = v; if (!v) { allOff(); closePick(); arm(null); } },
     gone() { S.live = null; S.kept = null; S.auditioned = false; S.liveOn = false; if (S.origin && S.origin.kind === "track") S.origin = { kind: "file", name: "the FM-1's track (unplugged)" }; render(); },

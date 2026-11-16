@@ -1064,6 +1064,221 @@ void fz_store_region(uint32_t *off, uint32_t *size) { *off = FZ_STORE_LO, *size 
  * flash offset (as FZBI says it), its size and the count of writes (the page saves when it moves) */
 __attribute__((used, visibility("default"))) uint8_t *eg_web_store(void) { return (uint8_t *)plat_data(FZ_STORE_LO); }
 __attribute__((used, visibility("default"))) uint32_t eg_web_store_off(void) { return FZ_STORE_LO; }
+/* 2026-11-16, MIDI FX and TOOLS for the manager's own screens (site/manager/egmfx.js, egtools.js): the browser build
+ * alone (no flash of the unit's is spent). Each call does one thing as the unit's own controller does it (ctl_mfx.c's
+ * writes, ctl_tools.c's own entry points: the keys, the knobs, OCT+ / OCT-), then answers the state as JSON text, so
+ * the manager's screen and the unit's page are one state seen twice. The page calls them through the worklet
+ * ("eg-call"), between two blocks of sound. */
+#include <stdio.h>
+#include "../../core/seq/mfx.h"
+#include "../../core/seq/tools.h"
+static char eg_js[49152];
+static uint32_t eg_jn;
+static void js_r(const char *t)
+{
+    while (*t && eg_jn < sizeof eg_js - 1u)
+        eg_js[eg_jn++] = *t++;
+    eg_js[eg_jn] = 0;
+}
+static void js_s(const char *t)        /* a string, quoted */
+{
+    js_r("\"");
+    for (; t && *t && eg_jn < sizeof eg_js - 3u; t++) {
+        if (*t == '"' || *t == '\\')
+            eg_js[eg_jn++] = '\\';
+        eg_js[eg_jn++] = (char)((unsigned char)*t < 0x20 ? ' ' : *t);
+    }
+    eg_js[eg_jn] = 0;
+    js_r("\"");
+}
+static void js_i(int v)
+{
+    char b[16];
+    snprintf(b, sizeof b, "%d", v);
+    js_r(b);
+}
+static void js_k(const char *k) { js_r("\""), js_r(k), js_r("\":"); }
+static int eg_clampi(int v, int lo, int hi) { return v < lo ? lo : v > hi ? hi : v; }
+
+/* op 0: the state alone; 1: a value (group a 1..5, slot b, id c, value d); 2: the slot's effect (c: QD_MFX_*, at its
+ * defaults); 3: bypassed (c); 4: an ARP lane's step (c: lane * 16 + step, d); 5: track a's group (b: 0 OFF, 1..5);
+ * 6: slot b to place c; 7: the slot (b) and page (c) the unit's screen shows; 8: the unit's MIDI FX screen opened.
+ * The answer: the tracks' groups, the unit's own group / slot / page, and group a's eight slots, each value with its
+ * name, its text as the unit writes it, its range and step */
+__attribute__((used, visibility("default"))) const char *eg_web_mfx(int op, int a, int b, int c, int d)
+{
+    qd_app_t *A = &fz_app;
+    qd_ui_t *u = &A->ui;
+    const int g = eg_clampi(op == 5 || op == 8 || !a ? (qd_mfx_vgroup(A) ? qd_mfx_vgroup(A) : 1) : a, 1, QD_MFX_NGROUP);
+    qd_mfx_group_t *G = &A->proj.mfx[g - 1];
+    qd_mfx_slot_t *s = &G->slot[eg_clampi(b, 0, QD_MFX_NSLOT - 1)];
+    const int nt = (int)(sizeof qd_ctl_cpat(A)->trk / sizeof qd_ctl_cpat(A)->trk[0]);
+    int i, k, pg;
+    if (!fz_up)
+        return "{}";
+    if (op >= 1 && op <= 6)
+        qd_undo_input(A, 1);            /* (as a knob turned: the change is an undo level of its own) */
+    if (op == 1) {
+        const qd_mfx_par_t *p = qd_mfx_par(s->type, c);
+        if (p && c >= 0 && c < QD_MFX_NV) {
+            const int st = p->step ? p->step : 1;
+            s->v[c] = (int16_t)eg_clampi(p->lo + (d - p->lo + (d >= p->lo ? st / 2 : -st / 2)) / st * st, p->lo, p->hi);
+            if (s->type == QD_MFX_ARP && c == QD_MA_MODE && s->v[c] != QD_AM_OFF)
+                s->v[QD_MA_LAST] = s->v[c];
+        }
+    } else if (op == 2) {
+        if (c >= 0 && c < QD_MFX_NTYPE && c != s->type)
+            qd_mfx_slot_init(s, c);
+    } else if (op == 3) {
+        s->bypass = (uint8_t)(c != 0);
+    } else if (op == 4) {
+        const int ln = (c >> 4) & 1, w = c & 15;
+        if (s->type == QD_MFX_ARP)
+            s->lane[ln][w] = (int8_t)eg_clampi(d, ln ? -48 : 0, ln ? 48 : QD_NAL - 1);
+    } else if (op == 5) {
+        if (a >= 0 && a < nt) {
+            qd_tset_t *ts = &qd_ctl_pat(A)->trk[a];
+            ts->mfx = (uint8_t)(eg_clampi(b, 0, QD_MFX_NGROUP) | (ts->mfx & QD_TMFX_OFF));
+            qd_mfx_track_changed(A, a);
+        }
+    } else if (op == 6) {
+        const int from = eg_clampi(b, 0, QD_MFX_NSLOT - 1), to = eg_clampi(c, 0, QD_MFX_NSLOT - 1);
+        const qd_mfx_slot_t m = G->slot[from];
+        if (from < to)
+            for (k = from; k < to; k++)
+                G->slot[k] = G->slot[k + 1];
+        else
+            for (k = from; k > to; k--)
+                G->slot[k] = G->slot[k - 1];
+        G->slot[to] = m;
+        u->mfx_slot = to;
+    } else if (op == 7) {
+        u->mfx_slot = eg_clampi(b, 0, QD_MFX_NSLOT - 1);
+        u->mfx_page = eg_clampi(c, 0, 3);
+    } else if (op == 8) {
+        if (!qd_mfx_open(A))
+            qd_mfx_screen(A);
+    }
+    eg_jn = 0;
+    js_r("{"), js_k("open"), js_i(qd_mfx_open(A)), js_r(","), js_k("sel"), js_i(A->sel), js_r(","), js_k("vgroup"), js_i(qd_mfx_vgroup(A));
+    js_r(","), js_k("slot"), js_i(u->mfx_slot & 7), js_r(","), js_k("page"), js_i(u->mfx_page), js_r(","), js_k("group"), js_i(g);
+    js_r(","), js_k("tgroup"), js_r("[");
+    for (i = 0; i < nt; i++)
+        js_r(i ? "," : ""), js_i(qd_ctl_cpat(A)->trk[i].mfx & 0x7f);
+    js_r("],"), js_k("toff"), js_r("[");
+    for (i = 0; i < nt; i++)
+        js_r(i ? "," : ""), js_i((qd_ctl_cpat(A)->trk[i].mfx & QD_TMFX_OFF) != 0);
+    js_r("],"), js_k("types"), js_r("[");
+    for (i = 0; i < QD_MFX_NTYPE; i++)
+        js_r(i ? "," : ""), js_s(qd_mfx_type_name(i));
+    js_r("],"), js_k("slots"), js_r("[");
+    for (i = 0; i < QD_MFX_NSLOT; i++) {
+        const qd_mfx_slot_t *q = &G->slot[i];
+        char tx[16];
+        js_r(i ? ",{" : "{"), js_k("type"), js_i(q->type), js_r(","), js_k("bypass"), js_i(q->bypass), js_r(","), js_k("pages"), js_r("[");
+        for (pg = 0; pg < qd_mfx_npages(q->type); pg++) {
+            js_r(pg ? ",[" : "[");
+            for (k = 0; k < 4; k++) {
+                const int id = qd_mfx_page_id(q->type, pg, k);
+                const qd_mfx_par_t *p = id >= 0 && id != QD_MFX_ID_LANE ? qd_mfx_par(q->type, id) : 0;
+                js_r(k ? "," : "");
+                if (id == QD_MFX_ID_LANE)
+                    js_r("{\"lane\":"), js_i(pg == 2 ? 0 : 1), js_r("}");
+                else if (!p)
+                    js_r("null");
+                else {
+                    js_r("{"), js_k("id"), js_i(id), js_r(","), js_k("name"), js_s(p->name), js_r(","), js_k("text");
+                    js_s(qd_mfx_value_text(q, id, tx)), js_r(","), js_k("v"), js_i(q->v[id]), js_r(","), js_k("lo"), js_i(p->lo);
+                    js_r(","), js_k("hi"), js_i(p->hi), js_r(","), js_k("step"), js_i(p->step ? p->step : 1), js_r("}");
+                }
+            }
+            js_r("]");
+        }
+        js_r("]");
+        if (q->type == QD_MFX_ARP) {
+            int ln;
+            js_r(","), js_k("lanes"), js_r("[");
+            for (ln = 0; ln < 2; ln++) {
+                js_r(ln ? ",[" : "[");
+                for (k = 0; k < QD_MFX_LANE; k++)
+                    js_r(k ? ",[" : "["), js_i(q->lane[ln][k]), js_r(","), js_s(qd_mfx_lane_text(ln, q->lane[ln][k], tx)), js_r("]");
+                js_r("]");
+            }
+            js_r("]");
+        }
+        js_r("}");
+    }
+    js_r("]}");
+    return eg_js;
+}
+
+/* op 0: the state; 1: the unit's TOOLS screen opened; 2: tool a (QD_TL_*); 3: scope a (QD_TS_*); 4: KNOB a + 1 turned
+ * b detents; 5: kept (OCT+); 6: undone (OCT-); 7: the tool's key again (ROTATE back to 0, REVERSE flipped, a new die,
+ * GRIDS' next part, CLIP done). Each through the unit's own keys and knobs (qd_tools_black / _knob / _oct_click), the
+ * screen opened first. The answer: the tool, the scope, its values (the union's bytes), the page's steps before
+ * and after, the length after */
+__attribute__((used, visibility("default"))) const char *eg_web_tools(int op, int a, int b)
+{
+    qd_app_t *A = &fz_app;
+    qd_tools_t *T = &A->ui.tl;
+    uint8_t on[16] = {0}, was[16] = {0}, note[16] = {0}, loop = 0;
+    int i, n;
+    if (!fz_up)
+        return "{}";
+    if (op) {
+        qd_undo_input(A, op == 4);
+        if (!qd_tools_open(A))
+            qd_tools_screen(A);
+    }
+    if (op == 2 && a >= 0 && a < QD_TL_N) {
+        for (n = 0; n < 2 && T->tool != a; n++)
+            qd_tools_black(A, qd_tools_tool_key(a), 1), qd_tools_black(A, qd_tools_tool_key(a), 0);
+    } else if (op == 3 && a >= 0 && a < QD_TS_N) {
+        for (n = 0; n < QD_TS_N && T->scope != a; n++)
+            qd_tools_knob(A, QD_K_PRESETS, a > T->scope ? 1 : -1);
+    } else if (op == 4 && a >= 0 && a < 4) {
+        qd_tools_knob(A, QD_K_1 + a, b);
+    } else if (op == 5) {
+        qd_tools_oct_click(A, 1);
+    } else if (op == 6) {
+        qd_tools_oct_click(A, -1);
+    } else if (op == 7) {
+        qd_tools_black(A, qd_tools_tool_key(T->tool), 1), qd_tools_black(A, qd_tools_tool_key(T->tool), 0);
+    }
+    if (op >= 2)
+        qd_tools_ms(A);                 /* (a value changed: rewritten now, as at the next millisecond) */
+    eg_jn = 0;
+    js_r("{"), js_k("open"), js_i(qd_tools_open(A)), js_r(","), js_k("sel"), js_i(A->sel), js_r(","), js_k("page"), js_i(A->ui.page[A->sel] & 7);
+    js_r(","), js_k("tool"), js_i(T->tool), js_r(","), js_k("scope"), js_i(T->scope), js_r(","), js_k("flags"), js_i(T->flags);
+    js_r(","), js_k("rot"), js_i(T->rot), js_r(","), js_k("lpow"), js_i(T->lpow), js_r(","), js_k("pending"), js_i(qd_tools_open(A) ? qd_tools_pending(A) : 0);
+    js_r(","), js_k("v"), js_r("[");
+    for (i = 0; i < 8; i++)
+        js_r(i ? "," : ""), js_i(((const uint8_t *)&T->v)[i]);
+    js_r("]");
+    if (qd_tools_open(A)) {
+        const int inr = qd_tools_page(A, on, was, note), len = qd_tools_result_len(A, &loop);
+        js_r(","), js_k("inr"), js_i(inr), js_r(","), js_k("len"), js_i(len), js_r(","), js_k("loop"), js_i(loop), js_r(","), js_k("steps"), js_r("[");
+        for (i = 0; i < 16; i++)
+            js_r(i ? ",[" : "["), js_i(on[i]), js_r(","), js_i(was[i]), js_r(","), js_i(note[i]), js_r("]");
+        js_r("],"), js_k("clip"), js_r("[");
+        for (i = 0; i < QD_CL_N; i++)
+            js_r(i ? "," : ""), js_i(qd_tools_clip_ok(A, i));
+        js_r("]");
+    }
+    js_r("}");
+    return eg_js;
+}
+
+/* 2026-11-16, where the panel is: the mode (QD_MODE_*), the view (QD_VIEW_*) << 4, the latched menu (QD_LATCH_*) << 8,
+ * SEQ's page + 1 (QD_SEQ_*; 0 none) << 12, the selected track << 16, the first value of the sound editor's page
+ * (QD_QP_*: the manager's own ids, so its SOUND screen opens the page that holds it) << 20. The manager's screens
+ * follow it while a unit plays the page's FM-1 (REMOTE MODE): MIX on the unit, MIX in the manager */
+__attribute__((used, visibility("default"))) uint32_t eg_web_view(void)
+{
+    return (uint32_t)fz_app.ui.mode | (uint32_t)fz_app.ui.view << 4 | (uint32_t)fz_app.ui.latch << 8 |
+           (uint32_t)(qd_ctl_seq_page(&fz_app) + 1) << 12 | (uint32_t)fz_app.sel << 16 |
+           (uint32_t)(uint8_t)QD_SND_PAGES[fz_app.ui.snd_page % QD_SND_NPAGE].id[0] << 20;
+}
 __attribute__((used, visibility("default"))) uint32_t eg_web_store_len(void) { return FZ_STORE_SECTORS * 4096u; }
 __attribute__((used, visibility("default"))) uint32_t eg_web_store_writes(void) { return fz_web_writes; }
 /* a SysEx frame from the page (the bytes between F0 and F7), as fm1-base's USB device hands one to app_sysex on the

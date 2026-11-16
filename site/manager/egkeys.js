@@ -6,8 +6,9 @@
 // taken where the browser lets a page have them, ALT + 1..8 always.
 //   KEYS: [{screen, rows: [[keys, what]]}]; mountKeys({ $, tab(name), current(), tabs }) -> { help(open) }
 export const KEYS = [
-  { screen: "EVERYWHERE", rows: [["F1 .. F8", "HOME LIBRARY SOUND SEQUENCE MIX POOL PROJECTS CABINET"], ["ALT + 1 .. 8", "the same, on any keyboard"],
-    ["SPACE", "PLAY / STOP the FM-1"], ["SHIFT + SPACE", "REC: arm, or stop recording"], ["?", "this screen"], ["ESC", "close, let go"],
+  { screen: "EVERYWHERE", rows: [["F1 .. F10", "HOME LIBRARY SOUND SEQUENCE MIX POOL PROJECTS CABINET, MIDI FX, TOOLS"], ["ALT + 1 .. 9, 0", "the same, on any keyboard"],
+    ["ALT + F", "THE FM-1: the unit's own page"],
+    ["ALT + W", "the screens on the FM-1 on USB / back in the browser"], ["ALT + P", "REMOTE MODE: the FM-1 on USB plays the one in the browser"], ["ALT + [ ]", "REMOTE MODE: the docked screen smaller / bigger"], ["SPACE", "PLAY / STOP the FM-1"], ["SHIFT + SPACE", "REC: arm, or stop recording"], ["?", "this screen"], ["ESC", "close, let go"],
     ["TAB / ENTER", "the next control / press it"]] },
   { screen: "HOME", rows: [["1 .. 6", "a track"], ["ENTER", "its sound in SOUND"], ["S", "its steps in SEQUENCE"], ["R", "read the FM-1 again"]] },
   { screen: "LIBRARY", rows: [["UP / DOWN", "a sound (PAGE, HOME, END)"], ["/", "find"], ["A M F", "all, mine, factory"], ["1 .. 7", "a tag filter"],
@@ -27,11 +28,19 @@ export const KEYS = [
   { screen: "POOL", rows: [["ARROWS", "a place"], ["ENTER", "to the sounds (UP / DOWN, ENTER puts one there, ESC back)"], ["DELETE", "clear the place"],
     ["M", "move it (a place, ENTER)"], ["U", "who uses it"], ["/", "find a sound"], ["R", "read again"]] },
   { screen: "PROJECTS", rows: [["UP / DOWN", "a slot"], ["ENTER", "load it"], ["N", "new (an empty slot)"], ["R", "rename it"], ["C / M", "copy / move it (then 1..8)"],
-    ["DELETE", "delete it (its name typed)"], ["P", "read its patterns"], ["B", "save the slot's project in this browser"],
-    ["U", "send the browser's picked project to the slot (replaces it)"], ["SHIFT + UP / DOWN", "pick in this browser"],
+    ["DELETE", "delete it (its name typed)"], ["P", "read its patterns"], ["B", "save the slot's project in the library"],
+    ["U", "send the library's picked project to the slot (replaces it)"], ["SHIFT + UP / DOWN", "pick in the library"],
+    ["[ ]", "a slot of the other FM-1"], ["G / T", "get its project to the library / send the library's to it"],
     ["E / I", "export / import a .egprj file"]] },
   { screen: "CABINET", rows: [["B", "back up"], ["P", "presets only"], ["R", "restore a file"], ["K", "the kept backups"], ["I", "import sound files"],
     ["D / T", "where they go / the track"], ["S / C", "send / clear them"]] },
+  { screen: "MIDI FX (F9)", rows: [["1 .. 5 / 0", "a group / the picked track's"], ["LEFT / RIGHT", "a slot (, . move it)"], ["T", "its effect (SHIFT: the one before)"],
+    ["B", "bypass"], ["G", "the picked track's group"], ["DRAG / SCROLL", "a value, a lane's step"], ["TAB, UP / DOWN", "a value from the keys (PAGE, HOME, END)"]] },
+  { screen: "TOOLS (F10)", rows: [["1 .. 0", "a tool (LEFT / RIGHT)"], ["S", "the scope (SHIFT: back)"], ["Q W E R", "KNOB 1 .. 4 up (SHIFT: down)"],
+    ["ENTER / BACKSPACE", "keep / undo"], ["X", "the tool's key again (roll, flip, do it)"]] },
+  { screen: "THE FM-1 (ALT + F)", rows: [["(what it is)", "the unit's own page, each control's job on it"], ["Q .. I, A .. K", "the white keys"], ["1 .. 0, -", "the black keys"], ["Z X C V B N", "FX SEL ENV LFO EDIT GLO"],
+    ["M , . /", "HOME SAVE ARP SEQ"], ["P or SPACE / O", "PLAY / REC"], ["[ ]", "OCT - / +"], ["UP / DOWN", "SELECT (LEFT / RIGHT: PRESETS)"],
+    ["PAGE UP / DOWN", "ALGORITHM"], ["TAB", "a knob (UP / DOWN turn it)"], ["SHIFT + a key", "held down until pressed again"], ["ESC", "back to the screen before"]] },
 ];
 // the status line's hint: the screen's main keys
 export const HINTS = {
@@ -41,10 +50,13 @@ export const HINTS = {
   seq: "SHIFT+V VIEW · CLICK PICK · DRAG ↑↓ VALUE · TAB MODE · ? KEYS",
   mix: "1..6 TRACK · ARROWS · SPACE PLAY · ? KEYS",
   pool: "ARROWS · ENTER SOUNDS · M MOVE · DEL CLEAR · ? KEYS",
-  projects: "UP/DOWN · ENTER LOAD · N NEW · C COPY · ? KEYS",
+  projects: "UP/DOWN · ENTER LOAD · B SAVE · U SEND · G GET · T TO FM-1 · ? KEYS",
   cabinet: "B BACK UP · R RESTORE · I IMPORT · S SEND · ? KEYS",
+  mfx: "1..5 GROUP · LEFT/RIGHT SLOT · T EFFECT · B BYPASS · DRAG A VALUE · ? KEYS",
+  tools: "1..0 TOOL · S SCOPE · Q W E R KNOBS · ENTER KEEP · BACKSPACE UNDO · ? KEYS",
+  fm1: "THE UNIT'S KEYS: Q..K WHITE · 1..- BLACK · Z..N M , . / BUTTONS · ESC BACK",
 };
-export const SCREENS = ["home", "library", "edit", "seq", "mix", "pool", "projects", "cabinet"];
+export const SCREENS = ["home", "library", "edit", "seq", "mix", "pool", "projects", "cabinet", "mfx", "tools", "fm1"];
 
 export function mountKeys({ $, tab, current }) {
   const grid = $("help-grid");
@@ -70,13 +82,14 @@ export function mountKeys({ $, tab, current }) {
   document.addEventListener("keydown", (e) => {
     if (!$("help").hidden) { if (e.key === "Escape" || e.key === "?") { e.preventDefault(); help(false); } return; }
     if (!$("boot").hidden || !$("title").hidden) return;
-    const f = /^F([1-8])$/.exec(e.key);
-    const alt = e.altKey && /^Digit([1-8])$/.exec(e.code);
+    const f = /^F(10|[1-9])$/.exec(e.key);
+    const alt = e.altKey && /^Digit([0-9])$/.exec(e.code);
     if ((f && !e.metaKey && !e.ctrlKey) || alt) {
       e.preventDefault();
-      tab(SCREENS[Number((f || alt)[1]) - 1]);
+      tab(SCREENS[(Number((f || alt)[1]) || 10) - 1]);
       return;
     }
+    if (e.altKey && e.code === "KeyF" && !e.metaKey && !e.ctrlKey) { e.preventDefault(); tab("fm1"); return; }
     if (typing(e) || e.metaKey || e.ctrlKey) return;
     if (e.key === "?") { e.preventDefault(); help(true); }
   });

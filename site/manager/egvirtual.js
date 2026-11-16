@@ -7,9 +7,11 @@
 // USB: the same SysEx, the same link (eglink.js EgLink), every screen unchanged. What differs is the store: the page
 // holds it, so a backup is a copy, a restore a copy back and a restart, and the store is kept in this browser
 // (IndexedDB "evilgenius-virtual") whenever the firmware writes it, so the jam is there next time.
-//   const vu = await startVirtual({ base, log }); vu.access (requestMIDIAccess's shape); vu.link (a VirtualLink);
+//   const vu = await startVirtual({ base, log, onWait }); (onWait: the browser wants a key or a click first) vu.access (requestMIDIAccess's shape); vu.link (a VirtualLink);
 //   vu.onFrame(fn): the unit's screen (fb: 240 x 240 RGB565) and lights as they change; vu.stop()
 //   vu.storeNow() -> the store's bytes now; await vu.replaceStore(bytes) (and restart)
+//   vu.buttons(mask), vu.keys(mask), vu.enc(role, n), vu.master(0..4096): the unit's panel, as its scanner reads it (egpanel.js)
+//   await vu.call("eg_web_mfx" | "eg_web_tools", ..numbers) -> the firmware's answer (MIDI FX, TOOLS: egmfx.js, egtools.js)
 import { EgLink, Port } from "./eglink.js";
 import { crc32 } from "./egwire.js";
 import { LAYOUT, LIB_BYTES } from "./egstore.js";
@@ -50,10 +52,19 @@ function unpacket(p) {
   return null;
 }
 
-export async function startVirtual({ base = "./vfm1/", log = () => {}, master = 2800 } = {}) {
+export async function startVirtual({ base = "./vfm1/", log = () => {}, master = 2800, onWait = () => {} } = {}) {
   const AC = window.AudioContext || window.webkitAudioContext;
   if (!AC || !window.AudioWorkletNode) throw new Error("this browser cannot run the virtual FM-1 (no AudioWorklet)");
   const ac = new AC({ sampleRate: 44100, latencyHint: "interactive" });
+  // a browser lets a page sound only after a key or a click, and the firmware runs on the sound's clock: wait for one
+  if (ac.state !== "running") await Promise.race([ac.resume(), new Promise((r) => setTimeout(r, 300))]).catch(() => {});
+  if (ac.state !== "running") {
+    onWait();
+    await new Promise((res) => {
+      const go = () => ac.resume().then(() => { for (const t of ["pointerdown", "keydown"]) removeEventListener(t, go, true); res(); }, () => {});
+      for (const t of ["pointerdown", "keydown"]) addEventListener(t, go, true);
+    });
+  }
   await ac.audioWorklet.addModule(`${base}worklet.js`);
   const node = new AudioWorkletNode(ac, "fm1", { numberOfInputs: 0, outputChannelCount: [2] });
   node.connect(ac.destination);
@@ -66,7 +77,8 @@ export async function startVirtual({ base = "./vfm1/", log = () => {}, master = 
       else if (b[0] >= 0x80) node.port.postMessage({ type: "eg-midi", pkts: [packet(b)] });
     } };
   const access = { inputs: new Map([[VIRTUAL_NAME, input]]), outputs: new Map([[VIRTUAL_NAME, output]]), onstatechange: null, sysexEnabled: true };
-  const frames = new Set(), waiters = [];
+  const frames = new Set(), waiters = [], calls = new Map();
+  let callId = 0;
   const vu = { ac, node, access, store: saved && saved.store ? new Uint8Array(saved.store) : null, objs: (saved && saved.objs) || {},
     savedAt: saved ? saved.at : null, log, stopped: false };
   const wait = (type) => new Promise((r) => waiters.push({ type, r }));
@@ -78,6 +90,9 @@ export async function startVirtual({ base = "./vfm1/", log = () => {}, master = 
       const deliver = (d) => { if (input.onmidimessage) input.onmidimessage({ data: Uint8Array.from(d) }); };
       if (m.replies && m.replies.length) { let st = 0; for (let i = 0; i < m.replies.length; i++) if (m.replies[i] === 0xF7) { deliver(m.replies.subarray(st, i + 1)); st = i + 1; } }
       for (const p of m.pkts || []) { const d = unpacket(p); if (d) deliver(d); }
+    } else if (m.type === "eg-called") {
+      const r = calls.get(m.id);
+      if (r) { calls.delete(m.id); let j = null; try { j = JSON.parse(m.text); } catch (_) { /* (an older build: nothing) */ } r(j); }
     } else if (m.type === "eg-store") {
       vu.store = m.bytes;
       vu.savedAt = new Date().toISOString();
@@ -99,9 +114,20 @@ export async function startVirtual({ base = "./vfm1/", log = () => {}, master = 
     vu.store = bytes;
     await virtualStore.save({ store: bytes, objs: vu.objs, at: new Date().toISOString() });
   };
-  vu.buttons = (mask) => node.port.postMessage({ type: "buttons", mask });
-  vu.keys = (mask) => node.port.postMessage({ type: "keys", mask });
+  // what is held, from each hand on it (who: the page's panel, a unit as the panel: egremote.js): the firmware reads all
+  const held = { buttons: new Map(), keys: new Map() };
+  const hold = (type, mask, who) => { held[type].set(who, mask >>> 0); let m = 0; for (const v of held[type].values()) m |= v; node.port.postMessage({ type, mask: m >>> 0 }); };
+  vu.buttons = (mask, who = "page") => hold("buttons", mask, who);
+  vu.keys = (mask, who = "page") => hold("keys", mask, who);
   vu.enc = (role, n) => node.port.postMessage({ type: "enc", role, n });
+  // a call of the firmware's own (the browser build's exports, fz_port.c: eg_web_mfx, eg_web_tools): its answer, parsed
+  vu.call = (fn, ...args) => new Promise((res) => {
+    const id = ++callId;
+    calls.set(id, res);
+    node.port.postMessage({ type: "eg-call", id, fn, args });
+    setTimeout(() => { if (calls.delete(id)) res(null); }, 1000);
+  });
+  vu.master = (value) => node.port.postMessage({ type: "master", value });   // (the volume: 0..4096)
   vu.stop = async () => {
     vu.stopped = true;
     input.state = output.state = "disconnected";

@@ -40,6 +40,16 @@
 static int fz_c1_start = -2;             /* plat_cpu2_set(1) at app_init: 0 it runs, -1 one core; -2 not this build */
 
 static void fz_message(const char *a, const char *b);
+/* REMOTE MODE (docs/BROWSER-FM1-PLAN.md; the owner's name for it): the unit as the panel of the FM-1 in the browser. A host takes it with
+ * RemoteFM1's HELLO and SESSION (its protocol, version 2: F0 7D 52 46 <cmd> <body, 7-in-8> F7); while the session
+ * lasts the keys, buttons and knobs go out as RemoteFM1 sends them, the lights are the host's, the screen stands still
+ * and EVILGENIUS takes no input and makes no sound. The code is further down (fz_rm_*) */
+static uint8_t fz_rm, fz_rm_show;        /* on; its screen to be drawn */
+static uint8_t fz_redraw;                /* (defined with the screen, below) */
+#define FZ_RM_COLD __attribute__((minsize))   /* (the main loop's, run seldom: for size) */
+static void fz_rm_midi(uint32_t st, uint32_t a, uint32_t b);
+static void fz_rm_turn(int role, int32_t d);
+static void fz_rm_screen(void);
 #ifndef PLAT_HOST
 static int remote_frame(const uint8_t *p, uint32_t n);   /* (main_fm1.c's, later in the unity build) */
 #endif
@@ -585,7 +595,7 @@ void app_render(int32_t *lr, uint32_t n, uint32_t master_q12)
     {   /* 16 bits to 24 with ChoralRoot's -6 dBFS ceiling (its OUT_SHIFT 7: Q15 x 128; the codec and the amp ran clean
          * there), times MASTER's gain (Q12: 4096 full) and the start's ramp, the gain glided across the half from the
          * last one's (no step when MASTER moves) */
-        const int32_t g1 = (int32_t)((master_q12 > 4096u ? 4096u : master_q12) * fz_ramp >> 12), g0 = fz_gain;
+        const int32_t g1 = fz_rm ? 0 : (int32_t)((master_q12 > 4096u ? 4096u : master_q12) * fz_ramp >> 12), g0 = fz_gain;   /* (REMOTE MODE: silent) */
         for (i = 0; i < n; i++) {
             const int32_t x = (g1 - g0) * (int32_t)i;   /* (32 bits: |g1 - g0| <= 4096, i < 256) */
             const int32_t g = g0 + (n == 256u ? (x >= 0 ? x >> 8 : -(-x >> 8)) : x / (int32_t)n);   /* (P2.8: the
@@ -645,6 +655,18 @@ static void fz_sample(void)              /* the panel's changes since the last l
     uint32_t i;
     if (!db && !dk)
         return;
+    if (fz_rm) {                         /* REMOTE MODE: to the host (keys: notes on channel 16; buttons: on channel 15) */
+        static const uint8_t id[NB] = {2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 0, 1};   /* (the matrix ids RemoteFM1 names) */
+        for (i = 0; i < NB; i++)
+            if (db >> i & 1u)
+                fz_rm_midi(b >> i & 1u ? 0x9Eu : 0x8Eu, id[i], b >> i & 1u ? 127u : 0u);
+        for (i = 0; i < NKEYS; i++)
+            if (dk >> i & 1u)
+                fz_rm_midi(k >> i & 1u ? 0x9Fu : 0x8Fu, 53u + i, k >> i & 1u ? 100u : 0u);
+        fz_seen_btn = b;
+        fz_seen_keys = k;
+        return;
+    }
     for (i = 0; i < NB; i++)
         if ((db >> i & 1u) && (b >> i & 1u))
             fz_ev_put(0x8000u | i, ms);
@@ -806,7 +828,8 @@ static int fz_hq_ours(const uint8_t *p, uint32_t k)
 {
     /* (EvilGenius: its own SysEx is 7D 45 47, fizz_sx.h; these gates still said FIZZ's 7D 46 5A, so the core never saw
      * one. The port's counters stay 7D 46 50, fizz_xdata.py's) */
-    return k >= 3u && ((p[0] == 0x7Du && ((p[1] == FZ_SX_ID1 && p[2] == FZ_SX_ID2) || (p[1] == 0x46u && p[2] == 0x50u))) ||
+    return k >= 3u && ((p[0] == 0x7Du && ((p[1] == FZ_SX_ID1 && p[2] == FZ_SX_ID2) || (p[1] == 0x46u && p[2] == 0x50u) ||
+                                          (p[1] == 0x52u && p[2] == 0x46u))) ||   /* ("RF": REMOTE MODE's) */
                        (p[0] == 0 && p[1] == 0x32u && p[2] == 0x19u));   /* (00 59 46 packed 7 bits a byte) */
 }
 static void fz_hq_hold(void)
@@ -953,7 +976,9 @@ static void fz_input(void)               /* everything that changes FIZZ on the 
     }
     for (r = 0; r < NE; r++) {
         const int32_t d = plat_enc(r);
-        if (d) {
+        if (d && fz_rm)
+            fz_rm_turn(r, d);
+        else if (d) {
             uint32_t f;
             fz_input_prepare();
             f = fz_lock();
@@ -964,6 +989,222 @@ static void fz_input(void)               /* everything that changes FIZZ on the 
     }
     fz_sysex_out();
     fz_prof.input += plat_ticks24() - t0;
+}
+
+/* ---------------------------------------------------------------- REMOTE MODE --- */
+/* What a RemoteFM1 host needs for the panel, and no more: HELLO (0x01) -> HELLO_R (0x41: the name EVILGENIUS, protocol
+ * 2, no screen and no caps, so a host sends no TILES); SESSION (0x10: start, keepalive ms) -> ACK (0x46) and PANEL_R;
+ * PANEL_REQ (0x13) -> PANEL_R (0x53: keys, buttons, the knobs' counters, MASTER, the session flag), also every half
+ * second; LEDS (0x11: lit / mid / dim / faint by matrix column) the lights. The ids are the default panel's
+ * (RemoteFM1's own names: device/panel.c), whatever this unit's calibration: the app's labels and roles are sent, so a
+ * host with the default map reads them right. A session ends on SESSION 0, on its keepalive, or at a restart. */
+#if QD_PKG_BLE
+#define FZ_RM_ROUTE fz_route
+#else
+static uint8_t fz_rm_route_none;
+#define FZ_RM_ROUTE fz_rm_route_none
+#endif
+static const uint8_t FZ_RM_BTN[NB] = {2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 0, 1}, FZ_RM_ENC[NE] = {0, 1, 6, 2, 3, 4, 5};
+static const uint8_t FZ_RM_POS[41] = {4, 12, 49, 33, 17, 1, 74, 66, 57, 41, 25, 9, 82, 58, 28, 20, 44, 36, 60, 52, 68, 76, 84, 3, 11, 19, 27, 35, 43, 51, 59, 67, 75, 83, 2, 10, 18, 26, 34, 50, 42};   /* a matrix id's LED: column << 3 | row bit (fm1-base FM1_KEYMAP) */
+static uint8_t fz_rm_port;               /* the session's port: 0 USB, 1 Bluetooth */
+static uint16_t fz_rm_enc[NE], fz_rm_adc, fz_rm_keep;
+static uint32_t fz_rm_heard, fz_rm_said, fz_rm_led[6];   /* (lit, mid, dim: the buttons' (bit NB: PLAY's green), the keys') */
+static uint32_t fz_rm_n;                 /* (sessions taken: the simulator's tests) */
+static void fz_rm_midi(uint32_t st, uint32_t a, uint32_t b)
+{
+    const uint32_t f = fz_lock();        /* (the audio interrupt sends to the same queue) */
+    plat_midi_send(st >> 4 | st << 8 | a << 16 | b << 24, fz_rm_port ? TO_BLE_HOST : TO_USB);
+    fz_unlock(f, FZ_LOCK_SYSEX);
+}
+static void fz_rm_turn(int role, int32_t d)   /* BE 16+e 64+d, at most 63 detents a message */
+{
+    fz_rm_enc[role] = (uint16_t)(fz_rm_enc[role] + d);
+    while (d) {
+        const int32_t k = d > 63 ? 63 : d < -63 ? -63 : d;
+        fz_rm_midi(0xBEu, 16u + FZ_RM_ENC[role], (uint32_t)(64 + k));
+        d -= k;
+    }
+}
+FZ_RM_COLD static void fz_rm_reply(uint32_t cmd, const uint8_t *body, uint32_t n)   /* (n <= 67) */
+{
+    uint8_t f[84], was = FZ_RM_ROUTE;
+    uint32_t o = 5, i, k, g;
+    f[0] = 0xF0, f[1] = 0x7D, f[2] = 0x52, f[3] = 0x46, f[4] = (uint8_t)cmd;
+    for (i = 0; i < n; i += g) {
+        uint32_t msb = 0;
+        g = n - i < 7u ? n - i : 7u;
+        for (k = 0; k < g; k++)
+            msb |= (uint32_t)(body[i + k] >> 7) << k;
+        f[o++] = (uint8_t)msb;
+        for (k = 0; k < g; k++)
+            f[o++] = body[i + k] & 0x7Fu;
+    }
+    f[o++] = 0xF7;
+    FZ_RM_ROUTE = fz_rm_port;
+    fz_sx_send(f, o);
+    FZ_RM_ROUTE = was;
+}
+FZ_RM_COLD static void fz_rm_panel(void)
+{
+    uint8_t b[25] = {0};
+    uint32_t i, m = 0;
+    for (i = 0; i < 4u; i++)
+        b[i] = (uint8_t)(fz_seen_keys >> 8u * i);
+    for (i = 0; i < NB; i++)
+        m |= (fz_seen_btn >> i & 1u) << FZ_RM_BTN[i];
+    b[4] = (uint8_t)m, b[5] = (uint8_t)(m >> 8);
+    for (i = 0; i < NE; i++)
+        b[6u + 2u * FZ_RM_ENC[i]] = (uint8_t)fz_rm_enc[i], b[7u + 2u * FZ_RM_ENC[i]] = (uint8_t)(fz_rm_enc[i] >> 8);
+    b[20] = (uint8_t)fz_rm_adc, b[21] = (uint8_t)(fz_rm_adc >> 8);
+    b[24] = fz_rm;
+    fz_rm_reply(0x53, b, sizeof b);
+    fz_rm_said = plat_ms();              /* (the half second counts from a PANEL_R, not from another host's HELLO_R) */
+}
+FZ_RM_COLD static void fz_rm_master(int always)   /* MASTER as RemoteFM1 sends it: CC 7 / 39 of the pot's 10 bits << 4 */
+{
+    const uint32_t adc = plat_master() * 1023u / 4096u, d = adc > fz_rm_adc ? adc - fz_rm_adc : fz_rm_adc - adc;
+    if (!always && d < 2u)
+        return;
+    fz_rm_adc = (uint16_t)adc;
+    fz_rm_midi(0xBEu, 7u, adc << 4 >> 7);
+    fz_rm_midi(0xBEu, 39u, adc << 4 & 0x7Fu);
+}
+FZ_RM_COLD static void fz_rm_set(int on, uint32_t keep_ms)
+{
+    uint32_t i;
+    if (on) {
+        const uint32_t ms = plat_ms();
+        if (!fz_rm) {                    /* what the app holds is let go: it hears no more of the panel */
+            for (i = 0; i < NKEYS; i++)
+                if (fz_seen_keys >> i & 1u)
+                    fz_ev_put(0x100u | i, ms);
+            for (i = 0; i < NB; i++)
+                if (fz_seen_btn >> i & 1u)
+                    fz_ev_put(i, ms);
+            for (i = 0; i < NE; i++)
+                fz_rm_enc[i] = 0;
+            fz_rm_n++;
+        }
+        fz_rm_port = FZ_RM_ROUTE;
+        fz_rm_keep = (uint16_t)keep_ms;
+        for (i = 0; i < 6u; i++)
+            fz_rm_led[i] = 0;
+        fz_rm = fz_rm_show = 1;
+        fz_rm_master(1);
+    } else if (fz_rm) {
+        fz_rm = 0;
+        fz_seen_btn = plat_buttons() & ((1u << NB) - 1u);   /* (what is held now is not a press) */
+        fz_seen_keys = plat_keys();
+        fz_redraw = 1;
+    }
+}
+FZ_RM_COLD static void fz_rm_frame(const uint8_t *p, uint32_t n)   /* a frame after 7D 52 46: the command, its body packed */
+{
+    uint8_t b[48];
+    uint32_t o = 0, i, g = 0, msb = 0;
+    for (i = 1; i < n && o < sizeof b; i++) {   /* (7-in-8 back) */
+        if (!g) {
+            msb = p[i], g = 1;
+            continue;
+        }
+        b[o++] = (uint8_t)((p[i] & 0x7Fu) | (msb >> (g - 1u) & 1u) << 7);
+        g = g == 7u ? 0u : g + 1u;
+    }
+    if (!n)
+        return;
+    if (p[0] != 0x01u)                   /* (a HELLO keeps no session alive: any host looking for units sends them, a
+                                          * RemoteFM1 app once a second to every FM-1 port) */
+        fz_rm_heard = plat_ms();
+    if (p[0] == 0x01u) {                 /* HELLO */
+        static const char name[] = "EVILGENIUS", ver[] = APP_VERSION;
+        uint8_t h[67] = {0};
+        for (i = 0; i < sizeof name - 1u; i++)
+            h[i] = (uint8_t)name[i];
+        h[16] = 2;
+        for (i = 0; i < sizeof ver - 1u && i < 8u; i++)
+            h[17u + i] = h[59u + i] = (uint8_t)ver[i];
+        h[25] = FZ_RM_ROUTE ? 0x10u : 0x05u;   /* (the transport heard on: USB and its SysEx, or a Bluetooth computer) */
+        h[26] = 1;
+        h[29] = FZ_RM_ROUTE ? 128u : 0xC0u, h[30] = FZ_RM_ROUTE ? 0u : 3u;   /* (sxq: 128 over Bluetooth, 960 over USB) */
+        h[39] = 0, h[40] = 4;            /* (the longest SysEx body taken: 1024) */
+        h[57] = 1;
+        h[58] = fz_rm;
+        {
+            const uint8_t was = fz_rm_port;
+            fz_rm_port = FZ_RM_ROUTE;
+            fz_rm_reply(0x41, h, sizeof h);
+            fz_rm_port = was;
+        }
+    } else if (p[0] == 0x10u && o >= 1u) {   /* SESSION */
+        fz_rm_set(b[0] == 1u, o >= 3u ? b[1] | (uint32_t)b[2] << 8 : 0u);
+        {
+            const uint8_t was = fz_rm_port;
+            fz_rm_port = FZ_RM_ROUTE;
+            fz_rm_reply(0x46, b, 0);
+            fz_rm_port = was;
+        }
+        if (fz_rm)
+            fz_rm_panel();
+    } else if (p[0] == 0x13u)            /* PANEL_REQ */
+        fz_rm_panel();
+    else if (p[0] == 0x11u && o >= 45u && fz_rm) {   /* LEDS: by matrix column and row, back to the app's labels and keys */
+        uint32_t l[6] = {0};
+        for (i = 0; i < NB + NKEYS; i++) {
+            const uint32_t q = FZ_RM_POS[i < NB ? FZ_RM_BTN[i] : 14u + (i - NB)], c = q >> 3, bit = 1u << (q & 7u),
+                           w = i < NB ? 0u : 1u, s = i < NB ? i : i - NB;
+            if (b[c] & bit)
+                l[w] |= 1u << s;
+            else if (b[11u + c] & bit)
+                l[2u + w] |= 1u << s, l[4u + w] |= 1u << s;   /* (mid: the glow under it too) */
+            else if ((b[22u + c] | b[33u + c]) & bit)
+                l[4u + w] |= 1u << s;
+        }
+        if (b[44] & 1u)
+            l[0] |= LED_PLAY_GREEN;
+        for (i = 0; i < 6u; i++)
+            fz_rm_led[i] = l[i];
+    }
+}
+/* its screen, in EVILGENIUS's own look: the pixel kit's glyphs (core/ui/px.c px_glyph_row: font 0 the small 4 x 6
+ * cells, 1 the big 8 x 8), a 120 x 120 picture in the C64's colours on black shown at 2x, each lit pixel a fill on
+ * the panel (the frame pipeline is not used: no frame is drawn while the mode lasts) */
+int px_glyph_row(int font, int ch, int row);
+FZ_RM_COLD static void fz_rm_text(int y, const char *t, int big, uint16_t c)   /* centred, y in 120-space */
+{
+    const int cw = big ? 8 : 4, ch = big ? 8 : 6;
+    int n = 0, x, r, i;
+    while (t[n])
+        n++;
+    x = (120 - n * cw) / 2;
+    for (i = 0; i < n; i++, x += cw)
+        for (r = 0; r < ch; r++) {
+            const int bits = px_glyph_row(big, t[i], r);
+            int k;
+            for (k = 0; k < cw; k++)
+                if (bits << k & 0x80)
+                    lcd_fill((uint32_t)(x + k) * 2u, (uint32_t)(y + r) * 2u, 2, 2, c);
+        }
+}
+FZ_RM_COLD static void fz_rm_screen(void)
+{
+    lcd_fill(0, 0, 240, 240, C_BLACK);                      /* (black: the owner, a bright screen beside the computer's distracts) */
+    fz_rm_text(34, "REMOTE MODE", 1, 0xFFFFu);
+    fz_rm_text(50, "PLAYING THE FM-1", 0, RGB(0x75, 0xce, 0xc8));
+    fz_rm_text(58, "IN THE BROWSER", 0, RGB(0x75, 0xce, 0xc8));
+    fz_rm_text(82, "THE SCREEN IS", 0, RGB(0xed, 0xf1, 0x71));
+    fz_rm_text(90, "ON THE COMPUTER", 0, RGB(0xed, 0xf1, 0x71));
+    lcd_sync();
+}
+FZ_RM_COLD static void fz_rm_look(void)     /* every 10 ms, with the lights: MASTER, the whole panel twice a second, the keepalive */
+{
+    const uint32_t now = plat_ms();
+    if (fz_rm_keep && now - fz_rm_heard > fz_rm_keep) {
+        fz_rm_set(0, 0);
+        return;
+    }
+    fz_rm_master(0);
+    if (now - fz_rm_said >= 500u)
+        fz_rm_panel();
 }
 
 /* ---------------------------------------------------------------- SysEx --- */
@@ -1562,6 +1803,10 @@ int app_sysex(const uint8_t *p, uint32_t n)
     FZ_PH(FZ_PH_SYSEX);
     fz_sx_frames_in++;
     fz_sx_bytes_in += n;
+    if (n >= 4u && p[0] == 0x7Du && p[1] == 0x52u && p[2] == 0x46u) {   /* "RF": REMOTE MODE (a RemoteFM1 host) */
+        fz_rm_frame(p + 3, n - 3u);
+        return 1;
+    }
     if (n >= 3u && p[0] == 0x7Du && p[1] == 0x46u && p[2] == 0x50u) {   /* "FP": the port's counters */
         if (n >= 7u && p[3] == 'W' && p[4] == 'I' && p[5] == 'P' && p[6] == 'E') {   /* the store wiped, FIZZ again */
             fz_wipe();
@@ -1697,7 +1942,16 @@ static void fz_lights(void)              /* (FIZZ's state read, the interrupts o
     fz_led_t = plat_ms();
     FZ_PH(FZ_PH_LIGHTS);
     fz_led_looks++;
+    if (fz_rm)
+        fz_rm_look();
     fz_leds(k, b, &g);
+    if (fz_rm) {                         /* REMOTE MODE: the host's lights */
+        for (i = 0; i < NB; i++)
+            b[i] = 0;
+        for (i = 0; i < NKEYS; i++)
+            k[i] = 0;
+        g = 0;
+    }
     for (i = 0; i < NB; i++) {
         lit_b |= (uint32_t)(b[i] >= FZ_LED_LIT) << i;
         mid_b |= (uint32_t)(b[i] >= FZ_LED_MIDL && b[i] < FZ_LED_LIT) << i;
@@ -1708,6 +1962,9 @@ static void fz_lights(void)              /* (FIZZ's state read, the interrupts o
         mid_k |= (uint32_t)(k[i] >= FZ_LED_MIDL && k[i] < FZ_LED_LIT) << i;
         dim_k |= (uint32_t)(k[i] && k[i] < FZ_LED_LIT) << i;
     }
+    if (fz_rm)
+        lit_b = fz_rm_led[0], lit_k = fz_rm_led[1], mid_b = fz_rm_led[2], mid_k = fz_rm_led[3], dim_b = fz_rm_led[4],
+        dim_k = fz_rm_led[5];
     if (g >= FZ_LED_LIT)                 /* PLAY's green LED (bit NB) */
         lit_b |= LED_PLAY_GREEN;
     else if (g) {
@@ -2632,8 +2889,12 @@ static void fz_step(int frame)
         x[FZ_XS_T_PASS] = xfer ? t | 1u : 0u;
     }
     fz_pace = period;
+    if (fz_rm && fz_rm_show) {           /* REMOTE MODE: its still screen, once; no frames while it lasts */
+        fz_rm_show = 0;
+        fz_rm_screen();
+    }
 #ifdef QD_GFX_FB
-    if (now - frame_t >= period || fz_redraw) {   /* (P2.12: one call latches, draws the changed bands, and the rows go) */
+    if (!fz_rm && (now - frame_t >= period || fz_redraw)) {   /* (P2.12: one call latches, draws the changed bands, and the rows go) */
         const uint32_t t1 = plat_ticks24();
         const int all = fz_redraw;
         int drawn;
@@ -2658,7 +2919,7 @@ static void fz_step(int frame)
         }
     }
 #else
-    if (now - frame_t >= period || fz_redraw) {
+    if (!fz_rm && (now - frame_t >= period || fz_redraw)) {
         const uint64_t tx = fz_prof.text, sh = fz_prof.shapes;   /* (the check's drawing calls are not the frame's) */
         const uint32_t ntx = fz_prof.n_text, nsh = fz_prof.n_shapes;
         uint32_t t = plat_ticks24();
@@ -2966,6 +3227,12 @@ int app_expect(const char *what, int *got)
 {
     if (!strcmp(what, "fz_frames"))
         *got = (int)fz_prof.n_frame;
+    else if (!strcmp(what, "fz_rm"))     /* REMOTE MODE: on */
+        *got = fz_rm;
+    else if (!strcmp(what, "fz_rm_n"))   /* .. sessions taken */
+        *got = (int)fz_rm_n;
+    else if (!strcmp(what, "fz_rm_leds"))   /* .. the host's lit buttons and keys, added */
+        *got = (int)(fz_rm_led[0] + fz_rm_led[1]);
     else if (!strcmp(what, "fz_isr"))    /* audio interrupts that made FIZZ's sound */
         *got = (int)fz_prof.n_isr;
     else if (!strcmp(what, "fz_lcd_stale"))   /* the most rows a frame's end left on the panel other than what their

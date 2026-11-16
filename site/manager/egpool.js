@@ -91,10 +91,18 @@ export function mountPool(ctx) {
   $("pl-unused").addEventListener("click", () => ctx.job(clearUnused));
   $("pl-read").addEventListener("click", () => ctx.job(load));
 
+  // the FM-1 in this page, followed: the pool as its own panel changed it
+  async function follow() {
+    const l = ctx.link();
+    if (!S.shown || !l || !S.places || S.moving) return;
+    const snap = JSON.stringify(await l.list({ factory: true, pool: true }));
+    if (snap !== S.snap && !S.moving && !ctx.busy()) await ctx.job(load);
+  }
   async function load() {
     const l = ctx.link();
     if (!l) return;
     const [rows, pj] = [await l.list({ factory: true, pool: true }), await l.projects()];
+    S.snap = JSON.stringify(rows);
     S.places = new Array(NPOOL).fill(null);
     for (const r of rows) if (r.source === "pool" && r.slot >= 1 && r.slot <= NPOOL) S.places[r.slot - 1] = r;
     S.sounds = rows.filter((r) => r.source !== "pool");
@@ -253,6 +261,7 @@ export function mountPool(ctx) {
   });
   return {
     load, render,
+    follow,
     show(on) { S.shown = on; if (on && ctx.link() && !S.places) ctx.job(load); render(); },
     gone() { S.places = null; S.sounds = null; S.moving = 0; render(); },
     stale() { S.places = null; },

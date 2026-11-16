@@ -225,6 +225,15 @@ body.app { background: var(--lightblue); }
 .pjshlist .pjslot > :nth-child(3) { grid-column: 1 / -1; }
 .pjshlist .pjname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pjgrid .key { cursor: default; }
+.pjother { margin: 0; }
+.pjoslots { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
+.pjother .pjacts { margin-bottom: 0; }
+#tab-projects.two .pjnote { display: none; }
+#tab-projects.two .pjside .pjacts { margin: calc(var(--px) * 2) 0; }
+#tab-projects.two .pjside .pjslot { padding: 3px 6px; }
+.pjoslots .pjslot { grid-template-columns: 24px minmax(0, 1fr); gap: 6px; padding: 4px; }
+.pjoslots .pjname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#workon, #aspanel { font: 12px var(--mono); color: var(--yellow); }
 /* CABINET */
 .cabgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: calc(var(--px) * 4); align-items: start; }
 @media (max-width: 520px) { .cabgrid { grid-template-columns: 1fr; } }
@@ -488,13 +497,113 @@ button.sqsl.on { color: var(--yellow); border-color: var(--yellow); }
 /* the virtual FM-1's screen (HOME) */
 .vscreen { width: min(100%, 360px); aspect-ratio: 1; image-rendering: pixelated; border: var(--px) solid var(--cyan); background: #000; }
 .jar.virtual px-sprite { display: none; }
+.jar.virtual .vscreen { cursor: pointer; }
+/* THE DOCK (REMOTE MODE): the FM-1's screen above the whole manager, in the border's colour, centred (the owner's
+   mock-up, 2026-11-16); then the manager: THE STRIP, the tabs, the screens */
+.frame.docked { flex-direction: column; gap: 8px; }
+.dock { position: relative; flex: none; align-self: center; line-height: 0; }
+.dock canvas { width: var(--dock, 120px); height: var(--dock, 120px); image-rendering: pixelated; background: #000; cursor: pointer; display: block; border: 6px solid var(--yellow); }
+.dock[hidden] { display: none; }
+#dock-grip { position: absolute; right: 0; bottom: 0; width: 14px; height: 14px; cursor: nwse-resize; touch-action: none; background: linear-gradient(135deg, transparent 50%, var(--white) 50%); }
+.scr.docked > .strip { order: -1; flex: none; }
+.scr.docked > .topbar { border-top: var(--px) dotted var(--blue); }
+/* THE STRIP: where the unit is, the status line, and its knobs', black keys' and buttons' jobs now */
+.strip { display: flex; flex-direction: column; gap: 3px; padding: 4px 6px; min-width: 0; font-family: var(--mono); }
+.strip[hidden] { display: none; }
+.sthead { display: flex; gap: 10px; align-items: center; min-width: 0; height: 24px; }
+.sthead > b { flex: none; color: var(--yellow); font-size: 15px; letter-spacing: 0.08em; white-space: nowrap; }
+.sthead .statusline { flex: 1; min-width: 0; min-height: 0; border: 0; padding: 0; gap: 8px; }
+.sthead .statusline .scene, .sthead .statusline .ready, .sthead .statusline .hint { display: none; }
+.sthead .statusline .bar { width: 60px; }
+.sthead .right { flex: none; display: flex; gap: 4px; align-items: center; }
+.sthead .right px-text { zoom: 0.55; } .sthead .right .key { padding: 2px 5px; box-shadow: none; }
+.sthead .right .pill { font-size: 10px; padding: 3px 6px; } .sthead .right .trinfo { font-size: 10px; }
+.scr.docked > .topbar { padding-top: 4px; padding-bottom: 4px; }
+.sthead .statusline .status, .sthead .statusline #alert { font-size: 12px; }
+.strow { display: grid; gap: 3px; }
+.strow.k { grid-template-columns: repeat(7, minmax(0, 1fr)); } .strow.b { grid-template-columns: repeat(11, minmax(0, 1fr)); } .strow.n { grid-template-columns: repeat(14, minmax(0, 1fr)); }
+.stc { border: 2px solid var(--blue); background: #06051a; color: var(--white); font: 10px/1.1 var(--mono); padding: 1px 3px; height: 27px; text-align: left; overflow: hidden; white-space: nowrap; cursor: pointer; touch-action: none; user-select: none; }
+.strow.k .stc { cursor: ns-resize; border-color: var(--lightblue); }
+.stc i { display: block; font-style: normal; color: var(--cyan); font-size: 9px; }
+.stc.none span::after { content: "-"; color: var(--darkgrey); }
+.stc.lit { border-color: var(--lightred); } .stc.held { border-color: var(--yellow); background: var(--blue); }
+@media (max-width: 1320px) { .scr.docked .fkeys px-text, .scr.docked .topbar .right px-text { zoom: 0.6; } .scr.docked .fkeys button { padding: 5px 6px; } .scr.docked .topbar { padding: 4px 6px; } }
+/* MIDI FX and TOOLS (egmfx.js, egtools.js) */
+.mfbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
+.mfbar .lab { margin: 0; } .mfbar .key { padding: 3px 9px; box-shadow: none; font: 13px var(--mono); color: var(--white); }
+.mfchain { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 5px; margin: 6px 0; }
+.mfcard { display: flex; flex-direction: column; gap: 2px; padding: 6px; border: var(--px) solid var(--blue); background: #06051a; color: var(--white); font: 13px var(--mono); text-align: left; cursor: pointer; min-height: 62px; overflow: hidden; }
+.mfcard.none { color: var(--grey); border-color: #1a1846; } .mfcard.byp { opacity: 0.55; } .mfcard.on { border-color: var(--yellow); background: #0c0b2a; }
+.mfcard .mfn { background: var(--blue); color: var(--white); padding: 0 6px; align-self: flex-start; } .mfcard .mfname { font-size: 14px; }
+.mfcard .dim { font-size: 10px; white-space: nowrap; }
+.mfslot { margin: 0; display: flex; flex-direction: column; gap: 6px; }
+.mfhead { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; } .mfhead .lab { margin: 0; } .mfhead .key { padding: 3px 9px; box-shadow: none; font: 13px var(--mono); color: var(--white); }
+.mfrow { display: grid; grid-template-columns: 90px repeat(4, minmax(0, 1fr)); gap: 5px; align-items: stretch; }
+.mfrow .lab { margin: 0; align-self: center; font-size: 11px; }
+#tl-knobs { grid-template-columns: repeat(4, minmax(0, 1fr)) auto; }
+.mftile { position: relative; border: var(--px) solid var(--lightblue); background: var(--black); color: var(--white); font-family: var(--mono); text-align: left; padding: 4px 6px 7px; min-height: 44px; cursor: ns-resize; touch-action: none; user-select: none; overflow: hidden; }
+.mftile.none { border-color: #1a1846; color: var(--grey); cursor: default; font-size: 11px; display: flex; align-items: center; }
+.mftile i { display: block; font-style: normal; font-size: 10px; color: var(--cyan); } .mftile b { display: block; font-size: 16px; font-weight: 400; color: var(--white); }
+.mftile u { position: absolute; left: 0; bottom: 0; height: 3px; background: var(--yellow); }
+.mftile:focus-visible, .mfcell:focus-visible { outline: none; border-color: var(--yellow); }
+.mfrow.lane { grid-template-columns: 90px repeat(16, minmax(0, 1fr)); gap: 3px; }
+.mfcell { border: 2px solid var(--blue); background: #06051a; color: var(--white); font: 12px var(--mono); padding: 5px 0; cursor: ns-resize; touch-action: none; user-select: none; }
+.mfcell.out { opacity: 0.35; }
+.tlsteps { display: grid; grid-template-columns: repeat(16, minmax(0, 1fr)); gap: 4px; }
+.tlstep { border: 2px solid var(--blue); height: 34px; display: flex; align-items: flex-end; justify-content: center; font: 10px var(--mono); color: var(--grey); background: #06051a; }
+.tlstep.was { border-color: var(--lightgrey); } .tlstep.on { background: var(--lightblue); color: var(--black); }
+.tlstep.ch { border-color: var(--yellow); } .tlstep.ch.on { background: var(--yellow); } .tlstep.out { opacity: 0.35; }
+.tlacts { align-items: center; gap: 8px; } .tlacts .key { padding: 3px 10px; box-shadow: none; font: 13px var(--mono); color: var(--white); }
+/* THE PANEL (F9): the virtual FM-1's front, over everything (egpanel.js) */
+#panel[hidden] { display: none; }
+.pnl { --lcd: clamp(180px, calc(100vh - 400px), 480px); width: min(100%, calc(var(--lcd) + 560px)); margin: 0 auto; box-sizing: border-box; padding: 4px 6px; gap: 8px; background: var(--black); display: flex; flex-direction: column; font-family: var(--mono); }
+.scr.docked .pnl { --lcd: 0px; width: 100%; }
+.scr.docked .pnlcd { display: none; }
+.pngo { display: inline-flex; gap: 4px; } .pngo .key { padding: 2px 8px; box-shadow: none; font: 12px var(--mono); color: var(--cyan); }
+.pnj { font-size: 10px; color: var(--lightgreen); min-height: 11px; white-space: nowrap; overflow: hidden; max-width: 100%; text-overflow: clip; }
+.pnkey .pnj { color: var(--blue); font-weight: 700; writing-mode: vertical-rl; transform: rotate(180deg); min-height: 0; margin-bottom: 2px; font-size: 9px; }
+#panel .pnkey { flex-direction: column; align-items: center; justify-content: flex-end; }
+#panel .pnkey.black .pnj { color: var(--lightgreen); }
+#panel .pnbtn { height: 46px; gap: 1px; } #panel .pnknob { padding: 4px 2px; gap: 2px; }
+.scr.docked #panel .pnbed { height: 118px; }
+.pnhead { display: flex; align-items: center; gap: 14px; }
+.pnhead h2 { margin: 0; font: 16px var(--mono); color: var(--yellow); letter-spacing: 0.08em; white-space: nowrap; }
+.pnhead .dim { flex: 1; min-width: 0; font-size: 11px; color: var(--grey); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pnhead .key { padding: 2px 10px; box-shadow: none; font: 13px var(--mono); color: var(--white); }
+.pnbody { display: flex; gap: 14px; min-height: 0; }
+.pnlcd { width: var(--lcd); height: var(--lcd); flex: none; image-rendering: pixelated; background: #000; border: var(--px) solid var(--darkgrey); box-sizing: border-box; }
+.pnctl { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: space-between; gap: 8px; }
+.pnknobs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.pnknob { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 2px; border: 2px solid var(--blue); cursor: ns-resize; touch-action: none; user-select: none; }
+.pnknob:focus-visible { outline: none; border-color: var(--yellow); }
+.pndial { display: block; width: clamp(26px, calc(var(--lcd) / 9), 52px); aspect-ratio: 1; border-radius: 50%; border: 3px solid var(--lightgrey); background: #1f2124; position: relative; box-sizing: border-box; }
+.pndial::after { content: ""; position: absolute; left: calc(50% - 2px); top: 2px; width: 4px; height: 32%; background: var(--white); }
+.pnn { font-size: 11px; color: var(--white); white-space: nowrap; }
+.pnk { font-size: 10px; color: var(--yellow); min-height: 12px; white-space: nowrap; }
+.pnbtns { display: flex; flex-direction: column; gap: 8px; }
+.pnrow { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
+.pnrow.oct { grid-template-columns: repeat(6, 1fr); }
+.pnbtn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 0; height: clamp(34px, calc(var(--lcd) / 9), 54px); border: 2px solid var(--lightblue); background: #2e3135; cursor: pointer; font-family: var(--mono); touch-action: none; }
+.pnbtn .pnn { font-size: 10px; }
+.pnbtn.lit { background: var(--lightred); border-color: var(--white); }
+.pnbtn.held, .pnkey.held { outline: 3px solid var(--yellow); outline-offset: -3px; }
+.pnbtn.latched, .pnkey.latched { outline: 3px dashed var(--yellow); outline-offset: -3px; }
+.pnbed { position: relative; height: clamp(110px, calc(100vh - var(--lcd) - 130px), 170px); flex: none; border: 2px solid var(--blue); background: #26282c; }
+.pnkey { position: absolute; padding: 0 0 4px; border: 2px solid var(--black); border-radius: 0 0 8px 8px; cursor: pointer; display: flex; align-items: flex-end; justify-content: center; font-family: var(--mono); touch-action: none; box-sizing: border-box; }
+.pnkey.white { top: 42%; bottom: 0; width: 6.25%; background: #d9dadc; }
+.pnkey.black { top: 0; height: 40%; width: 5%; margin-left: -2.5%; background: #55585e; border-radius: 8px; }
+.pnkey .pnk { color: var(--black); font-size: 12px; font-weight: 700; }
+.pnkey.black .pnk { color: var(--yellow); }
+.pnkey.white.lit { background: var(--lightgreen); } .pnkey.black.lit { background: var(--lightred); }
 </style>
 <script type="module" src="../js/px.js"></script>
 <script type="module" src="./manager.js"></script>
 </head>
 <body class="app">
 <div class="frame">
+  <div id="dock" class="dock" hidden><canvas id="dock-lcd" width="240" height="240" title="The FM-1 in this browser: a click opens THE FM-1 (F9)" aria-label="The FM-1's screen"></canvas><i id="dock-grip" title="Drag: its size (ALT + [ and ]). Double-click: 120"></i></div>
 <div class="scr">
+  <div id="strip" class="strip" hidden role="group" aria-label="Where the FM-1 is, and what its knobs, black keys and buttons do there"></div>
   <header class="topbar">
     <a class="logo" href="../" aria-label="EVILGENIUS, the site"><px-text font="big" scale="2" color="lightred" shadow="red">EVIL</px-text> <px-text font="big" scale="2" color="white" shadow="darkgrey">GENIUS</px-text></a>
     <nav class="fkeys" role="tablist" aria-label="Screens (F1..F8, or ALT + 1..8)">
@@ -506,12 +615,17 @@ button.sqsl.on { color: var(--yellow); border-color: var(--yellow); }
       <button id="t-pool" role="tab" aria-selected="false" aria-controls="tab-pool" type="button"><px-text font="small" scale="2" color="yellow">F6</px-text><px-text font="big" scale="2" color="white">POOL</px-text></button>
       <button id="t-projects" role="tab" aria-selected="false" aria-controls="tab-projects" type="button"><px-text font="small" scale="2" color="yellow">F7</px-text><px-text font="big" scale="2" color="white">PROJECTS</px-text></button>
       <button id="t-cabinet" role="tab" aria-selected="false" aria-controls="tab-cabinet" type="button"><px-text font="small" scale="2" color="yellow">F8</px-text><px-text font="big" scale="2" color="white">CABINET</px-text></button>
+      <button id="t-mfx" role="tab" aria-selected="false" aria-controls="tab-mfx" type="button"><px-text font="small" scale="2" color="yellow">F9</px-text><px-text font="big" scale="2" color="white">MIDI FX</px-text></button>
+      <button id="t-tools" role="tab" aria-selected="false" aria-controls="tab-tools" type="button"><px-text font="small" scale="2" color="yellow">F10</px-text><px-text font="big" scale="2" color="white">TOOLS</px-text></button>
+      <button id="t-fm1" role="tab" aria-selected="false" aria-controls="tab-fm1" type="button" title="The unit's own page (ALT + F): EFFECTS, the settings, the keyboard"><px-text font="big" scale="2" color="cyan">FM-1</px-text></button>
     </nav>
     <div class="right">
       <div id="transport" class="transport" role="group" aria-label="Transport"></div>
       <span id="unitpill" class="pill">NO FM-1</span>
-      <button id="connect" class="key go" type="button"><px-text font="big" scale="2" color="white">CONNECT</px-text></button>
-      <button id="virtual" class="key plain" type="button" title="The firmware itself in this page: play and make projects with no FM-1"><px-text font="big" scale="2" color="cyan">VIRTUAL</px-text></button>
+      <button id="connect" class="key go" type="button" title="An FM-1 on USB: send projects to it, take them from it"><px-text font="big" scale="2" color="white">CONNECT FM-1</px-text></button>
+      <button id="virtual" class="key plain hide" type="button" title="Start the FM-1 in this browser again"><px-text font="big" scale="2" color="cyan">START</px-text></button>
+      <button id="workon" class="key plain hide" type="button" title="Put every screen on the other FM-1 (ALT + W)"></button>
+      <button id="aspanel" class="key plain hide" type="button" title="REMOTE MODE: the FM-1 on USB plays the one in this browser (ALT + P)"></button>
       <button id="disconnect" class="key plain hide" type="button"><px-text font="big" scale="2" color="white">DISCONNECT</px-text></button>
       <button id="helpkey" class="key plain" type="button" aria-label="Every key (?)"><px-text font="big" scale="2" color="white">?</px-text></button>
     </div>
@@ -529,6 +643,9 @@ button.sqsl.on { color: var(--yellow); border-color: var(--yellow); }
     <section id="tab-pool" role="tabpanel" aria-labelledby="t-pool" hidden></section>
     <section id="tab-projects" role="tabpanel" aria-labelledby="t-projects" hidden></section>
     <section id="tab-cabinet" role="tabpanel" aria-labelledby="t-cabinet" hidden></section>
+    <section id="tab-mfx" role="tabpanel" aria-labelledby="t-mfx" hidden></section>
+    <section id="tab-tools" role="tabpanel" aria-labelledby="t-tools" hidden></section>
+    <section id="tab-fm1" role="tabpanel" aria-labelledby="t-fm1" hidden><div id="panel"></div></section>
   </main>
 
   <footer id="console" class="statusline lit">
@@ -538,7 +655,7 @@ button.sqsl.on { color: var(--yellow); border-color: var(--yellow); }
     </div>
     <span class="ready"><px-text font="big" scale="2" color="white">READY.</px-text></span>
     <div class="says">
-      <p id="status" class="status" role="status" aria-live="polite">Not connected.</p>
+      <p id="status" class="status" role="status" aria-live="polite">Starting.</p>
       <p id="alert" class="status err" role="alert"></p>
     </div>
     <div class="bar" role="progressbar" aria-label="Progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="bar"><i id="barfill"></i></div>

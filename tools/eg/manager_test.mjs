@@ -894,5 +894,231 @@ console.log("projects");
   link.close();
 }
 
+// ---- the virtual FM-1's files (site/manager/vfm1/): what build.json says is what is there; the worklet is the firmware's own
+{
+  const { createHash } = await import("node:crypto");
+  const { readdirSync } = await import("node:fs");
+  const dir = new URL("../../site/manager/", import.meta.url);
+  const build = JSON.parse(readFileSync(new URL("vfm1/build.json", dir)));
+  check(build.package === "ble" && /--web --ble/.test(build.built), "vfm1: the Bluetooth package's browser build (the unit's layout)");
+  check(/^[0-9a-f]{40}$/.test(build.commit) && build.dirty === false, "vfm1: built from a clean commit");
+  check(JSON.stringify(Object.keys(build.files).sort()) === JSON.stringify(["app.wasm", "worklet.js"]), "vfm1: build.json names app.wasm and worklet.js");
+  for (const [name, f] of Object.entries(build.files)) {
+    const b = readFileSync(new URL(`vfm1/${name}`, dir));
+    check(b.length === f.bytes, `vfm1/${name}: ${b.length} bytes, build.json says ${f.bytes}`);
+    check(createHash("sha256").update(b).digest("hex") === f.sha256, `vfm1/${name}: its sha256 is build.json's`);
+  }
+  check(same(readFileSync(new URL("vfm1/worklet.js", dir)), readFileSync(new URL("../../firmware/app/web/emu/worklet.js", import.meta.url))),
+    "vfm1/worklet.js is firmware/app/web/emu/worklet.js");
+  const wasm = readFileSync(new URL("vfm1/app.wasm", dir));
+  check(same(wasm.subarray(0, 4), [0, 0x61, 0x73, 0x6d]), "vfm1/app.wasm is WebAssembly");
+  const ex = WebAssembly.Module.exports(new WebAssembly.Module(wasm)).map((x) => x.name);
+  for (const n of ["web_buttons", "web_keys", "web_enc", "web_master", "web_fb", "web_lit_buttons", "web_lit_keys", "eg_web_store", "eg_web_store_writes", "eg_web_out_buf"])
+    check(ex.includes(n), `vfm1/app.wasm exports ${n} (the panel, the screen, the store, the SysEx)`);
+
+  // ---- offline (sw.js): FILES is everything the page loads; with no network the kept copies answer
+  const text = readFileSync(new URL("sw.js", dir), "utf8");
+  const FILES = JSON.parse(/const FILES = (\[[^\]]*\]);/.exec(text)[1]);
+  const here = readdirSync(dir).filter((f) => f.endsWith(".js") && f !== "sw.js").sort();
+  const want = ["./", "index.html", ...here, ...readdirSync(new URL("vfm1/", dir)).map((f) => `vfm1/${f}`), "../css/eg.css", "../js/px.js", "../js/pxart.js"];
+  check(JSON.stringify([...FILES].sort()) === JSON.stringify([...want].sort()), `sw.js FILES is the folder (missing: ${want.filter((f) => !FILES.includes(f))}; gone: ${FILES.filter((f) => !want.includes(f))})`);
+  const html = readFileSync(new URL("index.html", dir), "utf8");
+  const refs = [...html.matchAll(/(?:src|href)="(\.\.?\/[^"#?]+\.(?:js|css))"/g)].map((m) => m[1].replace(/^\.\//, ""));
+  check(refs.length >= 3 && refs.every((r) => FILES.includes(r)), `sw.js keeps what index.html loads (${refs})`);
+  for (const f of here) for (const m of readFileSync(new URL(f, dir), "utf8").matchAll(/from "(\.\.?\/[^"]+)"|import\("(\.\.?\/[^"]+)"\)/g)) {
+    const r = (m[1] || m[2]).replace(/^\.\//, "");
+    check(FILES.includes(r), `sw.js keeps ${f}'s import ${r}`);
+  }
+  // the worker itself, run against a cache and a network made here
+  const base = "https://eg.test/manager/", L = {}, store = new Map();
+  const key = (r, o) => { const u = new URL(typeof r === "string" ? r : r.url, base); if (o && o.ignoreSearch) u.search = ""; return u.href; };
+  const cache = { addAll: async (rs) => { for (const r of rs) store.set(key(r), await net(r)); }, put: async (r, res) => { store.set(key(r), res); },
+    match: async (r, o) => { if (!o) return store.get(key(r)); for (const [k, v] of store) if (key(k, o) === key(r, o)) return v; } };
+  let online = true, asked = [];
+  const net = async (r) => { asked.push(key(r)); if (!online) throw new TypeError("offline"); return { ok: true, url: key(r), clone() { return this; } }; };
+  const scope = { addEventListener: (t, f) => { L[t] = f; }, skipWaiting: async () => {}, clients: { claim: async () => {} }, location: new URL("sw.js", base),
+    caches: { open: async () => cache, keys: async () => ["evilgenius-manager-0", "evilgenius-manager-1", "other"], delete: async (k) => { scope.deleted.push(k); } }, deleted: [],
+    fetch: net, Request: class { constructor(u) { this.url = new URL(u, base).href; this.method = "GET"; } }, Response: { error: () => ({ ok: false, error: true }) }, URL, Promise };
+  new Function("self", ...Object.keys(scope), text)(scope, ...Object.values(scope));
+  let done; await new Promise((r) => { L.install({ waitUntil: (p) => { done = p.then(r); } }); });
+  check(store.size === FILES.length && store.has(`${base}vfm1/app.wasm`) && store.has("https://eg.test/js/px.js"), `install keeps all ${FILES.length} files`);
+  await new Promise((r) => L.activate({ waitUntil: (p) => p.then(r) }));
+  check(JSON.stringify(scope.deleted) === JSON.stringify(["evilgenius-manager-0"]), "activate drops the older manager caches only");
+  const ask = (url, method = "GET") => new Promise((res) => { let took = false; L.fetch({ request: { url: new URL(url, base).href, method }, respondWith: (p) => { took = true; p.then(res); } }); if (!took) res(null); });
+  check((await ask("egnew.js")).url === `${base}egnew.js` && store.has(`${base}egnew.js`), "online: the network answers, and what it gave is kept");
+  check((await ask("https://elsewhere.test/x.js")) === null && (await ask("index.html", "POST")) === null, "another origin, another method: left to the browser");
+  online = false;
+  check((await ask("egpanel.js")).url === `${base}egpanel.js`, "offline: a module from the kept copies");
+  check((await ask("./?v=vfm1")).url === base && (await ask("index.html?sim")).url === `${base}index.html`, "offline: the page whatever its query");
+  check((await ask("vfm1/app.wasm")).url === `${base}vfm1/app.wasm`, "offline: the virtual FM-1's firmware");
+  check((await ask("nothing.js")).error === true, "offline, never kept: a network error, as without the worker");
+}
+
+// ---- THE PANEL (egpanel.js): the computer's keys to the unit's, the masks the firmware reads
+{
+  const P = await import("../../site/manager/egpanel.js");
+  const keysOf = Object.values(P.KEYMAP).filter((m) => m.key !== undefined).map((m) => m.key).sort((a, b) => a - b);
+  check(JSON.stringify(keysOf) === JSON.stringify([...Array(27).keys()]), "PANEL: each of the unit's 27 keys has one key of the computer");
+  const btnsOf = new Set(Object.values(P.KEYMAP).filter((m) => m.btn !== undefined).map((m) => m.btn));
+  check(btnsOf.size === 14 && Object.values(P.BTN).every((b) => btnsOf.has(b)), "PANEL: each of the 14 buttons has a key");
+  check(P.KEYMAP.KeyP.btn === P.BTN.PLAY && P.KEYMAP.Space.btn === P.BTN.PLAY && P.KEYMAP.KeyO.btn === P.BTN.REC && P.KEYMAP.KeyM.btn === P.BTN.HOME, "PANEL: P and SPACE PLAY, O REC, M HOME");
+  check(P.KEYMAP.ArrowUp.enc === "SELECT" && P.KEYMAP.ArrowUp.n === 1 && P.KEYMAP.ArrowLeft.enc === "PRESETS" && P.KEYMAP.ArrowLeft.n === -1 && P.KEYMAP.PageDown.enc === "ALGORITHM", "PANEL: the arrows and PAGE turn SELECT, PRESETS, ALGORITHM");
+  check([...P.WHITE_K, ...P.BLACK_K].sort((a, b) => a - b).join() === [...Array(27).keys()].join(), "PANEL: 16 white and 11 black keys are the 27");
+  const sent = [], h = new P.Held((m) => sent.push(m));
+  h.down("a", 3, 1000); h.down("b", 10, 1010);
+  check(h.mask === ((1 << 3) | (1 << 10)), "held: two things down, both bits");
+  check(h.up("a", 1020) === 30 && h.mask === ((1 << 3) | (1 << 10)), "held: let go after 20 ms waits 30 more (the firmware reads every 16 ms)");
+  check(h.up("a", 1060) === 0 && h.mask === 1 << 10, "held: let go after 50 ms is let go");
+  check(h.up("zz", 0) === -1, "held: nothing down under that id");
+  h.latch(26); h.up("b", 2000);
+  check(h.mask === (1 << 26) >>> 0 && h.unlatch(26) && h.mask === 0 && !h.unlatch(26), "held: latched stays down until pressed again");
+  h.down("ka", 1); h.down("p1", 2); h.clear((id) => id[0] === "k");
+  check(h.mask === 4, "held: the keyboard's let go (the window lost focus), the pointer's kept");
+  check(JSON.stringify(sent) === JSON.stringify([8, 1032, 1024, (1 << 26 | 1024), 1 << 26, 0, 2, 6, 4]), `held: each change sent once (${sent})`);
+  const img = { data: new Uint8ClampedArray(8) };
+  P.paint(img, Uint16Array.of(0x00F8, 0xE007));                 // (the LCD's order: high byte first; red, green)
+  check(img.data.join() === "255,0,0,255,0,255,0,255", "paint: RGB565 high byte first (red, green)");
+}
+
+// ---- an FM-1 running RemoteFM1 as the panel (egremote.js): the protocol's bytes, then a session against a unit made here
+{
+  const R = await import("../../site/manager/egremote.js");
+  const bytes = Array.from({ length: 23 }, (_, i) => (i * 37 + 200) & 255);
+  check(R.pack7(bytes).length === 23 + 4 && R.pack7(bytes).every((b) => b < 128) && R.unpack7(R.pack7(bytes)).join() === bytes.join(), "7-in-8: 23 bytes in 27, back the same");
+  check(R.pack7([0x80, 0x01, 0xFF]).join() === "5,0,1,127", "7-in-8: the top bits first, bit k = byte k's (RemoteFM1 remote_proto.h rf_pack7)");
+  check(R.frame(0x14, [3]).join() === "240,125,82,70,20,0,3,247", "a frame: F0 7D 52 46 14 00 03 F7 (the protocol's own TOUCH example)");
+  // the lights: FX (matrix id 2: column 6, row PA5), key 0 (id 14: column 3, row PA8), PLAY green in the flags; dim HOME (id 8: column 7, PA5)
+  const l = R.ledsOf((1 << 0) | (1 << 14), 1, 1 << 6, 0);
+  check(l.length === 45 && l[6] === 2 && l[3] === 16 && l[44] === 1 && l[22 + 7] === 2 && l.reduce((a, b) => a + b, 0) === 21, "LEDS: lit and dim by matrix column and row, PLAY's green in the flags");
+  // the screen: a tile decoder as the unit's (PROTOCOL.md section 3), fed what tilesOf makes
+  const draw = (shadow, body) => {
+    let o = 4;
+    for (let r = 0; r < body[3]; r++) {
+      const [x, y, w, h, enc] = body.slice(o, o + 5); o += 5;
+      const px = [];
+      if (enc === 0) { for (let i = 0; i < w * h; i++) px.push(body[o++] | (body[o++] << 8)); }
+      else if (enc === 1) { const c = body[o++] | (body[o++] << 8); for (let i = 0; i < w * h; i++) px.push(c); }
+      else if (enc === 2) {
+        const n = body[o++], pal = []; for (let i = 0; i < n; i++) pal.push(body[o++] | (body[o++] << 8));
+        const bpp = n <= 2 ? 1 : n <= 4 ? 2 : 4;
+        for (let yy = 0; yy < h; yy++) { let bits = 0, have = 0; for (let xx = 0; xx < w; xx++) { if (!have) { bits = body[o++]; have = 8; } have -= bpp; px.push(pal[(bits >> have) & ((1 << bpp) - 1)]); } }
+      } else if (enc === 3) { while (px.length < w * h) { const len = body[o++] + 1, c = body[o++] | (body[o++] << 8); for (let i = 0; i < len; i++) px.push(c); } }
+      else throw new Error(`enc ${enc}`);
+      for (let yy = 0; yy < h; yy++) for (let xx = 0; xx < w; xx++) shadow[(y + yy) * 240 + x + xx] = px[yy * w + xx];
+    }
+    return o === body.length;
+  };
+  const fb = new Uint16Array(240 * 240);
+  for (let y = 0; y < 240; y++) for (let x = 0; x < 240; x++)
+    fb[y * 240 + x] = y < 64 ? 0x1234 : y < 128 ? ((x >> 2) & 3) * 0x0841 : y < 176 ? (x * 7 + y * 13) & 0xFFFF : ((x >> 1) % 11) * 0x1111;
+  const shadow = new Uint16Array(240 * 240);
+  let bodies = R.tilesOf(fb, null, 7);
+  check(bodies.length > 1 && bodies.every((b) => b.length <= 1024 && b[0] === 7 && b[1] === 0), `a whole screen: ${bodies.length} TILES bodies, none over 1024 bytes`);
+  check(bodies.slice(0, -1).every((b) => !(b[2] & 1)) && (bodies[bodies.length - 1][2] & 1) === 1, "END on the last body only");
+  check(bodies.every((b) => draw(shadow, b)) && same(new Uint8Array(shadow.buffer), new Uint8Array(fb.buffer)), "the unit's decoder draws the same screen (FILL, PAL 2 / 4 / 16, RLE, RAW)");
+  const model = Uint16Array.from(fb);
+  check(R.tilesOf(fb, model, 8).length === 0, "nothing changed: nothing sent");
+  fb[100 * 240 + 50] ^= 0xFFFF;
+  bodies = R.tilesOf(fb, model, 9);
+  check(bodies.length === 1 && bodies[0][3] === 1 && bodies[0][4] === 48 && bodies[0][5] === 96 && draw(shadow, bodies[0]) && shadow[100 * 240 + 50] === fb[100 * 240 + 50], "one pixel changed: its 16 x 16 tile alone");
+
+  // a unit made here: it answers HELLO, takes a session, sends its panel as RemoteFM1 does
+  const mk = (name) => ({ name, state: "connected", onmidimessage: null, open: async () => {} });
+  const input = mk("FM-1"), got = [], sessions = [];
+  const helloBody = () => { const b = new Array(67).fill(0); [..."RemoteFM1"].forEach((c, i) => { b[i] = c.charCodeAt(0); }); b[16] = 2; [..."0.3.6"].forEach((c, i) => { b[17 + i] = b[59 + i] = c.charCodeAt(0); });
+    b[25] = 1; b[29] = 960 & 255; b[30] = 960 >> 8; b[51] = 240; b[53] = 240; b[55] = 0xAF; b[57] = 2; return b; };
+  const say = (d) => input.onmidimessage && input.onmidimessage({ data: Uint8Array.from(d) });
+  const panelR = (keys, btns, enc, master, flags = 1) => { const b = new Array(25).fill(0); b[0] = keys & 255; b[1] = (keys >> 8) & 255; b[4] = btns & 255; b[5] = btns >> 8; enc.forEach((c, e) => { b[6 + 2 * e] = c & 255; b[7 + 2 * e] = (c >> 8) & 255; }); b[20] = master & 255; b[21] = master >> 8; b[24] = flags; return R.frame(0x53, b); };
+  const output = { name: "FM-1", state: "connected", open: async () => {}, send: (d) => {
+    const m = R.parse(d); if (!m) return;
+    got.push(m);
+    if (m.cmd === 0x01) say(R.frame(0x41, helloBody()));
+    else if (m.cmd === 0x10) { sessions.push(m.body.join()); say(R.frame(0x46)); if (m.body[0]) say(panelR(0, 0, [10, 0, 0, 0, 0, 0, 65530], 512)); }
+    else if (m.cmd === 0x12 && (m.body[2] & 1)) say(R.frame(0x52, [m.body[0], m.body[1], m.body[0] === 1 ? 2 : 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]));
+  } };
+  const other = mk("Some Synth"), access = { inputs: new Map([["a", other], ["b", input]]), outputs: new Map([["a", { ...other, send() {} }], ["b", output]]) };
+  const found = await R.findRemote(access, { ms: 30 });
+  check(found && found.input === input && found.hello.name === "RemoteFM1" && found.hello.version === "0.3.6" && found.hello.inflight === 2 && !found.hello.bluetooth, "found by its HELLO_R (not by its name): RemoteFM1 0.3.6, on USB");
+  check((await R.findRemote({ inputs: new Map([["a", other]]), outputs: access.outputs }, { ms: 20 })) === null, "no RemoteFM1 there: none found");
+  const calls = [], frames = new Set();
+  const vu = { buttons: (m, who) => calls.push(`b${m}${who}`), keys: (m, who) => calls.push(`k${m}${who}`), enc: (r, n) => calls.push(`e${r}:${n}`), master: (v) => calls.push(`m${v}`), onFrame: (f) => { frames.add(f); return () => frames.delete(f); } };
+  let lost = 0;
+  const s = new R.RemoteSession(found, vu, { onLost: () => lost++ });
+  await s.start();
+  check(sessions[0] === "1,184,11" && calls.join() === "m2050", `SESSION start with a 3 s keepalive; MASTER set from the first PANEL_R (${calls})`);
+  calls.length = 0;
+  say([0x9F, 53 + 5, 100]); say([0x9E, 12, 127]); say([0x9E, 0, 127]); say([0x8E, 12, 0]); say([0x8F, 58, 0]);
+  check(calls.join() === "k32remote,b1024remote,b5120remote,b4096remote,k0remote", `a key and buttons: matrix id 12 is PLAY (bit 10), id 0 is OCT- (bit 12) (${calls})`);
+  calls.length = 0;
+  say([0xBE, 16 + 6, 64 + 3]); say([0xBE, 16 + 2, 64 - 2]); say([0xBE, 7, 64]); say([0xBE, 39, 0]);
+  check(calls.join() === "e2:3,e3:-2,m2050", `turns: matrix encoder 6 is PRESETS, 2 is KNOB 1; MASTER from CC 7 / 39 (${calls})`);
+  calls.length = 0;
+  say(panelR(1 << 3, 1 << 12, [10, 0, 62, 0, 0, 0, 65533 + 5 & 0xFFFF], 512));   // (enc 2 counted -2 by the event: 0 - 2 = 65534, the unit says 62: +64 missed)
+  check(calls.includes("k8remote") && calls.includes("b1024remote") && calls.includes("e3:64") && calls.includes("e2:5") && !calls.some((c) => c.startsWith("e0")), `PANEL_R sets straight what the events missed (${calls})`);
+  // the page's frames out: the lights when they change, the screen as tiles, two frames in flight at most
+  got.length = 0;
+  const emit = (m) => { for (const f of frames) f(m); };
+  emit({ buttons: 1, keys: 0, fb });
+  const leds = got.filter((m) => m.cmd === 0x11), tiles = () => got.filter((m) => m.cmd === 0x12);
+  check(leds.length === 1 && leds[0].body.length === 45 && leds[0].body[6] === 2, "the lights go out when they change");
+  const sh2 = new Uint16Array(240 * 240);
+  check(tiles().length > 1 && tiles().every((m) => draw(sh2, m.body)) && same(new Uint8Array(sh2.buffer), new Uint8Array(fb.buffer)), "a session's first frame: the whole screen, as the unit decodes it");
+  const ends = tiles().filter((m) => m.body[2] & 1).map((m) => m.body[0]);
+  check(ends.join() === "1,2" && s.flying === 0, "the first FRAME_ACK said the unit's screen was reset: the whole screen again (frame 2), both acknowledged");
+  emit({ buttons: 1, keys: 0, fb });
+  check(got.filter((m) => m.cmd === 0x11).length === 1, "the same lights: not sent again");
+  const n2 = tiles().length;
+  emit({ buttons: 1, keys: 0, fb });
+  check(tiles().length === n2, "a screen the unit has: nothing sent");
+  s.stop();
+  check(sessions[1] === "0,0,0" && calls.slice(-2).join() === "b0remote,k0remote" && frames.size === 0 && lost === 0, "stop: SESSION end, everything let go");
+  // where the firmware's panel is -> the manager's screen (eg_web_view's bits)
+  const vw = (mode, view, latch, seq, track) => mode | (view << 4) | (latch << 8) | ((seq + 1) << 12) | (track << 16);
+  const so = (...a) => { const r = R.screenOf(vw(...a)); return r ? `${r.tab} ${r.title} ${r.track} ${r.seqView || ""}`.trim() : null; };
+  check(so(1, 1, 0, -1, 3) === "seq STEPS 3 steps" && so(1, 2, 0, -1, 0) === "seq EDIT 0 steps", "the unit's sequencer views (STEPS, EDIT): SEQUENCE in STEPS, on the selected track");
+  check(so(1, 0, 0, 2, 1) === "seq PIANO ROLL 1 roll" && so(1, 0, 0, -1, 1) === "seq PIANO ROLL 1 roll" && so(1, 8, 0, -1, 4) === "seq OVERVIEW 4 tracks", "the PIANO ROLL and OVERVIEW: SEQUENCE's PIANO ROLL and TRACKS");
+  check(so(1, 4, 0, -1, 0) === "home GEEK OUT 0", "GEEK OUT: HOME");
+  check(so(1, 2, 6, -1, 2) === "mix MIX 2", "MIX on the unit: MIX");
+  const sv = R.screenOf(vw(1, 2, 4, -1, 5) | (31 << 20));
+  check(sv.tab === "edit" && sv.track === 5 && sv.value === 31 && sv.title === "SOUND EDITOR", "EDIT on the unit: SOUND on the selected track, with the page's first value (the page to open)");
+  check(so(1, 2, 8, -1, 0) === "library PRESETS 0" && so(1, 2, 11, -1, 0) === "library SAVE PRESET 0" && so(1, 2, 10, -1, 0) === "projects PROJECTS 0" && so(1, 2, 9, -1, 0) === "projects NAME 0", "the browser and SAVE PRESET: LIBRARY; the projects and the name: PROJECTS");
+  check(so(1, 2, 12, -1, 0) === "mfx MIDI FX 0" && so(1, 2, 13, 0, 1) === "tools TOOLS 1" && so(1, 1, 0, 0, 1) === "tools TOOLS 1", "MIDI FX and TOOLS on the unit: their own screens");
+  check(so(1, 2, 7, -1, 2) === "fm1 EFFECTS 2" && so(1, 2, 5, -1, 0) === "fm1 TRACK SETTINGS 0" && so(1, 1, 0, 1, 0) === "fm1 PATTERNS 0" && so(2, 2, 0, -1, 0) === "fm1 KEYBOARD 0",
+    "a page with no screen of its own here (EFFECTS, the settings, PATTERNS, the keyboard): THE FM-1, named after it");
+  const TL = await import("../../site/manager/egtools.js");
+  const tt = (d) => TL.toolText(d).map((p) => (p ? p.join(" ") : "-")).join(" | ");
+  check(tt({ tool: 3, v: [5, 16, 2, 1] }) === "HITS 5 | LENGTH 16 | ROTATE 2 | LANDS ADD" && tt({ tool: 0, rot: -3, v: [] }) === "OFFSET -3 | - | - | -", "TOOLS: EUCLID's and ROTATE's knobs as the unit's");
+  check(tt({ tool: 6, v: [50, 2, 0] }) === "TIMING 50% | GRID 1/3 | VELOCITY 0% | -" && tt({ tool: 8, v: [0, 250] }) === "FACTOR /4 | FIT PAGES OFF | - | -" && tt({ tool: 8, v: [3, 0] }) === "FACTOR (FIT) | FIT PAGES 3 | - | -" && tt({ tool: 7, lpow: -2, v: [] }) === "LENGTH /4 | - | - | -",
+    "TOOLS: QUANTIZE, STRETCH (the rung a signed byte) and LENGTH");
+  check(TL.TOOLS.length === 10 && TL.SCOPES.length === 4, "TOOLS: ten tools, four scopes (core/seq/tools.h)");
+  check(R.screenOf(vw(0, 2, 0, -1, 0)).tab === null && R.screenOf(-1) === null, "the idle screen: the manager stays where it is; an older build: nothing");
+  check(Array.from({ length: 14 }, (_, l) => l).every((l) => l === 0 || R.screenOf(vw(1, 1, l, -1, 0)).tab) && [0, 1, 2, 3, 4, 5, 6, 7, 8].every((v) => R.screenOf(vw(1, v, 0, -1, 0)).tab), "every latched menu and every view of the unit has a screen here");
+  check(R.GOTO.mix.there(vw(1, 1, 6, -1, 0)) && !R.GOTO.mix.there(vw(1, 1, 0, -1, 0)) && R.GOTO.seq.there(vw(1, 2, 0, -1, 0)) && !R.GOTO.seq.there(vw(1, 4, 0, -1, 0)) && !R.GOTO.seq.there(vw(1, 1, 6, -1, 0)) && R.GOTO.mfx.there(vw(1, 1, 12, -1, 0)) && R.GOTO.tools.there(vw(1, 1, 13, 0, 0)) && R.GOTO.edit.btn === 4,
+    "the other way: each screen's button on the unit, and when the unit is there");
+  // EVILGENIUS in its REMOTE MODE: the same messages, no screen (HELLO_R says so); the port shared with its link
+  const eg = helloBody(); [..."EVILGENIUS"].forEach((c, i) => { eg[i] = c.charCodeAt(0); }); eg[51] = eg[53] = 0; eg[55] = 0; eg[57] = 1;
+  const hEg = R.helloOf(eg);
+  check(hEg.name === "EVILGENIUS" && hEg.screen === false, "HELLO_R: a unit with no screen size takes no TILES");
+  const rm = helloBody(); rm[51] = 240; rm[53] = 240;
+  check(R.helloOf(rm).screen === true, "HELLO_R: RemoteFM1's 240 x 240 screen");
+  const linkGot = [];
+  input.onmidimessage = (e) => linkGot.push(Array.from(e.data));   // (the link's own handler, there first)
+  const s3 = new R.RemoteSession({ input, output, hello: hEg }, vu, {});
+  await s3.start();
+  got.length = 0; linkGot.length = 0;
+  emit({ buttons: 2, keys: 0, fb });
+  check(got.some((m) => m.cmd === 0x11) && !got.some((m) => m.cmd === 0x12), "EVILGENIUS in REMOTE MODE: the lights go out, no screen");
+  say([0xF0, 0x7D, 0x45, 0x47, 0x01, 0xF7]); say(panelR(0, 0, [0, 0, 0, 0, 0, 0, 0], 0));
+  check(linkGot.length === 1 && linkGot[0][2] === 0x45, "the port shared: EVILGENIUS's own SysEx goes on to its link, the panel's does not");
+  s3.stop();
+  check(typeof input.onmidimessage === "function" && (say([0xF0, 0x7D, 0x45, 0x47, 0x02, 0xF7]), linkGot.length === 2), "stop: the link's handler back");
+  input.onmidimessage = null;
+  // gone: a PANEL_R without the session flag
+  const s2 = new R.RemoteSession(found, vu, { onLost: () => lost++ });
+  await s2.start();
+  say(panelR(0, 0, [0, 0, 0, 0, 0, 0, 0], 0, 0));
+  check(lost === 1 && !s2.on, "a PANEL_R with no session: the panel is gone");
+}
+
 console.log(fails ? `${fails} of ${checks} checks FAILED` : `all ${checks} checks pass`);
 process.exit(fails ? 1 : 0);

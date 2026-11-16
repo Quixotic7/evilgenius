@@ -5,13 +5,15 @@
 // awake while an FM-1 is linked; what it says (the page's news, in its voice); THE CHIP: the picked track's sound as
 // the SID's three voices (each oscillator's wave, its pitch and width); THE TRACKS: the open pattern's six tracks, each
 // its sound's name and wave, its first page of steps, muted or not. A track: 1..6 or a click; ENTER its sound in SOUND,
-// S its steps in SEQUENCE, R reads the FM-1 again.
-//   mountHome({ $, link(), busy(), job(fn), say, refuse, toSound(track), toSeq(track) }) -> { show(on), load(), says(text), gone(), render() }
+// S its steps in SEQUENCE, R reads the FM-1 again. The virtual FM-1's screen stands in the jar's place: a click opens
+// its panel (F9, egpanel.js).
+//   mountHome({ $, link(), busy(), job(fn), say, refuse, toSound(track), toSeq(track), panel() }) -> { show(on), load(), says(text), gone(), render() }
 import { parseDump } from "./egsysex.js";
 import { soundFromDump, ID } from "./egsound.js";
 import { stepOf } from "./egseq.js";
 import { wave } from "./egpics.js";
 import { VALUES } from "./egvalues.js";
+import { paint } from "./egpanel.js";
 
 const el = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; };
 const px = (s, font = "small", scale = 2, color = "white") => { const t = document.createElement("px-text"); t.setAttribute("font", font); t.setAttribute("scale", String(scale)); t.setAttribute("color", color); t.textContent = s; return t; };
@@ -40,7 +42,7 @@ export function mountHome(ctx) {
       <section class="hright">
         <div class="box"><div class="hhead"><span class="lab" id="h-chipname">THE CHIP</span><span class="dim" id="h-chipnote"></span></div>
           <div class="voices" id="h-voices"></div></div>
-        <div class="box"><div class="hhead"><span class="lab">THE TRACKS</span><span class="dim">1..6 PICK · ENTER SOUND · S STEPS · R READ</span></div>
+        <div class="box"><div class="hhead"><span class="lab">THE TRACKS</span><span class="dim">1..6 PICK · ENTER SOUND · S STEPS</span></div>
           <div id="h-tracks" class="htracks" role="listbox" aria-label="The open pattern's tracks"></div></div>
       </section>
     </div>`;
@@ -51,7 +53,7 @@ export function mountHome(ctx) {
     n.textContent = S.said;
     n.append(el("span", "cur"));
   }
-  async function load() {
+  async function load(quiet = false) {
     const l = ctx.link();
     if (!l || S.loading) return;
     S.loading = true;
@@ -69,11 +71,15 @@ export function mountHome(ctx) {
       S.tracks = tracks;
       S.pattern = info && !info.old ? info.pattern : -1;
     } finally { S.loading = false; }
+    // (followed every second on the FM-1 in this page: drawn again only when something changed)
+    const snap = JSON.stringify([S.pattern, S.tracks, S.sounds.map((x) => x && [x.name, Array.from(x.blob || [])])]);
+    if (quiet && snap === S.snap) return;
+    S.snap = snap;
     render();
   }
   function render() {
     const l = ctx.link();
-    $("h-awake").textContent = l ? `AWAKE · ${l.virtual ? "THE VIRTUAL FM-1, IN THIS PAGE" : `${l.id} ON USB`}${S.pattern >= 0 ? ` · PATTERN ${"ABCD"[S.pattern >> 4]}${String((S.pattern & 15) + 1).padStart(2, "0")}` : ""}` : "ASLEEP · NO FM-1";
+    $("h-awake").textContent = l ? `AWAKE · ${l.virtual ? "THE FM-1 IN THIS BROWSER · F9 ITS PANEL" : `${l.id} ON USB`}${S.pattern >= 0 ? ` · PATTERN ${"ABCD"[S.pattern >> 4]}${String((S.pattern & 15) + 1).padStart(2, "0")}` : ""}` : "ASLEEP · NO FM-1";
     $("h-awake").classList.toggle("on", !!l);
     if (!$("h-says").textContent) says(S.said);
     // the chip: the picked track's sound as three voices
@@ -111,12 +117,13 @@ export function mountHome(ctx) {
     if (/^[1-6]$/.test(e.key)) { S.sel = Number(e.key) - 1; render(); e.preventDefault(); }
     else if (e.key === "Enter" && S.tracks) { ctx.toSound(S.sel); e.preventDefault(); }
     else if (e.key.toLowerCase() === "s" && S.tracks) { ctx.toSeq(S.sel); e.preventDefault(); }
-    else if (e.key.toLowerCase() === "r" && ctx.link()) { ctx.job(load); e.preventDefault(); }
+    else if (e.key.toLowerCase() === "r" && ctx.link()) { ctx.job(() => load()); e.preventDefault(); }
   });
   says(QUIPS[0]);
   // the virtual FM-1's own screen in the jar's place (its frames: 240 x 240 RGB565, as the unit draws them)
   let unsub = null;
   const img = $("h-unit").getContext("2d").createImageData(240, 240);
+  $("h-unit").addEventListener("click", () => ctx.panel());
   function unit(vu) {
     if (unsub) { unsub(); unsub = null; }
     $("h-unit").hidden = !vu;
@@ -124,17 +131,13 @@ export function mountHome(ctx) {
     if (!vu) return;
     unsub = vu.onFrame((m) => {
       if (!m.fb) return;
-      const d = img.data, fb = m.fb;
-      for (let i = 0; i < fb.length; i++) {
-        const v = fb[i], o = i * 4;
-        d[o] = ((v >> 11) & 31) * 255 / 31; d[o + 1] = ((v >> 5) & 63) * 255 / 63; d[o + 2] = (v & 31) * 255 / 31; d[o + 3] = 255;
-      }
-      $("h-unit").getContext("2d").putImageData(img, 0, 0);
+      $("h-unit").getContext("2d").putImageData(paint(img, m.fb), 0, 0);
     });
   }
   return {
     load, render, says, unit,
-    show(on) { S.shown = on; if (on && ctx.link() && !S.tracks) ctx.job(load); render(); },
+    async follow() { if (S.shown && S.tracks) await load(true); },
+    show(on) { S.shown = on; if (on && ctx.link() && !S.tracks) ctx.job(() => load()); render(); },
     gone() { S.tracks = null; S.sounds = []; S.pattern = -1; says(QUIPS[1 + Math.floor(Math.random() * 2)]); render(); },
     stale() { S.tracks = null; S.sounds = []; S.pattern = -1; },
     get sel() { return S.sel; },

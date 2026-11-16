@@ -56,6 +56,30 @@ EVILGENIUS began as FIZZ 0.12.0-beta.17 with another engine and another face; FI
   virtual one, replacing what is there: the store is backed up to CABINET first, and the project's sounds are added
   to MY PRESETS where they are missing. EXPORT and IMPORT share them as .egprj files. CABINET now keeps the last 12
   backups of each FM-1, so the virtual one's never push out your unit's.
+- **The FM-1 in the browser has its panel, and the manager works with no network.** THE FM-1 (ALT + F, or a
+  click on its screen) shows its front: the screen at twice its size, the knobs, the buttons and the keys with
+  their lights, all played from the computer's keyboard (the key is written on each control; SHIFT holds one
+  down), with what each one does right now written on it. The manager and its FM-1 are kept in the browser once
+  opened, so they open again offline. The FM-1's screen on HOME has its right colours now.
+- **The manager is an FM-1 in your browser now.** It starts with the page, with no FM-1 needed and nothing to
+  connect or read: every screen shows the FM-1 in the browser and follows it. CONNECT FM-1 brings your unit beside
+  it: PROJECTS shows its slots, GET takes a project from it into the library, SEND puts one onto it, and WORK ON
+  FM-1 (ALT + W) puts the screens on the unit as before.
+- **An FM-1 running RemoteFM1 can be the browser FM-1's panel**: CONNECT finds it, and its keys, knobs, buttons,
+  lights and screen are the browser's FM-1's.
+- **REMOTE MODE: your FM-1 plays the FM-1 in the browser.** With the manager connected, REMOTE MODE (ALT + P)
+  makes the unit the browser FM-1's panel: its keys, buttons and knobs play it, its lights show it, and the unit
+  itself is silent and shows REMOTE MODE until you end it. The FM-1's screen sits in a band at the top of the
+  manager the whole time (drag its corner for its size), with what each knob, black key and button does right now
+  written beside it. The unit and the manager move as one: the unit's pages open the manager's screens (the
+  sequencer SEQUENCE, MIX MIX, EDIT SOUND on the page you picked with the black keys), a screen picked in the
+  manager takes the unit there, and a page the manager has no screen for yet (EFFECTS, the settings) opens THE
+  FM-1 (ALT + F): the unit's page with every control's job on it.
+- **MIDI FX and TOOLS in the manager** (F9, F10; on the FM-1 in the browser). MIDI FX shows a group's whole chain:
+  the eight slots, the picked slot's every value on every page, the ARP's two lanes, and which group each track
+  goes through; drag or scroll a value. TOOLS runs the unit's own tools (ROTATE .. CLIP) with the page's steps
+  shown before and after, KEEP and UNDO. Both are the unit's own state: turn a knob on the unit and they follow.
+
 
 ## 0.1.1 (2026-11-15)
 

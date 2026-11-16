@@ -1,17 +1,17 @@
 {
-  "commit": "02d309722fdbf3af01a5c385b5d2a47f4cecc302",
+  "commit": "42b7e20c82492ebec250058169330a6925e15877",
   "dirty": false,
-  "with": "the commit that adds this build: firmware/app/app.c, fz_port.c and web/emu/worklet.js (the browser's store and SysEx)",
+  "with": "the working copy's firmware/app/app.c (REMOTE MODE), fz_port.c (eg_web_view: where the panel is; eg_web_mfx, eg_web_tools: MIDI FX and TOOLS for the manager's screens) and web/emu/worklet.js, over that commit's tree; the commit that adds this build carries them",
   "package": "ble",
   "built": "firmware/build.py --web --ble",
   "files": {
     "app.wasm": {
-      "bytes": 709318,
-      "sha256": "1cac76bdacaed1af5dc6ba878a5058cf84161b6157e78034591b47e6effa77c3"
+      "bytes": 717046,
+      "sha256": "3f94b286f5c0362e9314ab155e1b8eb1ac2eac0b6082d4bb291698343ad5046c"
     },
     "worklet.js": {
-      "bytes": 8448,
-      "sha256": "0c2d3ad027393c0abc0a8da858a59bbf68cb04f6a037dbf009c5c955e2163e98"
+      "bytes": 9194,
+      "sha256": "23ff31c774e7461f2a44878233e34f1748cddc9fdec58ec2dcc79f7e0970c88c"
     }
   }
 }

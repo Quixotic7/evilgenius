@@ -14,7 +14,11 @@
 // (nothing kept is overwritten); SEND TO SLOT puts the picked entry into the picked slot, which it replaces: the FM-1's
 // store is backed up first (CABINET keeps the backup), the project's presets found or added to MY PRESETS, and the store
 // written back (RESTORE's path; the FM-1 starts again). EXPORT and IMPORT: the .egprj file (docs/PROJECT-FORMAT.md).
-//   mountProjects({ $, say, refuse, link(), busy(), job(fn), changed() }) -> { show(on), load(), gone(), render() }
+// THE OTHER FM-1: with an FM-1 on USB beside the one in this page (ctx.other()), its slots stand in a box of their own.
+// GET takes its picked slot's project into the library (a new entry); SEND puts the library's picked project onto its
+// picked slot, as SEND TO SLOT does (its store backed up first). So a project goes browser -> FM-1 and back without
+// the screens leaving the FM-1 they are on.
+//   mountProjects({ $, say, refuse, link(), other(), busy(), job(fn), changed() }) -> { show(on), load(), follow(), gone(), render() }
 import { patternsOf, LAYOUT, SECTOR } from "./egstore.js";
 import { cleanName, backupName } from "./egfiles.js";
 import { extractProject, insertProject, readProject, projectFile, projectName, shelf } from "./egproject.js";
@@ -27,7 +31,7 @@ const patName = (k) => `${"ABCD"[k >> 4]}${String((k & 15) + 1).padStart(2, "0")
 
 export function mountProjects(ctx) {
   const { $, say, refuse } = ctx;
-  const S = { list: null, current: 0, sel: 0, pats: null, shown: false, reading: false, shelf: [], ssel: null };
+  const S = { list: null, current: 0, sel: 0, pats: null, shown: false, reading: false, shelf: [], ssel: null, olist: null, ocur: 0, osel: 1 };
   const root = $("tab-projects");
   root.innerHTML = `
     <div class="hhead"><span class="lab" id="pj-title">THE PROJECTS</span><span class="dim">UP / DOWN A SLOT · ENTER LOAD · N NEW · R RENAME · C COPY · M MOVE (THEN 1..8) · DELETE · P PATTERNS</span></div>
@@ -44,7 +48,15 @@ export function mountProjects(ctx) {
         </div>
         <div id="pj-to" class="box pjto" hidden><p id="pj-totext"></p><div class="seg" id="pj-toslots"></div>
           <div class="keys"><button id="pj-tono" class="key plain" type="button"></button></div></div>
-        <p class="dim">The FM-1 must be stopped. A load saves the project worked on first. A delete, and a copy over a project, cannot be undone: back up first (CABINET).</p>
+        <div class="pjother box" id="pj-other" hidden>
+          <div class="hhead"><span class="lab" id="pj-otitle">THE FM-1 ON USB</span><span class="dim">[ ] SLOT · G GET · T SEND</span></div>
+          <div id="pj-oslots" class="pjoslots" role="listbox" aria-label="The other FM-1's project slots"></div>
+          <div class="keys pjacts">
+            <button id="pj-oget" class="key go" type="button"></button>
+            <button id="pj-osend" class="key plain" type="button"></button>
+          </div>
+        </div>
+        <p class="dim pjnote">The FM-1 must be stopped. A load saves the project worked on first. A delete, and a copy over a project, cannot be undone: back up first (CABINET).</p>
       </div>
       <div class="pjright">
         <div class="pjmain box">
@@ -53,7 +65,7 @@ export function mountProjects(ctx) {
           <p class="dim" id="pj-patnote">The patterns as the FM-1 last saved them. A lit one has steps.</p>
         </div>
         <div class="pjshelf box">
-          <div class="hhead"><span class="lab" id="pj-shtitle">IN THIS BROWSER</span><span class="dim">B SAVE HERE · U SEND TO SLOT · E EXPORT · I IMPORT · SHIFT + UP / DOWN PICK</span></div>
+          <div class="hhead"><span class="lab" id="pj-shtitle">THE LIBRARY</span><span class="dim">B SAVE HERE · U SEND TO SLOT · E EXPORT · I IMPORT · SHIFT + UP / DOWN PICK</span></div>
           <div id="pj-shelf" class="pjshlist" role="listbox" aria-label="The projects kept in this browser"></div>
           <div class="keys pjacts">
             <button id="pj-tolib" class="key go" type="button"></button>
@@ -80,8 +92,28 @@ export function mountProjects(ctx) {
     if (!r) { refuse("this EVILGENIUS does not list its projects"); return; }
     S.list = r.list; S.current = r.current;
     if (!S.sel || !S.list[S.sel - 1]) S.sel = S.current;
+    S.snap = JSON.stringify(r);
+    await loadOther();
     render();
   }
+  async function loadOther() {
+    const o = ctx.other();
+    const r = o ? await o.projects().catch(() => null) : null;
+    S.olist = r ? r.list : null; S.ocur = r ? r.current : 0;
+    if (!S.olist || !S.olist[S.osel - 1]) S.osel = 1;
+  }
+  // the FM-1 in this page, followed: its projects as its own panel changed them
+  async function follow() {
+    const l = ctx.link();
+    if (!S.shown || !l || !S.list || ctx.busy()) return;
+    const r = await l.projects();
+    if (!r || JSON.stringify(r) === S.snap || root.querySelector(".pjslot input")) return;
+    S.snap = JSON.stringify(r);
+    S.list = r.list; S.current = r.current; S.pats = null;
+    render();
+  }
+  const who = (l) => (l.virtual ? "the FM-1 in this browser" : `the FM-1 on USB`);
+  const nameIn = (list, p) => { const s = list && list[p - 1]; return `PROJECT ${p}${s && s.there && s.name && s.name !== `PROJECT ${p}` ? ` (${s.name})` : ""}`; };
   async function readPatterns() {
     const l = ctx.link();
     if (!l || !S.list) return;
@@ -107,8 +139,8 @@ export function mountProjects(ctx) {
     return true;
   };
   // a step the page cannot take back: the project's name (or number) typed
-  const typed = (p, what) => {
-    const s = slot(p), want = (s && s.name) || String(p);
+  const typed = (s, p, what) => {
+    const want = (s && s.name) || String(p);
     const got = window.prompt(`${what}\n\nThis cannot be undone. Type ${s && s.name ? `the project's name (${want})` : `its number (${p})`} to go on.`);
     return got != null && got.trim().toUpperCase() === want.toUpperCase();
   };
@@ -173,7 +205,7 @@ export function mountProjects(ctx) {
   async function copyTo(p, q, move) {
     $("pj-to").hidden = true;
     const over = slot(q) && slot(q).there;
-    if (over && !typed(q, `${label(q)} is replaced by a copy of ${label(p)}.`)) { say("Nothing was changed."); return; }
+    if (over && !typed(slot(q), q, `${label(q)} is replaced by a copy of ${label(p)}.`)) { say("Nothing was changed."); return; }
     if (!over && !window.confirm(`${move ? "Move" : "Copy"} ${label(p)} to slot ${q}?`)) return;
     if (!(await stopped())) return;
     say(`${move ? "Moving" : "Copying"} ${label(p)} to slot ${q}`, "busy");
@@ -190,7 +222,7 @@ export function mountProjects(ctx) {
   async function del() {
     const p = S.sel, s = slot(p);
     if (!s || !s.there) return;
-    if (!typed(p, p === S.current ? `${label(p)} is the one worked on: it is replaced by a blank project.` : `${label(p)} is deleted from the FM-1.`)) { say("Nothing was deleted."); return; }
+    if (!typed(s, p, p === S.current ? `${label(p)} is the one worked on: it is replaced by a blank project.` : `${label(p)} is deleted from the FM-1.`)) { say("Nothing was deleted."); return; }
     if (!(await stopped())) return;
     if (!done(await ctx.link().project("delete", p), "delete it")) return;
     await after(`${p === S.current ? "Project " + p + " is blank now" : "Deleted project " + p}.`);
@@ -204,44 +236,50 @@ export function mountProjects(ctx) {
     if (!entry()) S.ssel = S.shelf.length ? S.shelf[0].id : null;
     render();
   }
-  async function storeImage(what) {                       // the unit's store now: the project worked on saved first
-    const l = ctx.link();
+  async function storeImage(l, what) {                    // an FM-1's store now: the project worked on saved first
     await l.flush().catch(() => null);
-    say(`${what}: reading the FM-1's store`, "busy");
+    say(`${what}: reading the store of ${who(l)}`, "busy");
     const r = await l.backup((f) => ctx.bar(f));
     ctx.bar(0);
     return r;
   }
-  async function toLib() {
-    const p = S.sel, s = slot(p);
-    if (!s || !s.there) return;
-    const r = await storeImage(`Saving ${label(p)} to this browser`);
-    const j = extractProject(r.image, p, { unit: ctx.link().id, date: new Date().toISOString() });
+  // a slot's project into the library: a new entry, nothing kept is overwritten
+  async function keepFrom(l, list, p) {
+    const s = list && list[p - 1];
+    if (!l || !s || !s.there) return;
+    const r = await storeImage(l, `Saving ${nameIn(list, p)} to the library`);
+    const j = extractProject(r.image, p, { unit: l.id, date: new Date().toISOString() });
     const id = await shelf.add(j);
     await readShelf(id);
-    say(`${j.name} is kept in this browser${j.presets.length ? `, with ${j.presets.length} of MY PRESETS` : ""}.`, "ok");
+    say(`${j.name} is in the library, from ${who(l)}${j.presets.length ? `, with ${j.presets.length} of MY PRESETS` : ""}.`, "ok");
   }
-  async function toUnit() {
-    const e = entry(), p = S.sel, s = slot(p);
-    if (!e || !s) return;
-    const over = s.there;
-    if (over && !typed(p, `${label(p)} is replaced by ${e.name} from this browser. The FM-1's store is backed up first (CABINET keeps it).`)) { say("Nothing was changed."); return; }
-    if (!over && !window.confirm(`Send ${e.name} to slot ${p}? The FM-1's store is backed up first, and the FM-1 starts again.`)) return;
-    if (!(await stopped())) return;
-    const r = await storeImage(`Sending ${e.name}`);
+  // the library's picked project onto a slot, which it replaces (mine: the FM-1 the screens are on)
+  async function sendTo(l, list, p, mine) {
+    const e = entry(), s = list && list[p - 1];
+    if (!l || !e || !s) return;
+    const over = s.there, unit = who(l);
+    if (over && !typed(s, p, `${nameIn(list, p)} on ${unit} is replaced by ${e.name} from the library. Its store is backed up first (CABINET keeps it).`)) { say("Nothing was changed."); return; }
+    if (!over && !window.confirm(`Send ${e.name} to slot ${p} of ${unit}? Its store is backed up first, and it starts again.`)) return;
+    const st = await l.status();
+    if (st && st.playing) { refuse(`stop ${unit} first: projects change only while it is stopped`); return; }
+    const r = await storeImage(l, `Sending ${e.name}`);
     let put;
     try { put = insertProject(r.image, p, e.project); } catch (x) { refuse(`${e.name} cannot go to slot ${p}: ${x.message}`); return; }
     const before = readImage(r.image);
-    await kept.add({ date: new Date().toISOString(), name: backupName(), unit: ctx.link().id, size: r.image.length, crc: r.crc >>> 0,
+    await kept.add({ date: new Date().toISOString(), name: backupName(), unit: l.id, size: r.image.length, crc: r.crc >>> 0,
       summary: `before ${e.name} went to slot ${p}: ${keptSummary(before)}`, image: r.image });
-    await ctx.link().restore(put.image, { onProgress: (f) => ctx.bar(f),
-      onPhase: (ph) => say(ph === "check" ? `Sending ${e.name}: the FM-1 checks the store` : `Sending ${e.name}: the FM-1 writes its store. Do not unplug it`, "busy") });
+    await l.restore(put.image, { onProgress: (f) => ctx.bar(f),
+      onPhase: (ph) => say(ph === "check" ? `Sending ${e.name}: ${unit} checks the store` : `Sending ${e.name}: ${unit} writes its store.${l.virtual ? "" : " Do not unplug it"}`, "busy") });
     ctx.bar(1);
-    await new Promise((res) => setTimeout(res, 1200));     // (the FM-1 starts again on the store)
-    S.sel = p;
+    await new Promise((res) => setTimeout(res, l.virtual ? 200 : 1200));     // (the FM-1 starts again on the store)
     const presets = put.added.length ? ` ${put.added.length} sound${put.added.length === 1 ? "" : "s"} added to MY PRESETS (${put.added.map((x) => x.name).join(", ")}).` : "";
-    await after(`${e.name} is in slot ${p}${put.replaced ? ` (it replaced ${put.replaced})` : ""}.${presets} The store before it is kept in CABINET.`);
+    const text = `${e.name} is in slot ${p} of ${unit}${put.replaced ? ` (it replaced ${put.replaced})` : ""}.${presets} The store before it is kept in CABINET.`;
+    if (mine) { S.sel = p; await after(text); } else { S.osel = p; await loadOther(); render(); say(text, "ok"); }
   }
+  const toLib = () => keepFrom(ctx.link(), S.list, S.sel);
+  const toUnit = () => sendTo(ctx.link(), S.list, S.sel, true);
+  const oGet = () => keepFrom(ctx.other(), S.olist, S.osel);
+  const oSend = () => sendTo(ctx.other(), S.olist, S.osel, false);
   function exportP() {
     const e = entry();
     if (!e) return;
@@ -283,8 +321,8 @@ export function mountProjects(ctx) {
   function renderShelf(off) {
     const box = $("pj-shelf");
     box.textContent = "";
-    $("pj-shtitle").textContent = `IN THIS BROWSER · ${S.shelf.length} PROJECT${S.shelf.length === 1 ? "" : "S"}`;
-    if (!S.shelf.length) box.append(el("p", "dim", "None yet. SAVE HERE keeps the picked slot's project in this browser; IMPORT reads .egprj files."));
+    $("pj-shtitle").textContent = `THE LIBRARY · ${S.shelf.length} PROJECT${S.shelf.length === 1 ? "" : "S"} KEPT IN THIS BROWSER`;
+    if (!S.shelf.length) box.append(el("p", "dim", "None yet. SAVE HERE keeps the picked slot's project in the library; IMPORT reads .egprj files."));
     for (const x of S.shelf) {
       const j = x.project, d = new Date(x.saved);
       const b = el("button", `pjslot there${x.id === S.ssel ? " on" : ""}`);
@@ -305,6 +343,26 @@ export function mountProjects(ctx) {
     $("pj-import").disabled = ctx.busy();
     const on = box.querySelector(".on");
     if (on && on.scrollIntoView) on.scrollIntoView({ block: "nearest" });
+    // the other FM-1
+    const o = ctx.other(), ob = $("pj-oslots");
+    $("pj-other").hidden = !o;
+    root.classList.toggle("two", !!o);
+    ob.textContent = "";
+    if (!o) return;
+    $("pj-otitle").textContent = o.virtual ? "THE FM-1 IN THIS BROWSER" : `THE FM-1 ON USB · ${o.id}`;
+    if (!S.olist) ob.append(el("p", "dim", "Reading its projects .."));
+    else S.olist.forEach((x, k) => {
+      const q = k + 1, c = el("button", `pjslot${q === S.osel ? " on" : ""}${x.there ? " there" : ""}${q === S.ocur ? " cur" : ""}`);
+      c.type = "button"; c.setAttribute("role", "option"); c.setAttribute("aria-selected", String(q === S.osel));
+      c.append(el("span", "pjn", String(q)), el("span", "pjname", x.there ? x.name || `PROJECT ${q}` : "EMPTY"));
+      c.addEventListener("click", () => { S.osel = q; render(); });
+      ob.append(c);
+    });
+    const os = S.olist && S.olist[S.osel - 1];
+    setLabel("pj-oget", `GET ${S.osel}`);
+    setLabel("pj-osend", `SEND TO ${S.osel}`);
+    $("pj-oget").disabled = ctx.busy() || !os || !os.there;
+    $("pj-osend").disabled = ctx.busy() || !os || !e;
   }
 
   function render() {
@@ -312,8 +370,9 @@ export function mountProjects(ctx) {
     renderShelf(off);
     const box = $("pj-slots");
     box.textContent = "";
-    $("pj-title").textContent = S.list ? `THE PROJECTS · ${S.list.filter((s) => s.there).length} OF ${S.list.length} SLOTS` : "THE PROJECTS";
-    if (!S.list) box.append(el("p", "dim", l ? "Reading the projects .." : "Connect an FM-1 to see its projects."));
+    const where = !l ? "THE PROJECTS" : l.virtual ? "THE FM-1 IN THIS BROWSER" : "THE FM-1 ON USB";
+    $("pj-title").textContent = S.list ? `${where} · ${S.list.filter((s) => s.there).length} OF ${S.list.length} SLOTS` : where;
+    if (!S.list) box.append(el("p", "dim", l ? "Reading the projects .." : "No FM-1 yet."));
     else S.list.forEach((s, k) => {
       const p = k + 1, b = el("button", `pjslot${p === S.sel ? " on" : ""}${s.there ? " there" : ""}${p === S.current ? " cur" : ""}`);
       b.type = "button"; b.dataset.p = p; b.setAttribute("role", "option"); b.setAttribute("aria-selected", String(p === S.sel));
@@ -353,6 +412,8 @@ export function mountProjects(ctx) {
   $("pj-pats").addEventListener("click", () => ctx.job(readPatterns));
   $("pj-tolib").addEventListener("click", () => ctx.job(toLib));
   $("pj-tounit").addEventListener("click", () => ctx.job(toUnit));
+  $("pj-oget").addEventListener("click", () => ctx.job(oGet));
+  $("pj-osend").addEventListener("click", () => ctx.job(oSend, { writes: true }));
   $("pj-export").addEventListener("click", exportP);
   $("pj-import").addEventListener("click", () => $("pj-file").click());
   $("pj-file").addEventListener("change", (e) => { const f = [...e.target.files]; e.target.value = ""; if (f.length) ctx.job(() => importP(f)); });
@@ -364,6 +425,11 @@ export function mountProjects(ctx) {
     if (e.shiftKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
       const i = S.shelf.findIndex((x) => x.id === S.ssel), n = Math.max(0, Math.min(S.shelf.length - 1, i + (e.key === "ArrowUp" ? -1 : 1)));
       if (S.shelf[n]) { S.ssel = S.shelf[n].id; render(); }
+      e.preventDefault(); return;
+    }
+    if (ctx.other() && S.olist && (k === "g" || k === "t" || e.key === "[" || e.key === "]")) {
+      if (k === "g") ctx.job(oGet); else if (k === "t") ctx.job(oSend, { writes: true });
+      else { S.osel = Math.max(1, Math.min(S.olist.length, S.osel + (e.key === "[" ? -1 : 1))); render(); }
       e.preventDefault(); return;
     }
     if (k === "e" || k === "i" || (k === "b" && S.list) || (k === "u" && S.list)) {
@@ -386,8 +452,8 @@ export function mountProjects(ctx) {
   });
   readShelf();
   return {
-    load, render,
-    show(on) { S.shown = on; if (on && ctx.link() && !S.list) ctx.job(load); if (on) readShelf(); else render(); },
-    gone() { S.list = null; S.pats = null; $("pj-to").hidden = true; render(); },
+    load, render, follow,
+    show(on) { S.shown = on; if (on && ctx.link() && (!S.list || (ctx.other() && !S.olist))) ctx.job(load); if (on) readShelf(); else render(); },
+    gone() { S.list = null; S.olist = null; S.pats = null; $("pj-to").hidden = true; render(); },
   };
 }
