@@ -353,9 +353,10 @@ export class SimUnit {
         if (cmd === CMD1.TAGS) s.tags = b[3];
         else if (cmd === CMD1.RENAME) s.name = String.fromCharCode(...b.slice(3, 15)).trimEnd();
         else {
-          const used = this.tracks.filter((t) => t.id === s.id).length;
+          const used = this.tracks.filter((t) => t.id === s.id).length + this.pool.filter((id) => id === s.id).length;
           if (used && !(b[3] & 1)) { this.ack(cmd, ST.IN_USE, slot, used); return; }
           this.mine[slot - 1] = null;
+          this.pool.forEach((id, k) => { if (id === s.id) this.pool[k] = 0; });   // (this project's places cleared; the others keep their copy)
         }
         this.ack(cmd, 0, slot);
         return;

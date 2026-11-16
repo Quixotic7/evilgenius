@@ -17,8 +17,14 @@
 // (TRACK SET: transpose, a loop page) and put back; the SEQUENCE tab's editing model (egseqedit.js) draws on track 6
 // and it is written back; the unit sent to the next pattern and back (GO TO PATTERN).
 //
+// --pool-projects (WRITES, only with the owner's go-ahead; stopped, never in or onto Project 2, slots 3 and 4 empty):
+// POOL, PROJECTS and the IMPORT of the manager's screens, all in a scratch project: NEW in slot 4; POOL REF, USERS, SWAP,
+// the SORT BY TAG plan, CLEAR there; a STORE6 into its pool (a MY preset, deleted again); RENAME it, COPY it to slot 3;
+// LOAD the project worked on before (its pool compared with the one read first); DELETE slots 3 and 4. Anything left
+// half done is put back the same way.
+//
 //   node tools/eg/manager_hw.mjs [--out FILE.egbak] [--sounds FILE.egsnds] [--sysex-only] [--steps] [--write-track6]
-//     [--phase3-track6]
+//     [--phase3-track6] [--pool-projects]
 import { spawn, execFileSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -224,7 +230,95 @@ async function phase3Track6(link) {
   return bad;
 }
 
-const acc = access();
+async function poolProjects(link) {
+  const X = await import("../../site/manager/egsysex.js"), { sortPlan } = await import("../../site/manager/egpool.js");
+  let bad = 0;
+  const ok = (c, m) => { console.log(`${c ? "ok  " : "FAIL"} ${m}`); if (!c) bad = 1; return c; };
+  const st0 = await link.status(), pj0 = await link.projects();
+  if (!st0 || !pj0) { console.log("pool: no STATUS / PROJECTS: nothing written"); return 1; }
+  if (st0.playing) { console.log("pool: the FM-1 is playing: stop it first; nothing written"); return 1; }
+  if (st0.project === 2) { console.log("pool: Project 2 is open: nothing written"); return 1; }
+  if (pj0.list.length < 4 || pj0.list[2].there || pj0.list[3].there) { console.log("pool: slots 3 and 4 are not both empty: nothing written"); return 1; }
+  const home = st0.project;
+  const poolOf = async () => (await link.list({ factory: true, pool: true }));
+  const rows0 = await poolOf();
+  const pool0 = JSON.stringify(rows0.filter((r) => r.source === "pool").map((r) => [r.slot, r.id]));
+  const fac = rows0.filter((r) => r.source === "factory");
+  const pk = (rows) => rows.filter((r) => r.source === "pool").map((r) => `${r.slot}:${r.name}`).join(" ");
+  console.log(`pool: project ${home} worked on, its pool ${rows0.filter((r) => r.source === "pool").length} sounds, MY PRESETS ${st0.mine}; scratch project in slot 4`);
+  let made = false, copied = false, mine = 0;
+  try {
+    let a = await link.project("new", 4);
+    made = a && a.status === 0;
+    let st = await link.status();
+    if (!ok(made && st.project === 4 && st.pool === 0, `NEW in slot 4: worked on (${st.project}), its pool empty (${st.pool})`)) return bad;
+    const put = [[1, fac[4]], [2, fac[10]], [3, fac[20]], [10, fac[30]]];
+    for (const [k, f] of put) { a = await link.poolRef(k, f.id); ok(a.status === 0 && a.a === k, `POOL REF ${f.name} into place ${k}`); }
+    let rows = await poolOf();
+    ok(pk(rows) === put.map(([k, f]) => `${k}:${f.name}`).join(" "), `LIST: the pool is ${pk(rows)}`);
+    const u = await link.users("pool", 10);
+    ok(u && u.kind === "users", `USERS of place 10: ${u ? `${u.projects.map((p) => `project ${p.project} ${p.steps} steps`).join(", ") || "no projects"}, tracks ${u.tracks}` : "no answer"}`);
+    a = await link.swap("pool", 10, 5);
+    rows = await poolOf();
+    ok(a.status === 0 && rows.some((r) => r.source === "pool" && r.slot === 5 && r.id === fac[30].id) && !rows.some((r) => r.source === "pool" && r.slot === 10), "SWAP place 10 with 5: the sound at 5, 10 empty");
+    const places = new Array(128).fill(null);
+    for (const r of rows) if (r.source === "pool") places[r.slot - 1] = r;
+    const plan = sortPlan(places);
+    for (const [x, y] of plan) { a = await link.swap("pool", x, y); if (a.status) break; }
+    rows = await poolOf();
+    const want = places.filter(Boolean).sort((p, q) => { const t = (m) => { for (let k = 0; k < 7; k++) if ((m >> k) & 1) return k; return 7; }; return t(p.tags) - t(q.tags) || p.name.localeCompare(q.name) || p.slot - q.slot; }).map((p, i) => `${i + 1}:${p.name}`).join(" ");
+    ok(a.status === 0 && pk(rows) === want, `SORT BY TAG (${plan.length} swaps): ${pk(rows)}`);
+    a = await link.poolRef(1, 0);
+    rows = await poolOf();
+    ok(a.status === 0 && !rows.some((r) => r.source === "pool" && r.slot === 1), "CLEAR place 1 (POOL REF 0)");
+    // IMPORT into the pool: a MY preset at a pool place; deleted again
+    const f = await link.dump("factory", fac[7].slot), d = parseDump(f);
+    const r = await link.store(X.storeSound({ name: "EG TEST SND", blob: Uint8Array.from(d.blob), tags: 1, pan: 0, chorus: 0, delay: 0, reverb: 0, pool: true }));
+    rows = await poolOf();
+    const m = rows.find((x) => x.source === "mine" && x.name === "EG TEST SND");
+    mine = m ? m.slot : 0;
+    ok(r && r.kind === "store" && r.status === 0 && r.pool && m && rows.some((x) => x.source === "pool" && x.slot === r.slot && x.id === m.id),
+      `STORE6 with POOL: EG TEST SND in MY PRESETS ${mine}, at pool place ${r && r.slot}`);
+    if (mine) {
+      a = await link.remove("mine", mine);
+      if (a && a.statusName === "IN USE") a = await link.remove("mine", mine, { confirm: true });
+      rows = await poolOf();
+      ok(a.status === 0 && !rows.some((x) => x.source === "mine" && x.name === "EG TEST SND") && !rows.some((x) => x.source === "pool" && x.slot === r.slot),
+        "DELETE it from MY PRESETS (in use: confirmed): gone, its pool place too");
+      if (a.status === 0) mine = 0;
+    }
+    const names = (pj) => pj.list.map((p) => `${p.slot}${p.current ? "*" : ""}:${p.there ? p.name || "(no name)" : "-"}`).join(" ");
+    a = await link.rename("project", 4, "EG TEST");
+    let pj = await link.projects();
+    ok(a.status === 0 && pj.list[3].name === "EG TEST", `RENAME 4 (worked on) to EG TEST: ${a.statusName}; PROJECTS ${names(pj)}`);
+    a = await link.project("copy", 4, 3);
+    copied = a && a.status === 0;
+    pj = await link.projects();
+    ok(copied && pj.list[2].there && pj.list[1].there, `COPY 4 to slot 3: ${a.statusName}; PROJECTS ${names(pj)}`);
+    ok(pj.list[2].name === "EG TEST" && pj.list[3].name === "EG TEST", "the copy and the original keep the name EG TEST");
+    a = await link.rename("project", 3, "EG COPY");
+    pj = await link.projects();
+    ok(a.status === 0 && pj.list[2].name === "EG COPY", `RENAME 3 (not worked on) to EG COPY: ${a.statusName}; PROJECTS ${names(pj)}`);
+  } finally {
+    // put back: the project worked on before, the scratch projects and the test preset gone
+    if (mine) { let a = await link.remove("mine", mine); if (a && a.statusName === "IN USE") await link.remove("mine", mine, { confirm: true }); }
+    let a = await link.project("load", home);
+    let st = await link.status();
+    ok(a && a.status === 0 && st.project === home, `LOAD ${home}: worked on again`);
+    const rows = await link.list({ factory: true, pool: true });
+    ok(JSON.stringify(rows.filter((r) => r.source === "pool").map((r) => [r.slot, r.id])) === pool0, `project ${home}'s pool: as read first`);
+    if (copied) { a = await link.project("delete", 3); ok(a && a.status === 0, "DELETE slot 3"); }
+    if (made) { a = await link.project("delete", 4); ok(a && a.status === 0, "DELETE slot 4"); }
+    const pj = await link.projects();
+    st = await link.status();
+    ok(pj && !pj.list[2].there && !pj.list[3].there && pj.list[1].there && pj.current === home && st.mine === st0.mine,
+      `PROJECTS back: ${pj.list.map((p) => `${p.slot}${p.current ? "*" : ""}:${p.there ? p.name || "(no name)" : "-"}`).join(" ")}; MY PRESETS ${st.mine}`);
+  }
+  return bad;
+}
+
+// --sim: the simulated unit (site/manager/egsim.js) instead of the bridge: a dry run of a writing test
+const acc = process.argv.includes("--sim") ? { ...new (await import("../../site/manager/egsim.js")).SimUnit().access, close() {} } : access();
 let rc = 0;
 try {
   console.log("ports:", [...acc.inputs.keys()].join(", ") || "(none)");
@@ -258,6 +352,7 @@ try {
   if (process.argv.includes("--steps")) rc |= await steps(link);
   if (process.argv.includes("--write-track6")) rc |= await writeTrack6(link);
   if (process.argv.includes("--phase3-track6")) rc |= await phase3Track6(link);
+  if (process.argv.includes("--pool-projects")) rc |= await poolProjects(link);
   link.close();
 } catch (e) {
   console.log(`FAIL: ${e.code || ""} ${e.message}`);

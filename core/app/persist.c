@@ -550,7 +550,10 @@ static int de_hdr(qd_app_t *a, int p, const uint8_t *b, uint32_t len, int apply)
     uint32_t o = 2;
     int t;
     if (len < 2 + QD_PROJ_NAME + 7 + 7 * QD_NTRACK ||
-        len > 2 + QD_PROJ_NAME + 7 + 7 * QD_NTRACK + 3 + QD_NTRACK * (QD_TRACK_NAME + 1) + QD_NTRACK || b[0] != 'H' ||
+        len > 2 + QD_PROJ_NAME + 7 + 7 * QD_NTRACK + 3 + QD_NTRACK * (QD_TRACK_NAME + 1) + QD_NTRACK + QD_NTRACK * QD_NROOM ||
+        b[0] != 'H' ||                                  /* (2026-11-15: the rooms' sends too: ser_hdr has written them since
+                                                         * EvilGenius's rooms, and the header was refused whole at every
+                                                         * read: the projects' names, the tracks' mix and names lost) */
         b[1] != 1)
         return 0;
     memcpy(ps->pname[p], b + o, QD_PROJ_NAME), o += QD_PROJ_NAME;

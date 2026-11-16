@@ -747,6 +747,52 @@ static void seq_phase3_tests(void)
     CHECK(ack(QD_SX_GOTO) == QD_SX_BAD_PATTERN, "GO TO PATTERN 65: BAD PATTERN");
 }
 
+/* 2026-11-15 (found by the manager on the unit): RENAME of the project worked on, then COPY of it: the copy and the
+ * original both keep the new name (qd_proj_copy reads every name back from the headers: the one worked on must be in
+ * its header first) */
+static void rename_copy_tests(void)
+{
+    static uint8_t b[32];
+    char nm[QD_PROJ_NAME];
+    int home;
+    memset(FL, 0xFF, sizeof FL);                        /* (an erased flash, the store attached) */
+    boot_flash();
+    run(500);
+    home = A.per.proj;
+    qd_app_stop(&A);
+    b[0] = QD_SXP_NEW, b[1] = 3, b[2] = 0;
+    cmd(QD_SX_PROJECT, b, 3);
+    CHECK(wait_reply(2000) && ack(QD_SX_PROJECT) == QD_SX_OK && A.per.proj == 2, "rename + copy: NEW 3, worked on");
+    b[0] = QD_SXS_PROJECT, b[1] = 0, b[2] = 3;
+    memcpy(b + 3, "EG TEST     ", 12);
+    cmd(QD_SX_RENAME, b, 15);
+    CHECK(ack(QD_SX_RENAME) == QD_SX_OK && !strcmp(A.per.pname[2], "EG TEST"), "rename + copy: RENAME the one worked on");
+    b[0] = QD_SXP_COPY, b[1] = 3, b[2] = 4;
+    cmd(QD_SX_PROJECT, b, 3);
+    CHECK(wait_reply(2000) && ack(QD_SX_PROJECT) == QD_SX_OK && A.per.pexists[3], "rename + copy: COPY 3 onto 4");
+    CHECK(!strcmp(A.per.pname[2], "EG TEST") && !strcmp(A.per.pname[3], "EG TEST"),
+          "rename + copy: both keep the name (3 \"%s\", 4 \"%s\")", A.per.pname[2], A.per.pname[3]);
+    strcpy(nm, A.per.pname[2]);
+    b[0] = QD_SXP_LOAD, b[1] = (uint8_t)(home + 1);
+    cmd(QD_SX_PROJECT, b, 3);
+    wait_reply(2000);
+    for (b[1] = 3; b[1] <= 4; b[1]++) {
+        b[0] = QD_SXP_DELETE;
+        cmd(QD_SX_PROJECT, b, 3);
+        wait_reply(2000);
+    }
+    CHECK(A.per.proj == home && !A.per.pexists[2] && !A.per.pexists[3] && !strcmp(nm, "EG TEST"),
+          "rename + copy: back on project %d, 3 and 4 deleted", home + 1);
+    /* the header read back at a power-on: the project's name, a track's mix and its rooms' sends as they were saved */
+    qd_proj_name(&A, home, "KEEP ME");
+    A.model.t[1].mix.pan = 21, A.model.t[1].mix.reverb = 77, A.model.t[1].mix.room[2] = 55;
+    qd_persist_flush(&A);
+    boot_flash();
+    CHECK(!strcmp(A.per.pname[home], "KEEP ME") && A.model.t[1].mix.pan == 21 && A.model.t[1].mix.reverb == 77 &&
+          A.model.t[1].mix.room[2] == 55, "a power-on: the project's name \"%s\", track 2's pan %d, reverb %d, room 3 %d kept",
+          A.per.pname[home], A.model.t[1].mix.pan, A.model.t[1].mix.reverb, A.model.t[1].mix.room[2]);
+}
+
 static void phase1_tests(void)
 {
     uint8_t b[32];
@@ -1834,6 +1880,7 @@ int main(int argc, char **argv)
     seq_read_tests();
     seq_write_tests();
     seq_phase3_tests();
+    rename_copy_tests();
     p2b_tests();
     msnd_tests();
     browse_tests();
