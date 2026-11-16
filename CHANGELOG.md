@@ -36,8 +36,12 @@ EVILGENIUS began as FIZZ 0.12.0-beta.17 with another engine and another face; FI
   from 1024 x 768 up: SOUND shows the unit's pages one at a time (1..9), LIBRARY is a list with the picked sound
   beside it. Every action has a key (? lists them; the status line shows the screen's main ones). PLAY / STOP and
   REC are in the top bar (SPACE, SHIFT + SPACE), with the pattern and its tempo; they press the unit's own buttons.
-- **SEQUENCE's STEPS view**: the track's eight pages as rows of big steps. Click a step on or off, drag a lit step
-  sideways for its length, drag each row's [ and ] for the page's first and last step, its number for the loop.
+- **SEQUENCE in three views**: TRACKS (the six tracks a row each, lined up in time, scroll and zoom), STEPS (the
+  track's eight pages of big steps, each page's [ ] start and end dragged, a keyboard under them for the steps'
+  notes and chords) and PIANO ROLL (scroll and zoom in pitch and time, three lanes of any value). In all three a
+  click picks a step (CMD / CTRL adds, SHIFT a run), a double-click or ALT + click makes or takes one away, and a
+  drag up or down changes the EDIT mode's value: NOTE, VEL, LEN, MICRO, RATCH, CHANCE, COND, FUNC, SOUND or any of
+  three locks. Steps show their note or chord name; the track's RATE is in the toolbar.
 - **The manager's POOL, PROJECTS and CABINET** (F6, F7, F8). POOL shows the project's 128 pool places: put a sound
   in a place, CLEAR, MOVE (the steps follow), USED BY, SORT BY TAG and CLEAR UNUSED. PROJECTS: LOAD, NEW, RENAME, COPY
   TO, MOVE TO and DELETE a project, and which of its 64 patterns hold steps. CABINET shows the store in use, keeps your

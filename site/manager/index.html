@@ -67,55 +67,6 @@
 .edpick .pl { display: flex; flex-wrap: wrap; gap: var(--px); margin-top: calc(var(--px) * 2); max-height: 50vh; overflow: auto; }
 .edpick .key { padding: var(--px) calc(var(--px) * 2); box-shadow: none; }
 .edpick .key.on { border-color: var(--yellow); background: var(--blue); }
-/* SEQUENCE */
-.sqpats { display: grid; grid-template-columns: repeat(16, minmax(0, 1fr)); gap: 3px; margin: 0 0 calc(var(--px) * 3); }
-.sqpats .key { padding: 3px 0; font: 11px var(--mono); box-shadow: none; justify-content: center; color: var(--grey); }
-.sqpats .key.used { color: var(--white); border-color: var(--lightblue); }
-.sqpats .key.on { border-color: var(--yellow); background: var(--blue); color: var(--yellow); }
-@media (max-width: 700px) { .sqpats { grid-template-columns: repeat(8, minmax(0, 1fr)); } }
-.sqtop, .sqtracks { display: flex; flex-wrap: wrap; gap: calc(var(--px) * 2); align-items: center; margin: 0 0 calc(var(--px) * 3); }
-.sqtop .key, .sqtracks .key, .sqinsp .key, .sqoct .key { padding: var(--px) calc(var(--px) * 2); box-shadow: none; font-family: var(--mono); font-size: 13px; line-height: 1.2; }
-.sqtracks .key.on, .seg .key.inloop { border-color: var(--yellow); }
-.seg .key.inloop[aria-pressed="false"] { background: #0c0b2a; }
-.sqbody { display: flex; flex-wrap: wrap; gap: calc(var(--px) * 4); align-items: flex-start; }
-.sqmain { flex: none; max-width: 100%; }
-#sq-rollv { overflow-x: auto; max-width: 100%; }
-.seg[hidden] { display: none; }
-.sqroll { display: flex; }
-.sqkeys { width: 44px; flex: none; }
-.sqk { height: 14px; box-sizing: border-box; background: var(--lightgrey); border-bottom: 1px solid var(--grey); color: var(--black); font-size: 9px; line-height: 13px; padding-left: 3px; }
-.sqk.b { background: var(--darkgrey); }
-.sqgrid { position: relative; background: #0c0b2a; flex: none; cursor: crosshair; touch-action: none; }
-.sqrow { position: absolute; left: 0; right: 0; height: 14px; border-bottom: 1px solid #1a1846; }
-.sqrow.b { background: #06051a; }
-.sqcol { position: absolute; top: 0; bottom: 0; width: 24px; border-left: 1px solid #262363; pointer-events: none; }
-.sqcol.beat { border-left-color: var(--blue); }
-.sqcol.page { border-left: 3px solid var(--yellow); }
-.sqcol.out { background: rgba(0, 0, 0, 0.45); }
-.sqcol.sel { background: rgba(237, 241, 113, 0.12); }
-.sqn { position: absolute; height: 12px; padding: 0; border: 2px solid var(--black); cursor: pointer; }
-.sqn.v0 { background: var(--blue); } .sqn.v1 { background: var(--lightblue); } .sqn.v2 { background: var(--cyan); } .sqn.v3 { background: var(--lightred); }
-.sqn.lk { border-bottom-color: var(--yellow); }
-.sqn.sel { border-color: var(--yellow); }
-.sqoct { display: flex; gap: var(--px); align-items: center; margin: var(--px) 0 0 44px; }
-.sqlane { display: flex; border-top: 3px dotted var(--blue); margin-top: var(--px); }
-.sqll { width: 44px; flex: none; font-size: 9px; line-height: 11px; color: var(--grey); padding-top: 4px; }
-.sqll select { width: 44px; font-size: 9px; padding: 1px; border-width: 2px; }
-.sqlv { position: relative; height: 46px; flex: none; cursor: ns-resize; touch-action: none; }
-.sqtext .sqlv { height: 24px; cursor: default; }
-.sqbar { position: absolute; bottom: 2px; width: 16px; background: var(--lightblue); }
-.sqbar.sel { background: var(--yellow); }
-.sqbar.lock { background: var(--cyan); }
-.sqtag { position: absolute; top: 4px; font-size: 10px; color: var(--cyan); white-space: nowrap; }
-.sqtag.snd { color: var(--lightred); }
-.sqinsp { flex: 1 1 260px; min-width: 0; border: var(--px) solid var(--blue); padding: calc(var(--px) * 3); font-size: 13px; }
-.sqinsp h3 { line-height: 1.3; color: var(--yellow); margin: calc(var(--px) * 2) 0; font-size: 13px; }
-.sqf { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 3px 0; }
-.sqf span { color: var(--grey); font-size: 11px; }
-.sqf input, .sqf select, .sqlk input, .sqlk select { width: 9em; padding: 2px 4px; border-width: 2px; font-size: 12px; }
-.sqlk { display: flex; gap: 4px; align-items: center; margin: 3px 0; }
-.sqlk span { flex: 1; }
-@media (max-width: 900px) { .sqbody { flex-direction: column; } .sqinsp { width: 100%; box-sizing: border-box; } }
 @media (max-width: 640px) {
   .tiles { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); }
   .edroute { position: static; }
@@ -303,29 +254,6 @@ body.app { background: var(--lightblue); }
 .trinfo { min-width: 12ch; text-align: center; }
 .trinfo.on { border-color: var(--green); color: var(--lightgreen); }
 
-/* SEQUENCE: STEPS, the eight pages as the unit's pads */
-.sqmain { flex: 1 1 640px; min-width: 0; }
-.sqsteps { display: flex; flex-direction: column; gap: 5px; user-select: none; }
-.sqsteps[hidden] { display: none; }
-.sqsrow { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 8px; align-items: stretch; }
-.sqsl { padding: 0; box-shadow: none; justify-content: center; font: 13px var(--mono); color: var(--grey); }
-.sqshead .sqsl { border: 0; align-self: end; font-size: 10px; }
-button.sqsl.on { color: var(--yellow); border-color: var(--yellow); }
-.sqspads { position: relative; display: grid; grid-template-columns: repeat(16, minmax(0, 1fr)); gap: 4px; touch-action: none; }
-.sqsn { font: 10px var(--mono); color: var(--grey); text-align: center; }
-.sqs { position: relative; height: clamp(30px, calc((100vh - 340px) / 9.4), 64px); padding: 0; border: 2px solid #262363; background: #06051a; cursor: pointer; overflow: hidden; }
-.sqs.beat { border-left-color: var(--blue); }
-.sqs.on { background: #1a1846; border-color: var(--lightblue); }
-.sqs .sqsv { position: absolute; left: 0; right: 0; bottom: 0; height: calc(var(--v, 0) * 100%); background: var(--lightblue); opacity: 0.55; }
-.sqs.out { opacity: 0.35; }
-.sqs.sel { border-color: var(--yellow); }
-.sqs.cur { outline: 2px dashed var(--yellow); outline-offset: 1px; }
-.sqs.lk::after { content: ""; position: absolute; top: 2px; right: 2px; width: 6px; height: 6px; background: var(--yellow); }
-.sqslen { position: absolute; bottom: 5px; height: 6px; background: var(--cyan); pointer-events: none; z-index: 1; }
-.sqslen.more { background: linear-gradient(90deg, var(--cyan) 85%, transparent); }
-.sqslh { position: absolute; right: -6px; top: -6px; width: 12px; height: 18px; background: var(--yellow); pointer-events: auto; cursor: ew-resize; }
-.sqsm { position: absolute; top: 0; bottom: 0; width: 12px; z-index: 2; cursor: ew-resize; color: var(--black); background: var(--lightred); font: bold 13px/1 var(--mono); display: flex; align-items: center; justify-content: center; }
-.sqsrow:not(.in) .sqsm { background: var(--darkgrey); }
 
 /* LIBRARY: the list and the card, the window's height */
 #tab-library:not([hidden]) { display: flex; flex-direction: column; height: 100%; }
@@ -413,14 +341,143 @@ kbd { font: 11px var(--mono); color: var(--black); background: var(--lightgrey);
 #tab-cabinet .foot { font-size: 11px; margin: 8px 0 0; }
 @media (max-height: 820px) { #tab-cabinet .foot { display: none; } }
 
-/* SEQUENCE: the window's height; the inspector's fields in two columns, scrolled inside if a step has many locks */
-#tab-seq:not([hidden]) { display: flex; flex-direction: column; height: 100%; }
-#tab-seq .sqbody:not([hidden]) { flex: 1; min-height: 0; flex-wrap: nowrap; }
-#tab-seq .sqinsp { align-self: stretch; overflow: auto; flex: 0 1 380px; }
+
+/* SEQUENCE (the design canvas's 09 STEPS, 10 PIANO ROLL, 11 TRACKS): the window's height; the toolbar, the EDIT modes,
+ * the view, what is picked, the keyboard (STEPS) */
+#tab-seq:not([hidden]) { display: flex; flex-direction: column; height: 100%; gap: 5px; }
+#tab-seq [hidden] { display: none !important; }
+.sqtop { flex: none; display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; }
+.sqtop .key, .sqmodes .key, .sqsel .key, .sqinsp .key, .sqtbar .key { padding: 2px 7px; box-shadow: none; font-family: var(--mono); font-size: 13px; line-height: 1.25; }
+.sqtop .key.on, .sqtop .key[aria-pressed="true"], .sqmodes .key.on, .sqtbar .key.on { border-color: var(--yellow); background: var(--blue); }
+.sqtop select, .sqmodes select { padding: 1px 4px; border-width: 2px; font-size: 12px; }
+.sqright { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; }
+.sqpats { display: grid; grid-template-columns: repeat(16, minmax(0, 1fr)); gap: 3px; flex: none; }
+.sqpats .key { padding: 3px 0; font: 11px var(--mono); box-shadow: none; justify-content: center; color: var(--grey); }
+.sqpats .key.used { color: var(--white); border-color: var(--lightblue); }
+.sqpats .key.on { border-color: var(--yellow); background: var(--blue); color: var(--yellow); }
+@media (max-width: 700px) { .sqpats { grid-template-columns: repeat(8, minmax(0, 1fr)); } }
+.sqmodes { flex: none; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; border-top: 3px dotted var(--blue); border-bottom: 3px dotted var(--blue); padding: 4px 0; }
+.sqmodes .lab { margin: 0 4px 0 0; }
+.sqmodes .sqlocks { margin-left: 8px; color: var(--cyan); }
+.sqmodes .key { display: inline-flex; gap: 5px; align-items: center; }
+.sqmodes .key.lk { border-color: var(--cyan); }
+.sqmodes kbd { font-size: 10px; padding: 0 3px; }
+.sqmodes .sqlksel { max-width: 7.5em; font-size: 11px; padding: 0 2px; background: var(--black); color: var(--white); }
+.sqbody { flex: 1; min-height: 0; display: flex; gap: 10px; }
+.sqmain { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.sqinsp { flex: 0 1 380px; min-width: 0; overflow: auto; border: var(--px) solid var(--blue); padding: 8px 10px; font-size: 13px; }
+.sqinsp h3 { line-height: 1.3; color: var(--yellow); margin: 6px 0 4px; font-size: 13px; }
+.sqf { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 3px 0; }
+.sqf span { color: var(--grey); font-size: 11px; }
+.sqf input, .sqf select, .sqlk input, .sqlk select { width: 7em; padding: 2px 4px; border-width: 2px; font-size: 12px; }
 .sqfgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 14px; }
-.sqfgrid .sqf input, .sqfgrid .sqf select { width: 7em; }
-#tab-seq .sqinsp h3 { margin: 6px 0 4px; }
 @media (max-width: 1100px) { .sqfgrid { grid-template-columns: 1fr; } }
+.sqlk { display: flex; gap: 4px; align-items: center; margin: 3px 0; }
+.sqlk span { flex: 1; }
+.sqsel { flex: none; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 13px; }
+.sqsel .sqst { color: var(--yellow); }
+.sqsel .sqsx { color: var(--white); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 1 200px; }
+.sqsel .sqsh { white-space: nowrap; font-size: 12px; }
+/* STEPS: the pads */
+.sqsteps { display: flex; flex-direction: column; gap: 4px; user-select: none; flex: 1; min-height: 0; }
+.sqsrow { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 8px; align-items: stretch; }
+.sqsl { padding: 0; box-shadow: none; justify-content: center; font: 13px var(--mono); color: var(--grey); }
+.sqshead .sqsl { border: 0; align-self: end; font-size: 10px; }
+button.sqsl.on { color: var(--yellow); border-color: var(--yellow); }
+.sqspads { position: relative; display: grid; grid-template-columns: repeat(16, minmax(0, 1fr)); gap: 4px; touch-action: none; }
+.sqsn { font: 10px var(--mono); color: var(--grey); text-align: center; }
+.sqsn.beat { color: var(--yellow); }
+.sqs { position: relative; height: clamp(26px, calc((100vh - 470px) / 8.6), 64px); padding: 0; border: 2px solid #262363; background: #06051a; cursor: pointer; overflow: hidden; text-align: left; }
+.sqs.beat { border-left-color: var(--blue); }
+.sqs.on { background: #1a1846; border-color: var(--lightblue); }
+.sqs .sqsv { position: absolute; left: 0; right: 0; bottom: 0; background: var(--lightblue); opacity: 0.5; pointer-events: none; }
+.sqs .sqsv.lkv { background: var(--cyan); }
+.sqs.sel .sqsv { background: var(--yellow); }
+.sqs .sqsname { position: absolute; left: 13px; top: 2px; font: 12px var(--mono); color: var(--white); white-space: nowrap; pointer-events: none; }
+.sqs .sqsval { position: absolute; right: 4px; bottom: 9px; font: 11px var(--mono); color: var(--white); pointer-events: none; }
+.sqs.sel .sqsname { color: var(--yellow); }
+.sqs .sqstail { position: absolute; left: 0; bottom: 2px; height: 5px; background: var(--cyan); pointer-events: none; }
+.sqs.out { opacity: 0.35; }
+.sqs.sel { border-color: var(--yellow); }
+.sqs.cur { outline: 2px dashed var(--yellow); outline-offset: 1px; }
+.sqs.lk::after { content: ""; position: absolute; top: 2px; right: 2px; width: 6px; height: 6px; background: var(--yellow); }
+.sqsm { justify-self: stretch; width: 11px; z-index: 2; cursor: ew-resize; color: var(--black); background: var(--lightred); font: bold 12px/1 var(--mono); display: flex; align-items: center; justify-content: center; }
+.sqsm.start { justify-self: start; } .sqsm.end { justify-self: end; }
+.sqsrow:not(.in) .sqsm { background: var(--darkgrey); }
+/* STEPS: the keyboard */
+.sqkb { flex: none; display: flex; gap: 10px; align-items: stretch; height: clamp(56px, 11vh, 96px); }
+.sqkbside { width: 150px; flex: none; display: flex; flex-direction: column; justify-content: center; gap: 4px; }
+.sqkbside p { margin: 0; font-size: 11px; line-height: 1.3; }
+.sqkbside .lab.picked { color: var(--yellow); } .sqkbside .lab.held { color: var(--lightgreen); }
+.sqkbkeys { position: relative; flex: 1; min-width: 0; }
+.sqkbkeys button { position: absolute; top: 0; padding: 0; border: 2px solid var(--black); box-sizing: border-box; cursor: pointer; }
+.sqkbkeys .wk { height: 100%; background: #e6e6e6; }
+.sqkbkeys .wk span { position: absolute; left: 0; right: 0; bottom: 4px; text-align: center; font: 10px var(--mono); color: var(--black); }
+.sqkbkeys .bk { height: 60%; background: #1a1846; z-index: 1; }
+.sqkbkeys .on { background: var(--yellow) !important; } .sqkbkeys .held { background: var(--lightgreen) !important; }
+/* PIANO ROLL */
+.sqrv { display: flex; flex-direction: column; gap: 3px; flex: 1; min-height: 0; }
+.sqrr { display: flex; gap: 4px; }
+.sqrz { width: 60px; flex: none; color: var(--grey); font-size: 9px; }
+.sqrruler, .sqtruler { position: relative; height: 14px; overflow: hidden; }
+.sqrruler span, .sqtruler span { position: absolute; top: 0; font: 10px var(--mono); color: var(--lightblue); border-left: 2px solid var(--lightblue); padding-left: 3px; white-space: nowrap; }
+.sqrruler .pg, .sqtruler .pg { color: var(--yellow); border-color: var(--yellow); }
+.sqrbody { display: flex; gap: 4px; }
+.sqrkeys { position: relative; width: 60px; flex: none; overflow: hidden; cursor: ns-resize; touch-action: none; }
+.sqrk { position: absolute; left: 0; right: 0; box-sizing: border-box; background: var(--lightgrey); border-bottom: 1px solid var(--grey); color: var(--black); font: 9px var(--mono); padding-left: 3px; overflow: hidden; }
+.sqrk.b { background: var(--darkgrey); } .sqrk.on { background: var(--yellow); }
+.sqrgrid { position: relative; overflow: hidden; background: #0c0b2a; touch-action: none; cursor: crosshair; }
+.sqrrow { position: absolute; left: 0; right: 0; border-bottom: 1px solid #13123a; box-sizing: border-box; }
+.sqrrow.b { background: #06051a; }
+.sqrl { position: absolute; top: 0; bottom: 0; width: 1px; background: #262363; pointer-events: none; }
+.sqrl.bt { width: 2px; background: var(--blue); } .sqrl.pg { width: 3px; background: var(--yellow); }
+.sqrshade { position: absolute; top: 0; bottom: 0; background: rgba(0, 0, 0, 0.6); pointer-events: none; }
+.sqrmark { position: absolute; top: 0; bottom: 0; width: 5px; background: var(--lightred); pointer-events: none; }
+.sqrn { position: absolute; padding: 0 0 0 3px; border: 2px solid var(--black); box-sizing: border-box; cursor: pointer; overflow: hidden; text-align: left; font: 10px var(--mono); color: var(--white); }
+.sqrn.v0 { background: var(--blue); } .sqrn.v1 { background: var(--lightblue); } .sqrn.v2 { background: #8f8cff; } .sqrn.v3 { background: var(--lightred); }
+.sqrn.sel { background: var(--yellow); color: var(--black); border-color: var(--white); }
+.sqrn.lk { border-bottom-color: var(--yellow); }
+.sqrn .grip { position: absolute; right: 0; top: 0; bottom: 0; width: 6px; cursor: ew-resize; }
+.sqrn.sel .grip { background: var(--black); }
+.sqrchord { position: absolute; font: 11px var(--mono); color: var(--white); background: var(--black); padding: 0 3px; white-space: nowrap; pointer-events: none; }
+.sqrchord.sel { color: var(--yellow); }
+.sqrlane { display: flex; gap: 4px; }
+.sqrlsel { width: 60px; flex: none; font-size: 10px; padding: 0 2px; border-width: 2px; background: var(--black); color: var(--white); }
+.sqrlv { position: relative; height: 38px; border-top: 3px dotted var(--blue); box-sizing: border-box; overflow: hidden; cursor: ns-resize; touch-action: none; }
+.sqrlv i { position: absolute; bottom: 2px; background: var(--lightblue); pointer-events: none; }
+.sqrlv i.lk { background: var(--cyan); } .sqrlv i.sel { background: var(--yellow); }
+.sqrlv span { position: absolute; top: 1px; font: 9px var(--mono); color: var(--grey); pointer-events: none; }
+.sqrmini { display: flex; gap: 4px; align-items: center; }
+.sqrmini .lab { width: 60px; flex: none; margin: 0; color: var(--grey); font-size: 9px; }
+.sqmini { position: relative; height: 20px; background: #06051a; border: 2px solid var(--blue); box-sizing: border-box; cursor: pointer; }
+.sqmini.tall { height: 42px; }
+.sqmini i { position: absolute; top: 4px; height: 8px; background: var(--lightblue); }
+.sqmini.tall i { height: 4px; }
+.sqmini i.sel { background: var(--yellow); } .sqmini i.mut { background: var(--darkgrey); }
+.sqmini b { position: absolute; top: -2px; bottom: -2px; border: 2px solid var(--yellow); box-sizing: border-box; pointer-events: none; }
+/* TRACKS */
+.sqtv { display: flex; flex-direction: column; gap: 4px; flex: 1; min-height: 0; }
+.sqtbar { display: flex; gap: 5px; align-items: center; flex-wrap: wrap; }
+.sqtbar .lab { margin: 0; }
+.sqtruler { margin-left: 186px; }
+.sqtrows { display: flex; flex-direction: column; gap: 5px; touch-action: none; }
+.sqtrow { display: flex; gap: 6px; }
+.sqtlab { width: 180px; flex: none; box-sizing: border-box; border: var(--px) solid var(--blue); padding: 4px 6px; display: grid; grid-template-columns: 1fr auto; gap: 2px 6px; align-content: center; }
+.sqtrow.on .sqtlab { border-color: var(--yellow); background: var(--blue); }
+.sqtname { grid-column: 1; background: none; border: 0; padding: 0; text-align: left; color: var(--white); font: 13px var(--mono); cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sqtinfo { grid-column: 1; font: 11px var(--mono); color: var(--cyan); }
+.sqtm { grid-column: 2; grid-row: 1 / span 2; align-self: center; }
+.sqtm.on { border-color: var(--lightred); color: var(--lightred); }
+.sqtlane { position: relative; overflow: hidden; background: #06051a; }
+.sqtrow.muted .sqtlane { opacity: 0.45; }
+.sqts { position: absolute; top: 6px; bottom: 6px; padding: 0; border: 2px solid var(--lightblue); background: #1a1846; box-sizing: border-box; cursor: pointer; overflow: hidden; text-align: left; }
+.sqts i { position: absolute; left: 0; right: 0; bottom: 0; background: var(--lightblue); opacity: 0.5; pointer-events: none; }
+.sqts span { position: absolute; left: 3px; top: 2px; font: 11px var(--mono); color: var(--white); white-space: nowrap; pointer-events: none; }
+.sqts.sel { border-color: var(--yellow); background: #3a3810; }
+.sqts.sel i { background: var(--yellow); }
+.sqts.lk::after { content: ""; position: absolute; top: 2px; right: 2px; width: 5px; height: 5px; background: var(--yellow); }
+.sqtband { position: absolute; bottom: 2px; height: 4px; background: var(--cyan); pointer-events: none; }
+.sqtml { width: 180px; }
 </style>
 <script type="module" src="../js/px.js"></script>
 <script type="module" src="./manager.js"></script>

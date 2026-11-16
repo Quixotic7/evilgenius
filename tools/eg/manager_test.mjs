@@ -773,6 +773,32 @@ console.log("seq editor");
   link.close();
 }
 
+// ---- SEQUENCE's three views (the design canvas): names, lengths, rates; the editor's queue keeps each edit's track
+{
+  const T = await import("../../site/manager/egseqtab.js");
+  check(T.chordName([48]) === "C3" && T.chordName([48, 52, 55]) === "C" && T.chordName([43, 46, 50]) === "Gm" && T.chordName([34, 41]) === "Bb5" &&
+    T.chordName([36, 39, 43, 46]) === "Cm7" && T.chordName([48, 55, 62, 70]) === "4 NOTES", "chordName: a note, C, Gm, Bb5, Cm7, an unknown chord");
+  const { LENS, RATES } = await import("../../site/manager/egseqnames.js");
+  check(LENS[T.nearestLen(1)] === "1" && LENS[T.nearestLen(6.3)] === "6" && LENS[T.nearestLen(0.1)] === "1/8" && LENS[T.nearestLen(500)] === "128", "nearestLen: 1, 6.3 -> 6, 1/8, past the longest -> 128 (never INF)");
+  const r = (n) => T.rateSixteenths(RATES.indexOf(n));
+  check(r("1/16") === 1 && r("1/8") === 2 && r("1/32") === 0.5 && r("1/16.") === 1.5 && Math.abs(r("1/8T") - 4 / 3) < 1e-9, "rateSixteenths: 1/16 1, 1/8 2, 1/32 .5, dotted, triplet");
+  const sim = new EgSim();
+  const link = quick(await findUnit(sim.access));
+  const ed = new SeqEditor({ link });
+  await ed.load();
+  ed.track = 3;
+  ed.setNotes(5, [48, 52, 55]);
+  ed.track = 4;                                       // (switched before the queue ran: the edit stays track 4's)
+  ed.setField([6], X.FIELD.VEL, 33);
+  ed.track = 3;
+  ed.setField([6], X.FIELD.VEL, 99);                 // (the same step on another track: not merged with track 5's)
+  await ed.idle();
+  const n = sim.pat.tracks[3].steps[5].slots.filter(Boolean).join();
+  check(n === "48,52,55" && sim.pat.tracks[4].steps[6].vel === 33 && sim.pat.tracks[3].steps[6].vel === 99,
+    `setNotes on track 4 (${n}); a velocity on track 5 and one on track 4's same step, each on its own track`);
+  link.close();
+}
+
 // ---- the transport: the panel's PLAY and REC pressed as the remote presses them (channel 16, CC 30 / 31)
 {
   const { BUTTON, HOLD_MS } = await import("../../site/manager/eglink.js");

@@ -9,7 +9,8 @@
 //
 //   const ed = new SeqEditor({ link, log, onChange(), onError(msg) });
 //   await ed.load() (PATTERN INFO, every track's steps and locks); ed.pat (egseq.js patternOf), ed.track (0..5)
-//   ed.addNote(s, pitch) / ed.removeNote(s, pitch) / ed.setField(steps, FIELD.X, v) / ed.clear(steps)
+//   ed.addNote(s, pitch) / ed.removeNote(s, pitch) / ed.setNotes(s, notes) / ed.setField(steps, FIELD.X, v) / ed.clear(steps)
+//   (every change goes to the track picked when it was made: a command waiting in the queue keeps its pattern and track)
 //   ed.setLock(steps, id, v) / ed.clearLock(steps, id) / ed.clearLocks(steps)
 //   ed.paste(first, steps[]) / ed.setTrack(TFIELD.X, v) / await ed.undo(redo) / await ed.gotoPattern(p)
 //   ed.played(s) (the step as it plays) / ed.locksAt(s) / await ed.idle() / ed.pending / await ed.poll() (re-read when
@@ -95,6 +96,8 @@ export class SeqEditor {
   }
   idle() { return this.pending ? new Promise((r) => this.waiters.push(r)) : Promise.resolve(); }
   head() { return { pattern: this.pat.pattern, track: this.track }; }
+  // a queue key of this track's (the latest change of each key is the one sent)
+  key(k) { return k === null ? null : `${this.track}:${k}`; }
   // a step changed on the page as the unit's setters change it (pattern.c own(): a value makes a trig)
   own(st, pm) {
     const d = this.pat.tracks[this.track].set.def;
@@ -110,7 +113,18 @@ export class SeqEditor {
     const notes = st.on ? p.notes.filter((n) => n !== pitch).concat(pitch).slice(-6) : [pitch];
     this.own(st, PM.NOTE);
     st.slots = [...notes, 0, 0, 0, 0, 0, 0].slice(0, 6);
-    this.send(`notes:${s}`, () => this.link.stepSet({ ...this.head(), steps: [s], fields: [[FIELD.TRIG, TRIG_ON], [FIELD.NOTES, notes]] }));
+    const h = this.head();
+    this.send(this.key(`notes:${s}`), () => this.link.stepSet({ ...h, steps: [s], fields: [[FIELD.TRIG, TRIG_ON], [FIELD.NOTES, notes]] }));
+  }
+  // a step's notes, all at once (1..6; the step on if it was not)
+  setNotes(s, notes) {
+    notes = [...new Set(notes)].filter((n) => n >= 0 && n <= 127).sort((a, b) => a - b).slice(0, 6);
+    if (!notes.length) return;
+    const st = this.steps()[s];
+    this.own(st, PM.NOTE);
+    st.slots = [...notes, 0, 0, 0, 0, 0, 0].slice(0, 6);
+    const h = this.head();
+    this.send(this.key(`notes:${s}`), () => this.link.stepSet({ ...h, steps: [s], fields: [[FIELD.TRIG, TRIG_ON], [FIELD.NOTES, notes]] }));
   }
   removeNote(s, pitch) {
     const st = this.steps()[s], notes = this.played(s).notes.filter((n) => n !== pitch);
@@ -118,7 +132,8 @@ export class SeqEditor {
     if (!notes.length || (notes.length === this.played(s).notes.length && notes.length <= 1)) { this.clear([s]); return; }
     this.own(st, PM.NOTE);
     st.slots = [...notes, 0, 0, 0, 0, 0, 0].slice(0, 6);
-    this.send(`notes:${s}`, () => this.link.stepSet({ ...this.head(), steps: [s], fields: [[FIELD.NOTES, notes]] }));
+    const h = this.head();
+    this.send(this.key(`notes:${s}`), () => this.link.stepSet({ ...h, steps: [s], fields: [[FIELD.NOTES, notes]] }));
   }
   setField(steps, f, v) {
     for (const s of steps) {
@@ -130,12 +145,14 @@ export class SeqEditor {
       if (PM_OF[f] !== undefined) this.own(st, PM_OF[f]); else st.on = true;
       st[KEY_OF[f]] = v;
     }
-    this.send(`f${f}:${steps.join(",")}`, () => this.link.stepSet({ ...this.head(), steps, fields: [[f, v]] }));
+    const h = this.head();
+    this.send(this.key(`f${f}:${steps.join(",")}`), () => this.link.stepSet({ ...h, steps, fields: [[f, v]] }));
   }
   clear(steps) {
     for (const s of steps) this.steps()[s] = emptyStep();
     this.dropLocks(steps);
-    this.send(null, () => this.link.stepSet({ ...this.head(), steps, fields: [[FIELD.CLEAR, 0]] }));
+    const h = this.head();
+    this.send(null, () => this.link.stepSet({ ...h, steps, fields: [[FIELD.CLEAR, 0]] }));
   }
   dropLocks(steps, id = null) {
     const tr = this.pat.tracks[this.track];
@@ -147,15 +164,18 @@ export class SeqEditor {
     this.dropLocks(steps, id);
     for (const s of steps) { tr.locks.push({ step: s, id, value }); tr.steps[s].locked = true; }
     tr.locks.sort((a, b) => a.step - b.step || a.id - b.id);
-    this.send(`l${id}:${steps.join(",")}`, () => this.link.lockSet({ ...this.head(), steps, entries: [{ op: "set", id, value }] }));
+    const h = this.head();
+    this.send(this.key(`l${id}:${steps.join(",")}`), () => this.link.lockSet({ ...h, steps, entries: [{ op: "set", id, value }] }));
   }
   clearLock(steps, id) {
     this.dropLocks(steps, id);
-    this.send(null, () => this.link.lockSet({ ...this.head(), steps, entries: [{ op: "clear", id }] }));
+    const h = this.head();
+    this.send(null, () => this.link.lockSet({ ...h, steps, entries: [{ op: "clear", id }] }));
   }
   clearLocks(steps) {
     this.dropLocks(steps);
-    this.send(null, () => this.link.lockSet({ ...this.head(), steps, entries: [{ op: "clearAll" }] }));
+    const h = this.head();
+    this.send(null, () => this.link.lockSet({ ...h, steps, entries: [{ op: "clearAll" }] }));
   }
   // a paste: steps (egseq.js shape) from first on, their locks after (LOCK SET each)
   paste(first, steps, locks = []) {
@@ -164,8 +184,8 @@ export class SeqEditor {
     for (let k = 0; k < n; k++) tr.steps[first + k] = { ...steps[k], locked: false, slots: steps[k].slots.slice() };
     this.dropLocks(at);
     for (let k = 0; k < n; k += 24) {
-      const wires = steps.slice(k, Math.min(n, k + 24)).map(stepWire), f = first + k;
-      this.send(null, () => this.link.stepsPut({ ...this.head(), first: f, wires }));
+      const wires = steps.slice(k, Math.min(n, k + 24)).map(stepWire), f = first + k, h = this.head();
+      this.send(null, () => this.link.stepsPut({ ...h, first: f, wires }));
     }
     for (const l of locks) if (l.step < n) this.setLock([first + l.step], l.id, l.value);
   }
@@ -178,7 +198,8 @@ export class SeqEditor {
     else if (f === TFIELD.TRANSPOSE) ts.transpose = v;
     else if (f === TFIELD.MUTE) ts.mute = v;
     else if (f === TFIELD.SWING) ts.swing = v;
-    this.send(`t${f}:${f === TFIELD.PSTART || f === TFIELD.PEND ? v >> 4 : ""}`, () => this.link.trackSet({ ...this.head(), fields: [[f, v]] }));
+    const h = this.head();
+    this.send(this.key(`t${f}:${f === TFIELD.PSTART || f === TFIELD.PEND ? v >> 4 : ""}`), () => this.link.trackSet({ ...h, fields: [[f, v]] }));
   }
   async undo(redo = false) {
     await this.idle();
