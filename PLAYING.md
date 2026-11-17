@@ -995,15 +995,21 @@ F1 / F2 show the ten before / after; B11 removes the sound lock.
   - **SPEED** (MULT on FREE) is a step's length in PAL frames, the C64's 50 Hz: 127 is a note a frame (the buzzing
     chord of the old games), and every 8 below that is a frame more, down to 16 frames a note at 0.
   - **MULT** on a division makes a step that long instead: 1/16 is a note a sixteenth, in time with the pattern.
-    Turning right goes FREE, then fastest to slowest: 1/128, 1/64, 1/32 .. 8 BAR.
+    Turning right goes FREE, then fastest to slowest: 1/128, 1/64, 1/32 .. 8 BAR. **On a division SPEED does nothing**
+    (it reads SYNC): the division alone is the rate, for every wave. An ARP wave plays a note a division (solid 16ths:
+    MULT 1/16); any other wave makes one whole cycle a division. TRIG starts it on each note; FREE runs on its own,
+    at the tempo's rate but not lined up with the bar.
   - **TRIG**: TRIG starts the chord again with every note; FREE keeps every note of the track in step with each other;
     ONE runs through the notes once and stays on the last (a run up or down); HOLD keeps the note the chord was on
     when the key went down.
   - On any other destination an ARP wave is a staircase of the chord's intervals, with DEPTH as for the other waves.
 - **Hold an LFO key and turn a knob** on any page to **map** it: the first click makes that value the LFO's
-  destination, and turning sets the depth (up or down from 0; on from where it was if it already was the
-  destination). While the key is held a picture shows "LFO n" over the value's name and the depth as a bar from the
-  centre, and the value's column has a little wave. A value that cannot be a destination (TYPE, a WAVE ..) is
+  destination, and turning sets the depth (right: up, left: down, from none; on from where it was if it already was
+  the destination). While the key is held a picture shows "LFO n" and the depth as a number (+31, -12) over the
+  value's name, and a meter under it that grows right or left from its middle; the value's column has a little wave.
+  The destinations: PITCH, CUTOFF, RESO, the pulse widths, the oscillators' pitches, LEVEL, PAN, DRIVE, BITS,
+  SRR, F ENV, the word's place and pitch, DETUNE, and the envelopes: ATK, DEC, SUS, REL (ENV 1's, and ENV 2's and 3's
+  while they are linked to it), ENV2 / ENV3's own four, the filter envelope's F ATK .. F REL, and KEY TRK. A value that cannot be a destination (TYPE, a WAVE ..) is
   refused: its name dim, a shake, nothing changed. Let go: you stay on the page (a tap without a turn goes to the LFO's
   page). **With a step held** (or the latch's selection) the destination and the depth are locks of that step.
 - A value an LFO moves has the LFO's number in its colour by its name (1 cyan, 2 yellow, 3 violet), on every page.

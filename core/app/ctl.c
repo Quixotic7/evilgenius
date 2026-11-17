@@ -239,6 +239,16 @@ void qd_ctl_imported(qd_app_t *a, const char *name, int pool, int slot)
 static void confirm_cue(qd_app_t *a, const char *big, const char *small)
 {
     static char line[40];
+    static char last[25];
+    static uint32_t last_ms;
+    if (big && !strncmp(last, big, 24) && a->ms - last_ms < 1500u) {   /* 2026-11-15: the same message again and
+                                                         * again (a caller keeping it up): said once (SAM renders a line
+                                                         * in one go) */
+        last_ms = a->ms;
+        return;
+    }
+    strncpy(last, big ? big : "", 24);
+    last_ms = a->ms;
     switch (ui_scene_kind(big, small)) {
     case UI_SC_ZAP: qd_app_announce(a, "DESTROYED", QD_ANN_VILLAIN, QD_SFX_ZAP); break;
     case UI_SC_ARM: qd_app_announce(a, "ARE YOU SURE", QD_ANN_ROBOT, QD_SFX_NONE); break;

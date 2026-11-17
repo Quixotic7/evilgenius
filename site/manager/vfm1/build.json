@@ -1,13 +1,13 @@
 {
-  "commit": "ef24fe4f6b63fa23d9b2cf9b9fcc8cbb8d1d049f",
+  "commit": "4441c86417db88ae6eb3d601fe149457157b0d6f",
   "dirty": false,
-  "with": "the working copy's firmware/app/fz_port.c (eg_web_knob, eg_web_fx, eg_web_menu, eg_web_pat, eg_web_live; the manager's hand wakes the unit) and web/emu/worklet.js (what plays now in each frame) over that commit's tree; the commit that adds this build carries them",
+  "with": "the working tree's core changes over that commit (the LFO depth, the envelopes as destinations, SAVING said once ..); the commit that adds this build carries them",
   "package": "ble",
   "built": "firmware/build.py --web --ble",
   "files": {
     "app.wasm": {
-      "bytes": 724310,
-      "sha256": "2e5770de0bfdcce33369cf80595fdb752f983959ed04b246d9504e6c54c543e2"
+      "bytes": 725723,
+      "sha256": "73e8b33038cda00acd5b422ff16e163fdf5240dc09392313e7d74ff22d6df7e5"
     },
     "worklet.js": {
       "bytes": 9868,

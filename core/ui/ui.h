@@ -813,6 +813,7 @@ typedef struct ui_snd {
     const char *lk_name;                /* .. the value it maps ("FREQ"; 0: none yet) */
     int lk_ok, lk_k;                    /* .. a destination (else dim, shaking), the knob's column (-1) */
     float lk_depth, lk_shake;           /* .. the depth -1..1, the shake 0..1 (1: just refused) */
+    int16_t lk_dval;                    /* .. the depth as the value reads (signed: LFO DEPTH - 64, a slot's DEPTH) */
     int fpop, fpop_sel;                 /* P1.6d: the FILTER key held: the machines' popup up, the current (menu order) */
     int follow;                         /* P1.6g: the values the step playing's (the latch off, nothing held) */
     int rnd_kind;                       /* P1.5c: randomise: 1 the dice shaking (P1.6d: held), 4 rolling, 2 the bottle

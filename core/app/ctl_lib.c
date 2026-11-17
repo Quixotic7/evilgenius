@@ -49,10 +49,15 @@ void qd_lib_save_ms(qd_app_t *a)
     }
     if (p->saving) {
         const int busy = qd_persist_save_busy(a);
-        qd_ctl_confirm(a, busy ? "SAVING" : "PROJECT SAVED", 0);   /* (SAVING stays up until it is written) */
+        if (busy && p->saving == 2 && u->cf_on)        /* SAVING up: kept up, not said again (2026-11-15, owner: a save
+                                                         * while playing locked the unit up: SAVING confirmed each ms
+                                                         * had SAM render the line each ms, the save never done) */
+            u->cf_ms = a->ms;
+        else
+            qd_ctl_confirm(a, busy ? "SAVING" : "PROJECT SAVED", 0);   /* (SAVING stays up until it is written) */
         if (!busy)
             u->cf_col = QD_CF_TICK;
-        p->saving = (uint8_t)busy;
+        p->saving = (uint8_t)(busy ? 2 : 0);
     }
 }
 void qd_lib_save(qd_app_t *a, int down)

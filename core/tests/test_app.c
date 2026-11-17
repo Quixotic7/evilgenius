@@ -520,6 +520,39 @@ static void t_mfx(void)
     printf("  mfx: MIDI in through a group, ALL NOTES OFF, undo\n");
 }
 
+/* 2026-11-15 (owner): the amp envelope's DECAY as a destination: VEL -> DEC at full depth rings a short-decay note on */
+static double tail_energy(int slot_on)
+{
+    int16_t *pt;
+    double e = 0.;
+    uint32_t t;
+    fresh();
+    pt = A.model.t[0].patch;
+    pt[QD_QP_EATK] = 0, pt[QD_QP_EDEC] = 2, pt[QD_QP_ESUS] = 0, pt[QD_QP_EREL] = 2;
+    pt[QD_QP_MOD(0, QD_QM_SRC)] = slot_on ? QD_MS_VEL : QD_MS_OFF;
+    pt[QD_QP_MOD(0, QD_QM_DST)] = QD_D_ED;
+    pt[QD_QP_MOD(0, QD_QM_DEPTH)] = 127;
+    qd_app_midi(&A, 0x90, 60, 127);
+    run(300, 0);
+    for (t = 0; t < 500; t++) {
+        int k;
+        run(1, 0);
+        for (k = 0; k < 256; k++)
+            e += (double)last[k] * (double)last[k];
+    }
+    qd_app_midi(&A, 0x80, 60, 0);
+    run(500, 0);
+    return e;
+}
+static void t_env_dest(void)
+{
+    const double plain = tail_energy(0), mod = tail_energy(1);
+    CHECK(qd_quad_dest_of(QD_QP_EDEC, 0) == QD_D_ED && qd_quad_dest_id(QD_D_E2S) == QD_QP_E2S &&
+          qd_quad_dest_id(QD_D_FR) == QD_QP_FREL && qd_quad_dest_of(QD_QP_FKTRK, 0) == QD_D_FKTRK,
+          "the envelopes' values and KEY TRK are destinations");
+    CHECK(mod > plain * 10. + 1., "VEL -> DEC: a short decay rings on (tail %.0f against %.0f)", mod, plain);
+    printf("  DEC as a destination: the tail %.3g modulated, %.3g plain\n", mod, plain);
+}
 static void t_mult_order(void)                          /* 2026-11-14 (owner): MULT turns fastest to slowest */
 {
     static const char *const WANT[12] = {"FREE", "1/128", "1/64", "1/32", "1/16", "1/8", "1/4", "1/2", "1 BAR",
@@ -959,6 +992,122 @@ static void t_strip_shapes(void)
 static void t_strip_shapes(void) {}
 #endif
 
+/* 2026-11-15 (owner): PRESETS with several steps held locks the sound on every one of them (view: a step view; snd:
+ * the sound editor open over it) */
+static void multi_sound(int view, int snd, int gap, int apart)
+{
+    const qd_pattern_t *p;
+    int i, s0, s2;
+    fresh();
+    wake_up();
+    qd_app_show(&A, QD_MODE_STEP, view);
+    run(10, 0);
+    for (i = 0; i < 4; i += 2)
+        tap_key(WK[i]);                                 /* steps 1 and 3 made */
+    if (apart)                                          /* step 1 already on another sound than step 3 */
+        qd_step_set_sound(qd_ctl_pat(&A), A.sel, 0, qd_sound_step(&A.proj, 0, 4, 0));
+    if (snd)
+        tap_button(QD_B_SOUND);
+    qd_app_key(&A, WK[0], 1, 100);
+    run(gap, 0);
+    qd_app_key(&A, WK[2], 1, 100);
+    run(QD_TAP_MS + 50, 0);
+    qd_app_knob(&A, QD_K_PRESETS, 1);
+    run(20, 0);
+    p = qd_ctl_cpat(&A);
+    s0 = qd_step(p, A.sel, 0)->sound, s2 = qd_step(p, A.sel, 2)->sound;
+    printf("  multi sound (view %d%s, %d ms apart%s): nheld %d, sounds %d %d\n", view, snd ? ", SOUND" : "", gap,
+           apart ? ", from other sounds" : "", A.ui.nheld, s0, s2);
+    CHECK(s0 && s0 == s2, "PRESETS, steps 1 and 3 held (view %d%s): both take the sound lock (%d, %d)", view,
+          snd ? ", the sound editor" : "", s0, s2);
+    qd_app_key(&A, WK[0], 0, 0);
+    qd_app_key(&A, WK[2], 0, 0);
+    run(20, 0);
+}
+static void t_multi_sound(void)
+{
+    static const int VIEWS[3] = {QD_VIEW_EDIT, QD_VIEW_STEPS, QD_VIEW_ROLL};
+    int v;
+    for (v = 0; v < 3; v++) {
+        multi_sound(VIEWS[v], 0, 20, 0);
+        multi_sound(VIEWS[v], 0, 600, 1);
+    }
+}
+/* 2026-11-15 (owner): HOME's EDIT, NOTE mode: a white key going down keeps THE ROOM (a tap may follow); the keyboard
+ * (the mode's picture) only once the step is held */
+static void t_room_press(void)
+{
+    static ui_held_t h;
+    static ui_lane_t l;
+    int k;
+    for (k = 0; k < 2; k++) {
+        fresh();
+        wake_up();
+        qd_app_show(&A, QD_MODE_STEP, QD_VIEW_EDIT);
+        if (k)
+            qd_app_play(&A);
+        run(400, 0);
+        qd_app_key(&A, WK[2], 1, 100);
+        run(60, 0);
+        qd_view_edit(&A, &h, &l);
+        CHECK(h.room && !A.ui.nheld, "EDIT%s: a white key down 60 ms: THE ROOM stays", k ? ", playing" : "");
+        run(QD_TAP_MS, 0);
+        qd_view_edit(&A, &h, &l);
+        CHECK(!h.room && A.ui.nheld == 1 && h.field == UI_F_NOTE && !h.is_default,
+              "EDIT%s: the key held past QD_TAP_MS: the held step's NOTE picture", k ? ", playing" : "");
+        qd_app_key(&A, WK[2], 0, 0);
+        run(20, 0);
+    }
+}
+/* 2026-11-15 (owner): SAVE held while playing locked the unit up. On a RAM flash: the save finishes while the pattern
+ * plays, and THE VOICE (ALWAYS: it speaks over the pattern) says SAVING once, not every ms the message is kept up */
+#define TFL_SIZE 0x100000u
+static uint8_t TFL[TFL_SIZE];
+static int tfl_read(void *c, uint32_t off, void *d, uint32_t n) { (void)c; memcpy(d, TFL + off, n); return off + n <= TFL_SIZE ? 0 : -8; }
+static int tfl_erase(void *c, uint32_t off) { (void)c; memset(TFL + off / 4096u * 4096u, 0xFF, 4096u); return 0; }
+static int tfl_prog(void *c, uint32_t off, const void *src, uint32_t n)
+{
+    uint32_t i;
+    (void)c;
+    if (off / 256u != (off + n - 1u) / 256u)
+        return -8;
+    for (i = 0; i < n; i++)
+        TFL[off + i] &= ((const uint8_t *)src)[i];
+    return 0;
+}
+static const qd_flash_t TFLASH = {tfl_read, tfl_erase, tfl_prog, 0};
+static void save_playing(int voice)
+{
+    uint32_t t, n0, said;
+    memset(TFL, 0xFF, sizeof TFL);
+    fresh();
+    qd_persist_attach(&A, &TFLASH);
+    wake_up();
+    A.ui.voice_mode = (uint8_t)voice;
+    run(3000, 0);                                       /* (the greeting said and done) */
+    tap_button(QD_B_PLAY);
+    run(500, 0);
+    A.model.t[0].mix.level = 100;                       /* something to save */
+    n0 = qd_ann_count;
+    qd_app_button(&A, QD_B_SAVE, 1);
+    run(QD_SAVE_HOLD_MS + 100, 0);
+    qd_app_button(&A, QD_B_SAVE, 0);
+    for (t = 0; t < 20000 && qd_persist_save_busy(&A); t += 10)
+        run(10, 0);
+    said = qd_ann_count - n0;
+    run(100, 0);
+    printf("  save while playing (voice %s): written after %u ms, %u lines said\n",
+           voice == QD_VOICE_ALWAYS ? "ALWAYS" : "STOPPED", (unsigned)t, (unsigned)said);
+    CHECK(A.seq.playing && !qd_persist_save_busy(&A) && t < 20000, "SAVE held while playing: the project written while "
+          "it plays (%u ms)", (unsigned)t);
+    CHECK(said <= 2u, "SAVE held while playing: SAVING said once, not each ms it stays up (%u lines)", (unsigned)said);
+    tap_button(QD_B_PLAY);
+}
+static void t_save_playing(void)
+{
+    save_playing(QD_VOICE_STOPPED);
+    save_playing(QD_VOICE_ALWAYS);
+}
 static void t_play(void)
 {
     qd_leds_t l;
@@ -1535,6 +1684,7 @@ int main(void)
     t_mfx();
     t_mix();
     t_mult_order();
+    t_env_dest();
     t_limiter();
     t_panic();
     h1 = session();
@@ -1548,6 +1698,9 @@ int main(void)
     t_fb_bands();
 #endif
     t_strip_shapes();
+    t_multi_sound();
+    t_room_press();
+    t_save_playing();
     t_play();
     t_patterns();
     t_tracks();

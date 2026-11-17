@@ -12,6 +12,20 @@ EVILGENIUS began as FIZZ 0.12.0-beta.17 with another engine and another face; FI
 
 <!-- The next release's notes, for testers, in plain language. firmware/release.py moves them. -->
 
+- **Saving while a pattern plays with THE VOICE on ALWAYS no longer locks the unit up.** The "SAVING" message was
+  said again every millisecond it stayed up, so the speech took all the time and the save never finished. He says
+  it once now.
+- **PRESETS with several steps held locks the sound on every one of them**, the sound the picker shows. Steps that
+  started on different sounds each went their own way, so only the first landed on the one you picked.
+- **Mapping an LFO or a modulation source shows the depth**: hold the LFO key (or B1) and turn a value; the depth is
+  a number and a meter both ways from the middle. A new LFO mapping now starts from no depth, so turning right goes
+  up; it started at full negative, and the meter drew nothing below zero.
+- **More LFO and modulation destinations**: the amp envelopes' attack, decay, sustain and release (all three
+  envelopes), the filter envelope's four, and the filter's key tracking. They move while the note plays.
+- **An LFO's SPEED reads SYNC while MULT is a division**: the division alone sets the rate then.
+- **HOME (EDIT) no longer flashes the keyboard on a step tap.** A white key going down keeps THE ROOM on screen; the
+  hold mode's picture (NOTE's keyboard, VEL's bar ..) appears only once the step is held (a quarter second).
+
 ## 0.1.3 (2026-11-16)
 
 - **Projects keep their names again.** Since the five rooms came in, the unit could not read a project's header back

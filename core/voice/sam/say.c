@@ -208,11 +208,13 @@ static volatile int32_t ann_gain;                       /* the line's peak broug
 int qd_ann_busy(void) { return (ann_pos >> 16) < ann_len; }
 void qd_ann_stop(void) { ann_len = 0; }
 
+uint32_t qd_ann_count;                                  /* (the lines said: the tests, the stats) */
 int qd_ann_say(const char *text, int voice, int level)
 {
     static char in[256];
     uint32_t a, e, peak;
     ann_len = 0;                                        /* (the line before stops: its buffer is SAM's again) */
+    qd_ann_count++;
     ann_pos = 0;
     strncpy(in, text, 240);
     in[240] = 0;

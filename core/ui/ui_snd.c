@@ -669,11 +669,27 @@ void ui_snd_draw(const ui_snd_t *v)
             s[4] = (char)('0' + v->lk), s[5] = 0;
         else
             strcpy(s, "MOD");
-        px_ctext(60, 34, s, v->lk == 4 ? UI_K2 : UI_LFO_COL[(v->lk - 1) % 3], PX_FS, 1);
-        px_ctext(60 + (v->lk_shake > 0.f ? (int)(fz_sinf(v->t * 50.f) * 3.f * v->lk_shake) : 0), 42, v->lk_name,
-                 v->lk_ok ? UI_K3 : UI_G2, PX_FB, 1);
-        px_rect(60, 54, (int)(v->lk_depth * 40.f), 4, UI_K3);
-        px_vline(60, 52, 8, UI_G1);
+        {
+            const qd_rgb col = v->lk == 4 ? UI_K2 : UI_LFO_COL[(v->lk - 1) % 3];
+            char dv[14];                                /* (ui_itoa: 12 bytes) */
+            int w = (int)((v->lk_depth < 0.f ? -v->lk_depth : v->lk_depth) * 40.f + 0.5f);
+            px_text(14, 34, s, col, PX_FS, 1);
+            if (v->lk_ok) {                             /* 2026-11-15 (owner): the depth, as a number and a meter both
+                                                         * ways from the middle (it drew nothing below zero) */
+                dv[0] = v->lk_dval < 0 ? '-' : '+';
+                ui_itoa(dv + 1, v->lk_dval < 0 ? -v->lk_dval : v->lk_dval);
+                px_text(106 - px_text_w(dv, PX_FS, 1), 34, dv, v->lk_dval ? UI_K3 : UI_G1, PX_FS, 1);
+            }
+            px_ctext(60 + (v->lk_shake > 0.f ? (int)(fz_sinf(v->t * 50.f) * 3.f * v->lk_shake) : 0), 42, v->lk_name,
+                     v->lk_ok ? UI_K3 : UI_G2, PX_FB, 1);
+            px_hline(20, 56, 81, UI_G3);                 /* the meter's rail, -1 .. +1, its ends and middle marked */
+            px_vline(20, 54, 5, UI_G2);
+            px_vline(100, 54, 5, UI_G2);
+            w = w > 40 ? 40 : w;
+            if (v->lk_ok && w)
+                px_rect(v->lk_depth < 0.f ? 60 - w : 61, 54, w, 5, col);
+            px_vline(60, 52, 9, UI_G1);
+        }
     }
     if (v->rnd_kind)
         sd_dice(v->rnd_u, v->t, v->rnd_kind == 1);

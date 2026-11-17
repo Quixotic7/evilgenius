@@ -71,7 +71,7 @@ export const VALUES = [
   ["SPEED", 0, 127, 60, "int", {}, 1],  // 61
   ["MULT", 0, 11, 0, "list", ["FREE","1/32","1/16","1/8","1/4","1/2","1 BAR","2 BAR","4 BAR","8 BAR","1/64","1/128"], 1],  // 62
   ["FADE", 0, 127, 64, "c64", {}, 1],  // 63
-  ["DEST", 0, 19, 0, "list", ["OFF","PITCH","CUTOFF","RESO","PW 1","PW 2","PW 3","PW ALL","PITCH 1","PITCH 2","PITCH 3","LEVEL","PAN","DRIVE","BITS","SRR","F ENV","WORD POS","VOX PITCH","DETUNE"], 1],  // 64
+  ["DEST", 0, 36, 0, "list", ["OFF","PITCH","CUTOFF","RESO","PW 1","PW 2","PW 3","PW ALL","PITCH 1","PITCH 2","PITCH 3","LEVEL","PAN","DRIVE","BITS","SRR","F ENV","WORD POS","VOX PITCH","DETUNE","ATK","DEC","SUS","REL","ENV2 ATK","ENV2 DEC","ENV2 SUS","ENV2 REL","ENV3 ATK","ENV3 DEC","ENV3 SUS","ENV3 REL","F ATK","F DEC","F SUS","F REL","KEY TRK"], 1],  // 64
   ["WAVE", 0, 15, 0, "list", ["TRI","SINE","SAW","SQR","S&H","EXP","RAMP","ARP OCT","ARP 5TH","ARP MAJ","ARP MIN","ARP SUS","ARP 7","ARP MI7","ARP MA7","ARP DIM"], 1],  // 65
   ["PHASE", 0, 127, 0, "int", {}, 1],  // 66
   ["TRIG", 0, 4, 0, "int", {"0":"FREE","1":"TRIG","2":"HOLD","3":"ONE","4":"HALF"}, 1],  // 67
@@ -79,7 +79,7 @@ export const VALUES = [
   ["SPEED", 0, 127, 60, "int", {}, 1],  // 69
   ["MULT", 0, 11, 0, "list", ["FREE","1/32","1/16","1/8","1/4","1/2","1 BAR","2 BAR","4 BAR","8 BAR","1/64","1/128"], 1],  // 70
   ["FADE", 0, 127, 64, "c64", {}, 1],  // 71
-  ["DEST", 0, 19, 0, "list", ["OFF","PITCH","CUTOFF","RESO","PW 1","PW 2","PW 3","PW ALL","PITCH 1","PITCH 2","PITCH 3","LEVEL","PAN","DRIVE","BITS","SRR","F ENV","WORD POS","VOX PITCH","DETUNE"], 1],  // 72
+  ["DEST", 0, 36, 0, "list", ["OFF","PITCH","CUTOFF","RESO","PW 1","PW 2","PW 3","PW ALL","PITCH 1","PITCH 2","PITCH 3","LEVEL","PAN","DRIVE","BITS","SRR","F ENV","WORD POS","VOX PITCH","DETUNE","ATK","DEC","SUS","REL","ENV2 ATK","ENV2 DEC","ENV2 SUS","ENV2 REL","ENV3 ATK","ENV3 DEC","ENV3 SUS","ENV3 REL","F ATK","F DEC","F SUS","F REL","KEY TRK"], 1],  // 72
   ["WAVE", 0, 15, 0, "list", ["TRI","SINE","SAW","SQR","S&H","EXP","RAMP","ARP OCT","ARP 5TH","ARP MAJ","ARP MIN","ARP SUS","ARP 7","ARP MI7","ARP MA7","ARP DIM"], 1],  // 73
   ["PHASE", 0, 127, 0, "int", {}, 1],  // 74
   ["TRIG", 0, 4, 0, "int", {"0":"FREE","1":"TRIG","2":"HOLD","3":"ONE","4":"HALF"}, 1],  // 75
@@ -87,34 +87,34 @@ export const VALUES = [
   ["SPEED", 0, 127, 60, "int", {}, 1],  // 77
   ["MULT", 0, 11, 0, "list", ["FREE","1/32","1/16","1/8","1/4","1/2","1 BAR","2 BAR","4 BAR","8 BAR","1/64","1/128"], 1],  // 78
   ["FADE", 0, 127, 64, "c64", {}, 1],  // 79
-  ["DEST", 0, 19, 0, "list", ["OFF","PITCH","CUTOFF","RESO","PW 1","PW 2","PW 3","PW ALL","PITCH 1","PITCH 2","PITCH 3","LEVEL","PAN","DRIVE","BITS","SRR","F ENV","WORD POS","VOX PITCH","DETUNE"], 1],  // 80
+  ["DEST", 0, 36, 0, "list", ["OFF","PITCH","CUTOFF","RESO","PW 1","PW 2","PW 3","PW ALL","PITCH 1","PITCH 2","PITCH 3","LEVEL","PAN","DRIVE","BITS","SRR","F ENV","WORD POS","VOX PITCH","DETUNE","ATK","DEC","SUS","REL","ENV2 ATK","ENV2 DEC","ENV2 SUS","ENV2 REL","ENV3 ATK","ENV3 DEC","ENV3 SUS","ENV3 REL","F ATK","F DEC","F SUS","F REL","KEY TRK"], 1],  // 80
   ["WAVE", 0, 15, 0, "list", ["TRI","SINE","SAW","SQR","S&H","EXP","RAMP","ARP OCT","ARP 5TH","ARP MAJ","ARP MIN","ARP SUS","ARP 7","ARP MI7","ARP MA7","ARP DIM"], 1],  // 81
   ["PHASE", 0, 127, 0, "int", {}, 1],  // 82
   ["TRIG", 0, 4, 0, "int", {"0":"FREE","1":"TRIG","2":"HOLD","3":"ONE","4":"HALF"}, 1],  // 83
   ["DEPTH", 0, 127, 64, "c64", {}, 1],  // 84
   ["SOURCE", 0, 8, 0, "list", ["OFF","VEL","KEY","MW","AT","PB","BR","RAND","F ENV"], 1],  // 85
-  ["DEST", 0, 19, 0, "list", ["OFF","PITCH","CUTOFF","RESO","PW 1","PW 2","PW 3","PW ALL","PITCH 1","PITCH 2","PITCH 3","LEVEL","PAN","DRIVE","BITS","SRR","F ENV","WORD POS","VOX PITCH","DETUNE"], 1],  // 86
+  ["DEST", 0, 36, 0, "list", ["OFF","PITCH","CUTOFF","RESO","PW 1","PW 2","PW 3","PW ALL","PITCH 1","PITCH 2","PITCH 3","LEVEL","PAN","DRIVE","BITS","SRR","F ENV","WORD POS","VOX PITCH","DETUNE","ATK","DEC","SUS","REL","ENV2 ATK","ENV2 DEC","ENV2 SUS","ENV2 REL","ENV3 ATK","ENV3 DEC","ENV3 SUS","ENV3 REL","F ATK","F DEC","F SUS","F REL","KEY TRK"], 1],  // 86
   ["DEPTH", -127, 127, 0, "ofs", {}, 1],  // 87
   ["SOURCE", 0, 8, 0, "list", ["OFF","VEL","KEY","MW","AT","PB","BR","RAND","F ENV"], 1],  // 88
-  ["DEST", 0, 19, 0, "list", ["OFF","PITCH","CUTOFF","RESO","PW 1","PW 2","PW 3","PW ALL","PITCH 1","PITCH 2","PITCH 3","LEVEL","PAN","DRIVE","BITS","SRR","F ENV","WORD POS","VOX PITCH","DETUNE"], 1],  // 89
+  ["DEST", 0, 36, 0, "list", ["OFF","PITCH","CUTOFF","RESO","PW 1","PW 2","PW 3","PW ALL","PITCH 1","PITCH 2","PITCH 3","LEVEL","PAN","DRIVE","BITS","SRR","F ENV","WORD POS","VOX PITCH","DETUNE","ATK","DEC","SUS","REL","ENV2 ATK","ENV2 DEC","ENV2 SUS","ENV2 REL","ENV3 ATK","ENV3 DEC","ENV3 SUS","ENV3 REL","F ATK","F DEC","F SUS","F REL","KEY TRK"], 1],  // 89
   ["DEPTH", -127, 127, 0, "ofs", {}, 1],  // 90
   ["SOURCE", 0, 8, 0, "list", ["OFF","VEL","KEY","MW","AT","PB","BR","RAND","F ENV"], 1],  // 91
-  ["DEST", 0, 19, 0, "list", ["OFF","PITCH","CUTOFF","RESO","PW 1","PW 2","PW 3","PW ALL","PITCH 1","PITCH 2","PITCH 3","LEVEL","PAN","DRIVE","BITS","SRR","F ENV","WORD POS","VOX PITCH","DETUNE"], 1],  // 92
+  ["DEST", 0, 36, 0, "list", ["OFF","PITCH","CUTOFF","RESO","PW 1","PW 2","PW 3","PW ALL","PITCH 1","PITCH 2","PITCH 3","LEVEL","PAN","DRIVE","BITS","SRR","F ENV","WORD POS","VOX PITCH","DETUNE","ATK","DEC","SUS","REL","ENV2 ATK","ENV2 DEC","ENV2 SUS","ENV2 REL","ENV3 ATK","ENV3 DEC","ENV3 SUS","ENV3 REL","F ATK","F DEC","F SUS","F REL","KEY TRK"], 1],  // 92
   ["DEPTH", -127, 127, 0, "ofs", {}, 1],  // 93
   ["SOURCE", 0, 8, 0, "list", ["OFF","VEL","KEY","MW","AT","PB","BR","RAND","F ENV"], 1],  // 94
-  ["DEST", 0, 19, 0, "list", ["OFF","PITCH","CUTOFF","RESO","PW 1","PW 2","PW 3","PW ALL","PITCH 1","PITCH 2","PITCH 3","LEVEL","PAN","DRIVE","BITS","SRR","F ENV","WORD POS","VOX PITCH","DETUNE"], 1],  // 95
+  ["DEST", 0, 36, 0, "list", ["OFF","PITCH","CUTOFF","RESO","PW 1","PW 2","PW 3","PW ALL","PITCH 1","PITCH 2","PITCH 3","LEVEL","PAN","DRIVE","BITS","SRR","F ENV","WORD POS","VOX PITCH","DETUNE","ATK","DEC","SUS","REL","ENV2 ATK","ENV2 DEC","ENV2 SUS","ENV2 REL","ENV3 ATK","ENV3 DEC","ENV3 SUS","ENV3 REL","F ATK","F DEC","F SUS","F REL","KEY TRK"], 1],  // 95
   ["DEPTH", -127, 127, 0, "ofs", {}, 1],  // 96
   ["SOURCE", 0, 8, 0, "list", ["OFF","VEL","KEY","MW","AT","PB","BR","RAND","F ENV"], 1],  // 97
-  ["DEST", 0, 19, 0, "list", ["OFF","PITCH","CUTOFF","RESO","PW 1","PW 2","PW 3","PW ALL","PITCH 1","PITCH 2","PITCH 3","LEVEL","PAN","DRIVE","BITS","SRR","F ENV","WORD POS","VOX PITCH","DETUNE"], 1],  // 98
+  ["DEST", 0, 36, 0, "list", ["OFF","PITCH","CUTOFF","RESO","PW 1","PW 2","PW 3","PW ALL","PITCH 1","PITCH 2","PITCH 3","LEVEL","PAN","DRIVE","BITS","SRR","F ENV","WORD POS","VOX PITCH","DETUNE","ATK","DEC","SUS","REL","ENV2 ATK","ENV2 DEC","ENV2 SUS","ENV2 REL","ENV3 ATK","ENV3 DEC","ENV3 SUS","ENV3 REL","F ATK","F DEC","F SUS","F REL","KEY TRK"], 1],  // 98
   ["DEPTH", -127, 127, 0, "ofs", {}, 1],  // 99
   ["SOURCE", 0, 8, 0, "list", ["OFF","VEL","KEY","MW","AT","PB","BR","RAND","F ENV"], 1],  // 100
-  ["DEST", 0, 19, 0, "list", ["OFF","PITCH","CUTOFF","RESO","PW 1","PW 2","PW 3","PW ALL","PITCH 1","PITCH 2","PITCH 3","LEVEL","PAN","DRIVE","BITS","SRR","F ENV","WORD POS","VOX PITCH","DETUNE"], 1],  // 101
+  ["DEST", 0, 36, 0, "list", ["OFF","PITCH","CUTOFF","RESO","PW 1","PW 2","PW 3","PW ALL","PITCH 1","PITCH 2","PITCH 3","LEVEL","PAN","DRIVE","BITS","SRR","F ENV","WORD POS","VOX PITCH","DETUNE","ATK","DEC","SUS","REL","ENV2 ATK","ENV2 DEC","ENV2 SUS","ENV2 REL","ENV3 ATK","ENV3 DEC","ENV3 SUS","ENV3 REL","F ATK","F DEC","F SUS","F REL","KEY TRK"], 1],  // 101
   ["DEPTH", -127, 127, 0, "ofs", {}, 1],  // 102
   ["SOURCE", 0, 8, 0, "list", ["OFF","VEL","KEY","MW","AT","PB","BR","RAND","F ENV"], 1],  // 103
-  ["DEST", 0, 19, 0, "list", ["OFF","PITCH","CUTOFF","RESO","PW 1","PW 2","PW 3","PW ALL","PITCH 1","PITCH 2","PITCH 3","LEVEL","PAN","DRIVE","BITS","SRR","F ENV","WORD POS","VOX PITCH","DETUNE"], 1],  // 104
+  ["DEST", 0, 36, 0, "list", ["OFF","PITCH","CUTOFF","RESO","PW 1","PW 2","PW 3","PW ALL","PITCH 1","PITCH 2","PITCH 3","LEVEL","PAN","DRIVE","BITS","SRR","F ENV","WORD POS","VOX PITCH","DETUNE","ATK","DEC","SUS","REL","ENV2 ATK","ENV2 DEC","ENV2 SUS","ENV2 REL","ENV3 ATK","ENV3 DEC","ENV3 SUS","ENV3 REL","F ATK","F DEC","F SUS","F REL","KEY TRK"], 1],  // 104
   ["DEPTH", -127, 127, 0, "ofs", {}, 1],  // 105
   ["SOURCE", 0, 8, 0, "list", ["OFF","VEL","KEY","MW","AT","PB","BR","RAND","F ENV"], 1],  // 106
-  ["DEST", 0, 19, 0, "list", ["OFF","PITCH","CUTOFF","RESO","PW 1","PW 2","PW 3","PW ALL","PITCH 1","PITCH 2","PITCH 3","LEVEL","PAN","DRIVE","BITS","SRR","F ENV","WORD POS","VOX PITCH","DETUNE"], 1],  // 107
+  ["DEST", 0, 36, 0, "list", ["OFF","PITCH","CUTOFF","RESO","PW 1","PW 2","PW 3","PW ALL","PITCH 1","PITCH 2","PITCH 3","LEVEL","PAN","DRIVE","BITS","SRR","F ENV","WORD POS","VOX PITCH","DETUNE","ATK","DEC","SUS","REL","ENV2 ATK","ENV2 DEC","ENV2 SUS","ENV2 REL","ENV3 ATK","ENV3 DEC","ENV3 SUS","ENV3 REL","F ATK","F DEC","F SUS","F REL","KEY TRK"], 1],  // 107
   ["DEPTH", -127, 127, 0, "ofs", {}, 1],  // 108
   ["VOICE", 0, 1, 0, "int", {"0":"POLY","1":"MONO"}, 0],  // 109
   ["UNISON", 1, 8, 1, "int", {}, 0],  // 110
@@ -127,6 +127,6 @@ export const VALUES = [
   ["THROAT", 0, 255, 128, "int", {}, 1],  // 117
   ["MOUTH", 0, 255, 128, "int", {}, 1],  // 118
 ];
-export const DESTS = ["OFF","PITCH","CUTOFF","RESO","PW 1","PW 2","PW 3","PW ALL","PITCH 1","PITCH 2","PITCH 3","LEVEL","PAN","DRIVE","BITS","SRR","F ENV","WORD POS","VOX PITCH","DETUNE"];
-export const DEST_ID = [-1, -1, 31, 32, 3, 8, 13, -1, -1, -1, -1, 42, -1, 44, 46, 47, 35, -1, -1, 15];
-export const DEST_ORDER = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19];
+export const DESTS = ["OFF","PITCH","CUTOFF","RESO","PW 1","PW 2","PW 3","PW ALL","PITCH 1","PITCH 2","PITCH 3","LEVEL","PAN","DRIVE","BITS","SRR","F ENV","WORD POS","VOX PITCH","DETUNE","ATK","DEC","SUS","REL","ENV2 ATK","ENV2 DEC","ENV2 SUS","ENV2 REL","ENV3 ATK","ENV3 DEC","ENV3 SUS","ENV3 REL","F ATK","F DEC","F SUS","F REL","KEY TRK"];
+export const DEST_ID = [-1, -1, 31, 32, 3, 8, 13, -1, -1, -1, -1, 42, -1, 44, 46, 47, 35, -1, -1, 15, 16, 17, 18, 19, 20, 21, 22, 23, 25, 26, 27, 28, 37, 38, 39, 40, 36];
+export const DEST_ORDER = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36];

@@ -127,7 +127,11 @@ int qd_quad_arp_chord(int wave, const uint8_t **notes);   /* an ARP wave's notes
 enum { QD_LT_FREE, QD_LT_TRIG, QD_LT_HOLD, QD_LT_ONE, QD_LT_HALF, QD_LT_N };
 /* the modulation destinations (LFO DEST, a slot's DST): a value of the patch, or the voice's own (pitch, pan ..) */
 enum { QD_D_OFF, QD_D_PITCH, QD_D_CUT, QD_D_RES, QD_D_PW1, QD_D_PW2, QD_D_PW3, QD_D_PWALL, QD_D_P1, QD_D_P2, QD_D_P3,
-       QD_D_LEVEL, QD_D_PAN, QD_D_DRIVE, QD_D_BITS, QD_D_SRR, QD_D_FENV, QD_D_WPOS, QD_D_VOXP, QD_D_DETUNE, QD_D_N };
+       QD_D_LEVEL, QD_D_PAN, QD_D_DRIVE, QD_D_BITS, QD_D_SRR, QD_D_FENV, QD_D_WPOS, QD_D_VOXP, QD_D_DETUNE,
+       /* 2026-11-15 (owner: "the decay of the amp envelope to an LFO"): the envelopes' times and levels, the filter's
+        * key tracking; appended, so a stored DEST keeps its meaning. ENV 1's also move ENV 2 / 3 while they are LINKed */
+       QD_D_EA, QD_D_ED, QD_D_ES, QD_D_ER, QD_D_E2A, QD_D_E2D, QD_D_E2S, QD_D_E2R, QD_D_E3A, QD_D_E3D, QD_D_E3S,
+       QD_D_E3R, QD_D_FA, QD_D_FD, QD_D_FS, QD_D_FR, QD_D_FKTRK, QD_D_N };
 
 typedef struct qd_quad_voice qd_quad_voice_t;
 typedef struct {

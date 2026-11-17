@@ -660,7 +660,7 @@ static void snd_dest(qd_app_t *a, int id, int d)
     snd_put(a, id, qd_quad_dest_step(snd_cur(a, id), d));
 }
 /* P1.5k: LFO n held + a knob on value id: its first detent makes id LFO n's destination (if ChoralRoot's list has it;
- * the depth from 0), each detent the depth (signed, accelerated); not a destination: nothing, the takeover says so */
+ * the depth from none, 64), each detent the depth (signed, accelerated); not a destination: nothing, the takeover says so */
 static void snd_map(qd_app_t *a, int n, int id, int d)
 {
     qd_ui_t *u = &a->ui;
@@ -678,7 +678,9 @@ static void snd_map(qd_app_t *a, int n, int id, int d)
     u->snd_lk_bad_ms = 0;
     {
         const int same = snd_cur(a, did) == dest;
-        const int dep = same ? snd_cur(a, pid) : 0;
+        const int dep = same ? snd_cur(a, pid) : 64;   /* (2026-11-15: a new mapping from no depth: DEPTH's middle,
+                                                         * 64; it was 0, the most negative, so a turn right went deep
+                                                         * negative) */
         if (!same)
             snd_put(a, did, dest);
         snd_put(a, pid, dep + qd_step_id_turn(a, pid, d));

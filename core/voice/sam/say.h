@@ -31,5 +31,6 @@ enum { QD_ANN_VILLAIN, QD_ANN_ROBOT };  /* the voices: the villain's low one, th
 int qd_ann_say(const char *text, int voice, int level);   /* the app (not the audio): speak text (English, upper case)
                                                            * at level (0..100 %); 1: it speaks */
 void qd_ann_stop(void);
+extern uint32_t qd_ann_count;                     /* the lines qd_ann_say has started */
 int qd_ann_busy(void);
 void qd_ann_mix(int32_t *l, int32_t *r, int n);   /* the audio: the line's next n samples added to the mix */

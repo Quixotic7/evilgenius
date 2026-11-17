@@ -53,7 +53,10 @@ static const char *const L_VMODE[2] = {"POLY", "MONO"};
 static const char *const L_PRIO[3] = {"LOW", "MID", "HIGH"};
 static const char *const DEST_NAME[QD_D_N] = {"OFF", "PITCH", "CUTOFF", "RESO", "PW 1", "PW 2", "PW 3", "PW ALL",
                                               "PITCH 1", "PITCH 2", "PITCH 3", "LEVEL", "PAN", "DRIVE", "BITS",
-                                              "SRR", "F ENV", "WORD POS", "VOX PITCH", "DETUNE"};
+                                              "SRR", "F ENV", "WORD POS", "VOX PITCH", "DETUNE",
+                                              "ATK", "DEC", "SUS", "REL", "ENV2 ATK", "ENV2 DEC", "ENV2 SUS",
+                                              "ENV2 REL", "ENV3 ATK", "ENV3 DEC", "ENV3 SUS", "ENV3 REL", "F ATK",
+                                              "F DEC", "F SUS", "F REL", "KEY TRK"};
 static const uint16_t HOLD_HZ[8] = {2000, 3000, 4000, 6000, 8000, 11025, 16000, 22050};
 
 static val_t val(int i)
@@ -682,7 +685,13 @@ int qd_quad_dest_id(int d)
     case QD_D_SRR: return QD_QP_SRR;
     case QD_D_FENV: return QD_QP_FDEPTH;
     case QD_D_DETUNE: return QD_QP_DETUNE;
-    default: return -1;                                 /* (PITCH, PAN, the word's place ..: no one value) */
+    case QD_D_FKTRK: return QD_QP_FKTRK;
+    default:
+        if (d >= QD_D_EA && d <= QD_D_E3R)              /* (the three envelopes' A D S R: ENV 2 / 3 after their LINK) */
+            return d < QD_D_E2A ? QD_QP_EATK + (d - QD_D_EA) : d < QD_D_E3A ? QD_QP_E2A + (d - QD_D_E2A)
+                                                                           : QD_QP_E3A + (d - QD_D_E3A);
+        if (d >= QD_D_FA && d <= QD_D_FR)
+            return QD_QP_FATK + (d - QD_D_FA); return -1;                                 /* (PITCH, PAN, the word's place ..: no one value) */
     }
 }
 int qd_quad_dest_of(int id, int lfo)
@@ -1034,30 +1043,34 @@ void qd_quad_voice_kill(qd_quad_voice_t *v)
 }
 
 /* the filter envelope, a block: 0..127 times (1 ms .. 4 s, squared) */
-static void fenv_block(qd_quad_voice_t *v)
+static int env_mod(int v, int32_t d, int hi) { return clamp(v + (int)((d * hi) >> 15), 0, hi); }   /* (a value moved
+                                                         * by a destination's sum: full depth sweeps the whole range) */
+static void fenv_block(qd_quad_voice_t *v, const int32_t *d)
 {
     const int16_t *p = v->patch;
+    const int fa = env_mod(p[QD_QP_FATK], d[QD_D_FA], 127), fd = env_mod(p[QD_QP_FDEC], d[QD_D_FD], 127);
+    const int fs = env_mod(p[QD_QP_FSUS], d[QD_D_FS], 127), fr = env_mod(p[QD_QP_FREL], d[QD_D_FR], 127);
 #define STEP(t) ((int32_t)(32767 * 32 / 44) / (1 + (t) * (t) / 4))
     if (!v->gate && v->fstage < 3)
         v->fstage = 3;
     switch (v->fstage) {
     case 0:
-        v->fenv += STEP(p[QD_QP_FATK]) + 1;
+        v->fenv += STEP(fa) + 1;
         if (v->fenv >= 32767)
             v->fenv = 32767, v->fstage = 1;
         break;
     case 1: {
-        const int32_t s = p[QD_QP_FSUS] * 258;
-        v->fenv -= STEP(p[QD_QP_FDEC]) + 1;
+        const int32_t s = fs * 258;
+        v->fenv -= STEP(fd) + 1;
         if (v->fenv <= s)
             v->fenv = s, v->fstage = 2;
         break;
     }
     case 2:
-        v->fenv = p[QD_QP_FSUS] * 258;
+        v->fenv = fs * 258;
         break;
     case 3:
-        v->fenv -= STEP(p[QD_QP_FREL]) + 1;
+        v->fenv -= STEP(fr) + 1;
         if (v->fenv <= 0)
             v->fenv = 0, v->fstage = 4;
         break;
@@ -1163,7 +1176,9 @@ static void registers(qd_quad_voice_t *v, const int32_t *d, int *vox_only)
     for (n = 0; n < 3; n++) {
         const int w = p[QD_QP_W1 + 5 * n], o = 5 * n;
         const int ea = n == 0 || p[n == 1 ? QD_QP_E2LINK : QD_QP_E3LINK] ? QD_QP_EATK : n == 1 ? QD_QP_E2A : QD_QP_E3A;
-        const int a = p[ea], dd = p[ea + 1], s = p[ea + 2], r = p[ea + 3];
+        const int de = ea == QD_QP_EATK ? QD_D_EA : ea == QD_QP_E2A ? QD_D_E2A : QD_D_E3A;   /* (its destinations) */
+        const int a = env_mod(p[ea], d[de], 15), dd = env_mod(p[ea + 1], d[de + 1], 15);
+        const int s = env_mod(p[ea + 2], d[de + 2], 15), r = env_mod(p[ea + 3], d[de + 3], 15);
         const int pd = n == 0 ? QD_D_P1 : n == 1 ? QD_D_P2 : QD_D_P3;
         float semis = base + (float)p[QD_QP_C1 + o] + (float)(p[QD_QP_F1 + o] - 64) * (1.f / 64.f) +
                       (float)d[pd] * (24.f / 32768.f);
@@ -1214,7 +1229,7 @@ static void registers(qd_quad_voice_t *v, const int32_t *d, int *vox_only)
     *vox_only = !(on & 3) && !(on & 4 && !boost) && v->vox.on;
     /* the filter: its cutoff from the knob, the envelope, the key and the modulation */
     cut = p[QD_QP_FREQ] + (int)(((int64_t)(p[QD_QP_FDEPTH] - 64 + (d[QD_D_FENV] * 64 >> 15)) * v->fenv) >> 14) +
-          (v->note - 60) * p[QD_QP_FKTRK] / 8 + (d[QD_D_CUT] >> 4);
+          (v->note - 60) * env_mod(p[QD_QP_FKTRK], d[QD_D_FKTRK], 127) / 8 + (d[QD_D_CUT] >> 4);
     cut = clamp(cut, 0, 2047);
     res = clamp(p[QD_QP_RESO] + (d[QD_D_RES] * 15 >> 15), 0, 15);
     {
@@ -1288,8 +1303,10 @@ int qd_quad_voice_render(qd_quad_voice_t *v, int32_t *out)
         const int32_t gap = v->pitch16 - v->pitch_cur;
         v->pitch_cur += gap > st ? st : gap < -st ? -st : gap;
     }
-    fenv_block(v);
-    modulate(v, d);
+    modulate(v, d);                                     /* (2026-11-15: before the filter's envelope, which its F A D S R
+                                                         * destinations move; F ENV as a slot's source is the block
+                                                         * before's, ~3 ms) */
+    fenv_block(v, d);
     registers(v, d, &vox_only);
     if (v->hr_left)
         v->hr_left--;

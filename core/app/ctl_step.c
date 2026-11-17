@@ -760,11 +760,15 @@ void qd_step_sound_pick(qd_app_t *a, int d)
     qd_ui_t *u = &a->ui;
     qd_rstep_t r;
     int i;
-    for (i = 0; i < u->nheld; i++) {
-        resolve(a, u->held[i], &r);
-        qd_step_set_sound(PAT(a), a->sel, u->held[i], qd_sound_step(&a->proj, r.sound, d, 0));   /* (P1.5a: the pool's
-                                                         * holes skipped) */
-    }
+    int k;
+    if (!u->nheld)
+        return;
+    resolve(a, u->held[0], &r);
+    k = qd_sound_step(&a->proj, r.sound, d, 0);         /* (P1.5a: the pool's holes skipped) */
+    for (i = 0; i < u->nheld; i++)                      /* 2026-11-15 (owner): every held step takes the sound the picker
+                                                         * shows (the first's, moved); each moved from its own put steps
+                                                         * that started apart on other sounds */
+        qd_step_set_sound(PAT(a), a->sel, u->held[i], k);
     resolve(a, u->held[0], &r);
     if (r.sound > 0)
         u->sound_bank = (r.sound - 1) / 10;             /* the keys' bank follows */

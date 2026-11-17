@@ -242,9 +242,12 @@ BLE_SLOT = {"build_units_c_ui_layer.o": ["ui_geek_draw", "ui_menu_draw"]}
 # (2026-11-11, OVERVIEW's black keys: the tracks' sweep, the mode's band, M / S in ui_ov.c: the second blob 1,020 B
 # over: the SHIFT screen's, the mix's and OVERVIEW's band models (fill_shift, fill_mix, fill_ovband) back in the slot,
 # which ui_held.o and ui_turn.o at -Oz made room for, below)
-BLE_X2_FN = {"build_units_c_view.o": ["fill_fx", "pr_fill", "fill_shift"]}   # (2026-11-13, the MIDI FX knobs: 224 B
-                                                         # over: the browser's and SHIFT's fills too. 2026-11-13, the
-                                                         # drawing back at -Os: OVERVIEW's model back in the slot)
+BLE_X2_FN = {"build_units_c_view.o": ["fill_fx", "pr_fill", "fill_shift", "qd_view_geek"]}   # (2026-11-13, the MIDI FX
+                                                         # knobs: 224 B over: the browser's and SHIFT's fills too.
+                                                         # 2026-11-13, the drawing back at -Os: OVERVIEW's model back in
+                                                         # the slot. 2026-11-16, the LFO depth's meter and the envelopes
+                                                         # as destinations: 492 B over: GEEK OUT's model, 2.3 KB, seldom
+                                                         # drawn)
 # (2026-11-10) units compiled at -Oz, not -Os, on the Bluetooth package: the screens' unit (ui_layer.o: the sound
 # editor, MIDI FX, the browser, the typewriter, the tools, Geek Out, OVERVIEW, the layer and SHIFT screens), main-loop
 # drawing logic only (never the audio interrupt, core 1 or under the audio lock; the raster, qd_gfx_fast.o, stays

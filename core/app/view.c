@@ -1488,11 +1488,25 @@ int qd_view_screen(const qd_app_t *a)
 /* P1.5q (the owner: "while I am playing, the glyph updates to show the value of each step that it plays"): EDIT, playing,
  * nothing held, the latch off, no mode key, no takeover, no menu: the picture is the selected track's step as it plays,
  * changing when it is heard (its micro-timing, the track's rate); an empty step keeps the last, dimmed a little */
+/* 2026-11-15 (owner): a white key down, not yet held (under QD_TAP_MS, perhaps a tap): EDIT's picture stays as it
+ * was (THE ROOM, the step playing); the mode's picture (NOTE's keyboard ..) only once the step is held */
+static int wk_young(const qd_app_t *a)
+{
+    const qd_ui_t *u = &a->ui;
+    int w;
+    if (!u->wk_pending || u->nheld || u->slatch)
+        return 0;
+    for (w = 0; w < 16; w++)
+        if (((u->wk_pending >> w) & 1u) && a->ms - u->wk_t0[w] >= QD_TAP_MS)
+            return 0;
+    return 1;
+}
+
 int qd_view_edit_follows(const qd_app_t *a)
 {
     const qd_ui_t *u = &a->ui;
     if (!a->seq.playing || u->fol_step < 0 || u->fol_t != a->sel || u->view != QD_VIEW_EDIT || u->mode != QD_MODE_STEP ||
-        u->latch || u->slatch || u->nheld || u->wk_pending || qd_ctl_mkey(a) >= 0 || u->tk != QD_TK_NONE)
+        u->latch || u->slatch || u->nheld || (u->wk_pending && !wk_young(a)) || qd_ctl_mkey(a) >= 0 || u->tk != QD_TK_NONE)
         return -1;                                      /* (P1.6g, the owner's one rule: the step latch on with nothing
                                                          * selected is the track's values: no following; P1.5s followed) */
     return u->fol_step;
@@ -1571,7 +1585,7 @@ void qd_view_edit(qd_app_t *a, ui_held_t *h, ui_lane_t *l)
     }
     /* EvilGenius: nothing held, selected, turned or picked: THE ROOM in the picture's place (a default turned, a mode
      * key held, a step held: the mode's picture, as before) */
-    h->room = !u->nheld && !mk && !preset && !u->slatch && !u->wk_pending && !u->wk_down &&
+    h->room = !u->nheld && !mk && !preset && !u->slatch && ((!u->wk_pending && !u->wk_down) || wk_young(a)) &&
               (u->tk == QD_TK_NONE || u->tk == UI_TK_TRACK);
 }
 
@@ -1696,6 +1710,9 @@ void qd_view_snd(qd_app_t *a, ui_snd_t *v)
         v->v[k] = lfo_on ? qd_quad_lfo_value(id, pp[id], lfo_w, lfo_d) : pp[id];
         v->tv[k] = tp[id];
         qd_quad_value_text(id, v->v[k], v->txt[k]);
+        if (id >= QD_QP_LFO0 && id < QD_QP_LFO0 + 3 * 8 && (id - QD_QP_LFO0) % 8 == QD_QL_SPEED &&
+            pp[id + (QD_QL_MULT - QD_QL_SPEED)])      /* 2026-11-15 (owner): MULT on a division sets the rate alone */
+            strcpy(v->txt[k], "SYNC");
         v->lab[k] = qd_snd_label(a, u->snd_page, k);  /* (E2: the FILTER's by its machine) */
         if (pg->draw == UI_SD_FILTER && k == 4)         /* (E2: ALGORITHM the machine's name) */
             snprintf(v->txt[4], sizeof v->txt[4], "%s", QD_SND_MACHINE[qd_snd_machine(pp[QD_QP_FTYPE])]);
@@ -1754,7 +1771,8 @@ void qd_view_snd(qd_app_t *a, ui_snd_t *v)
             v->lk_name = u->snd_lk_id == QD_QP_RB1 ? "RATIO B" : qd_quad_value_name(u->snd_lk_id);
         } else if (slot >= 0) {
             v->lk_name = qd_quad_dest_name(dest);
-            v->lk_depth = (float)pp[QD_QP_MOD(slot, QD_QM_DEPTH)] / 127.f;
+            v->lk_dval = pp[QD_QP_MOD(slot, QD_QM_DEPTH)];
+            v->lk_depth = (float)v->lk_dval / 127.f;
         }
     } else if (u->snd_lk && u->snd_lk < 4 && (u->snd_lk_used || a->ms - u->snd_lk_ms >= QD_TAP_MS)) {   /* P1.5k: an LFO
                                                          * key held: the mapping */
@@ -1773,7 +1791,8 @@ void qd_view_snd(qd_app_t *a, ui_snd_t *v)
             const int did = qd_quad_dest_id(dst);
             v->lk_name = did >= 0 ? (did == QD_QP_RB1 ? "RATIO B" : qd_quad_value_name(did)) : qd_quad_dest_name(dst);
         }
-        v->lk_depth = (float)(dep - 64) / 64.f;
+        v->lk_dval = (int16_t)(dep - 64);
+        v->lk_depth = (float)(dep - 64) / (dep >= 64 ? 63.f : 64.f);
         if (v->lk_k < 0)                                /* (not turned yet: the column already mapped, if on this page) */
             for (k = 0; k < 4; k++)
                 if (ids[k] >= 0 && dst > 0 && qd_quad_dest_of(ids[k], lf) == dst)
