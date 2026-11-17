@@ -11,7 +11,8 @@
 //   vu.onFrame(fn): the unit's screen (fb: 240 x 240 RGB565) and lights as they change; vu.stop()
 //   vu.storeNow() -> the store's bytes now; await vu.replaceStore(bytes) (and restart)
 //   vu.buttons(mask), vu.keys(mask), vu.enc(role, n), vu.master(0..4096): the unit's panel, as its scanner reads it (egpanel.js)
-//   await vu.call("eg_web_mfx" | "eg_web_tools", ..numbers) -> the firmware's answer (MIDI FX, TOOLS: egmfx.js, egtools.js)
+//   await vu.call("eg_web_mfx" | "eg_web_tools" | .., ..numbers) -> the firmware's answer (MIDI FX, TOOLS: egmfx.js, egtools.js);
+//   await vu.knob(role, n): a knob turned n slow detents (eg_web_knob)
 import { EgLink, Port } from "./eglink.js";
 import { crc32 } from "./egwire.js";
 import { LAYOUT, LIB_BYTES } from "./egstore.js";
@@ -125,6 +126,13 @@ export async function startVirtual({ base = "./vfm1/", log = () => {}, master = 
     const id = ++callId;
     calls.set(id, res);
     node.port.postMessage({ type: "eg-call", id, fn, args });
+    setTimeout(() => { if (calls.delete(id)) res(null); }, 1000);
+  });
+  // a knob of the unit's turned n slow detents (eg_web_knob: its answer a number, where the panel is, not text)
+  vu.knob = (role, n) => new Promise((res) => {
+    const id = ++callId;
+    calls.set(id, res);
+    node.port.postMessage({ type: "eg-call", id, fn: "eg_web_knob", args: [role, n], raw: true });
     setTimeout(() => { if (calls.delete(id)) res(null); }, 1000);
   });
   vu.nav = (what, v) => node.port.postMessage({ type: "eg-call", id: 0, fn: "eg_web_nav", args: [what, v], raw: true });   // (the unit goes where the manager went)

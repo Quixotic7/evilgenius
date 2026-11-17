@@ -33,11 +33,11 @@ const B_PLAY = 10, PLAY_GREEN = 1 << 14, NB = 14, NKEYS = 27;
 // screen here. The sequencer's views (STEPS, EDIT, the PIANO ROLL, OVERVIEW) are SEQUENCE in its matching view; MIX is
 // MIX; EDIT is SOUND on the selected track, on the page that holds the unit's page's first value; PRESETS' browser and
 // SAVE PRESET are LIBRARY; the projects and the name editor PROJECTS; MIDI FX and TOOLS their own screens (egmfx.js,
-// egtools.js); GEEK OUT is HOME. A page the manager has no screen of its own for yet (PATTERNS, EFFECTS, the settings,
-// the keyboard ..) is the FM-1 screen
+// egtools.js); EFFECTS, PATTERNS and the settings menus theirs (egfx.js, egpat.js, egmenu.js); F3's run of steps
+// SEQUENCE's STEPS, the tracks screen its TRACKS; GEEK OUT is HOME. The keyboard is the FM-1 screen
 // (egpanel.js): the unit's own page with every control's job written on it. title: the unit's name for where it is.
-const LATCHES = [null, ["fm1", "F3 MENU"], ["fm1", "RECORD SETTINGS"], ["fm1", "SETTINGS"], ["edit", "SOUND EDITOR"], ["fm1", "TRACK SETTINGS"],
-  ["mix", "MIX"], ["fm1", "EFFECTS"], ["library", "PRESETS"], ["projects", "NAME"], ["projects", "PROJECTS"], ["library", "SAVE PRESET"],
+const LATCHES = [null, ["seq", "F3 STEPS", "steps"], ["set", "RECORD SETTINGS"], ["set", "SETTINGS"], ["edit", "SOUND EDITOR"], ["set", "TRACK SETTINGS"],
+  ["mix", "MIX"], ["fx", "EFFECTS"], ["library", "PRESETS"], ["projects", "NAME"], ["projects", "PROJECTS"], ["library", "SAVE PRESET"],
   ["mfx", "MIDI FX"], ["tools", "TOOLS"]];
 const VIEWS = [["seq", "PIANO ROLL", "roll"], ["seq", "STEPS", "steps"], ["seq", "EDIT", "steps"], ["home", "GEEK OUT"], ["home", "GEEK OUT"],
   ["home", "GEEK OUT"], ["home", "GEEK OUT"], ["home", "GEEK OUT"], ["seq", "OVERVIEW", "tracks"]];
@@ -46,13 +46,13 @@ export function screenOf(v) {
   const mode = v & 15, view = (v >> 4) & 15, latch = (v >> 8) & 15, seq = ((v >> 12) & 15) - 1, track = (v >> 16) & 15, value = (v >> 20) & 255;
   const hmode = (v >>> 28) & 15;                            // (the hold mode, UI_F_*: SEQUENCE's EDIT mode)
   if (seq < 0 && !latch && mode === 1 && VIEWS[view]) return { tab: VIEWS[view][0], title: VIEWS[view][1], track, seqView: VIEWS[view][2], hmode };
-  if (LATCHES[latch]) return { tab: LATCHES[latch][0], title: LATCHES[latch][1], track, ...(latch === 4 ? { value } : {}) };
+  if (LATCHES[latch]) return { tab: LATCHES[latch][0], title: LATCHES[latch][1], track, ...(latch === 4 ? { value } : {}), ...(LATCHES[latch][2] ? { seqView: LATCHES[latch][2] } : {}) };
   if (seq === 0) return { tab: "tools", title: "TOOLS", track };
-  if (seq === 1) return { tab: "fm1", title: "PATTERNS", track };
+  if (seq === 1) return { tab: "pat", title: "PATTERNS", track };
   if (seq === 2) return { tab: "seq", title: "PIANO ROLL", track, seqView: "roll" };
   if (mode === 0) return { tab: null, title: "ASLEEP", track };          // (the idle screen: the manager stays where it is)
   if (mode === 2) return { tab: "fm1", title: "KEYBOARD", track };
-  if (mode === 3) return { tab: "fm1", title: "TRACKS", track };
+  if (mode === 3) return { tab: "seq", title: "TRACKS", track, seqView: "tracks" };
   const w = VIEWS[view];
   return w ? { tab: w[0], title: w[1], track, seqView: w[2] } : null;
 }
@@ -61,8 +61,8 @@ export function screenOf(v) {
 // times at most. A screen with no page on the unit (LIBRARY's list, POOL, PROJECTS, CABINET) takes it nowhere.
 const lat = (v) => (v >> 8) & 15, sq = (v) => ((v >> 12) & 15) - 1;
 // the hold modes (core/ui/ui.h UI_F_*) and SEQUENCE's EDIT modes (egseqtab.js modes(): NOTE VEL LEN MICRO RATCH CHANCE
-// COND FUNC SOUND): TRIG and SLIDE have none there
-export const HMODE_OF_EDIT = [0, 1, 2, 3, 4, 5, 6, 8, 10];
+// COND FUNC SOUND, the three lock slots (none: -1), then TRIG and SLIDE)
+export const HMODE_OF_EDIT = [0, 1, 2, 3, 4, 5, 6, 8, 10, -1, -1, -1, 7, 9];
 export const VIEW_OF_SEQ = { steps: 1, tracks: 8 };        // (QD_VIEW_STEPS, QD_VIEW_OVERVIEW; the PIANO ROLL is SEQ's page)
 export const GOTO = {
   mix: { btn: 2, there: (v) => lat(v) === 6 },
@@ -71,6 +71,7 @@ export const GOTO = {
   mfx: { btn: 8, there: (v) => lat(v) === 12 },
   tools: { btn: 9, there: (v) => lat(v) === 13 || sq(v) === 0 },
   fx: { btn: 0, there: (v) => lat(v) === 7 },
+  pat: { btn: 9, there: (v) => sq(v) === 1 },
 };
 
 export function pack7(body) {

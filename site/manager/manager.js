@@ -32,6 +32,9 @@ import { findRemote, RemoteSession, screenOf, GOTO, HMODE_OF_EDIT, VIEW_OF_SEQ }
 import { labelsRequest, parseLabels } from "./egsysex.js";
 import { mountMfx } from "./egmfx.js";
 import { mountTools } from "./egtools.js";
+import { mountFx } from "./egfx.js";
+import { mountPat } from "./egpat.js";
+import { mountMenu } from "./egmenu.js";
 
 const QUERY = new URLSearchParams(location.search);
 const SIM = QUERY.has("sim");
@@ -259,6 +262,8 @@ async function startBrowser() {
   window.__vu = vu;                                         // (for the tests, as window.__sim)
   panel.unit(vu); dock.unit(vu);
   vu.onFrame((m) => follow(m.view));
+  let knobsAt = 0;                                          // (SOUND marks the values the unit's knobs turn now)
+  vu.onFrame((m) => { const t = performance.now(); if (m.live && inPage() && t - knobsAt > 100 && !$("tab-edit").hidden) { knobsAt = t; edit.knobs(m.live); } });
   if (link) { keys(); projects.load().catch(() => {}); return; }   // (the screens are on the one on USB already)
   link = vu.link;
   say("Starting the FM-1 in this browser", "busy");
@@ -314,7 +319,7 @@ async function connect() {
 
 // ---- the tabs
 let edit = null, library = null, seq = null, home = null, mix = null, pool = null, projects = null, cabinet = null, transport = null, panel = null, dock = null;
-let mfx = null, tools = null;
+let mfx = null, tools = null, fx = null, pat = null, menu = null;
 // (other: the FM-1 the screens are not on, when there are two: PROJECTS sends to it and takes from it)
 let tabBefore = "home";
 const ctx = { $, log, say, refuse, bar, link: () => link, busy: () => working, job: (fn, o) => job(fn, o), download, changed: () => changed(),
@@ -324,7 +329,7 @@ const ctx = { $, log, say, refuse, bar, link: () => link, busy: () => working, j
   onNav: (kind, v) => {
     if (!vu || !inPage() || driving) return;
     if (kind === "track") vu.nav(0, v);
-    else if (kind === "mode" && HMODE_OF_EDIT[v] !== undefined) vu.nav(1, HMODE_OF_EDIT[v]);
+    else if (kind === "mode" && HMODE_OF_EDIT[v] >= 0) vu.nav(1, HMODE_OF_EDIT[v]);
     else if (kind === "view" && VIEW_OF_SEQ[v] !== undefined) vu.nav(2, VIEW_OF_SEQ[v]);
     else if (kind === "page") vu.nav(3, v);
   },                     // (the FM-1 in this page, while the screens are on it: its own calls)
@@ -341,6 +346,9 @@ transport = mountTransport(ctx);
 panel = mountPanel(ctx);
 mfx = mountMfx(ctx);
 tools = mountTools(ctx);
+fx = mountFx(ctx);
+pat = mountPat(ctx);
+menu = mountMenu(ctx);
 dock = mountDock({ $, open: () => panel.open(true) });
 const TABS = SCREENS;
 function tab(name) {
@@ -361,12 +369,17 @@ function tab(name) {
   panel.show(name === "fm1");
   mfx.show(name === "mfx");
   tools.show(name === "tools");
+  fx.show(name === "fx");
+  pat.show(name === "pat");
+  menu.show(name === "set");
   $("view").scrollTop = 0;
   $("hint").textContent = HINTS[name] || "";
   try { sessionStorage.setItem("eg-tab", name); } catch (_) { /* (no storage: the first tab) */ }
 }
 // (a screen picked by hand: in REMOTE MODE the unit goes to its page too)
-function pick(t) { tab(t); drive(t); }
+// (EFFECTS, PATTERNS, SETTINGS: the screen opens its own page on the unit, the one it shows)
+const OWN_DRIVE = { fx: () => fx, pat: () => pat, set: () => menu };
+function pick(t) { tab(t); if (OWN_DRIVE[t] && vu && inPage()) OWN_DRIVE[t]().drive(); else drive(t); }
 for (const t of TABS) $(`t-${t}`).addEventListener("click", () => pick(t));
 mountKeys({ $, tab: pick, current: () => TABS.find((t) => !$(`tab-${t}`).hidden) });
 document.querySelector(".fkeys").addEventListener("keydown", (e) => {
@@ -395,8 +408,9 @@ if (!navigator.requestMIDIAccess && !SIM && !BROWSER) {
   $("nomidi").hidden = false;
   say("This browser has no Web MIDI.");
 }
-// offline: the page, its modules and the virtual FM-1's firmware kept by sw.js (not for ?sim: the headless checks)
-if ("serviceWorker" in navigator && !SIM) navigator.serviceWorker.register("./sw.js").then(() => log("offline: kept by sw.js"), (e) => log(`offline: no service worker (${e.message})`));
+// offline: the page, its modules and the virtual FM-1's firmware kept by sw.js (not for ?sim: the headless checks;
+// not for ?nosw: a preview whose worker cannot reach the network answers from what it kept, the page before an edit)
+if ("serviceWorker" in navigator && !SIM && !QUERY.has("nosw")) navigator.serviceWorker.register("./sw.js").then(() => log("offline: kept by sw.js"), (e) => log(`offline: no service worker (${e.message})`));
 $("connect").addEventListener("click", () => job(connect));
 $("virtual").addEventListener("click", () => job(startBrowser));
 $("disconnect").addEventListener("click", () => { if (remote) { remote.stop(); remote = null; } unitGone(); say(vu ? "The FM-1 on USB is let go. The one in this browser plays on." : "Not connected."); });

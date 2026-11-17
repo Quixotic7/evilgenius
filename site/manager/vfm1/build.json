@@ -1,17 +1,17 @@
 {
-  "commit": "da6f2be240d9642c3dab24bc951aa268ebc4ab51",
+  "commit": "ef24fe4f6b63fa23d9b2cf9b9fcc8cbb8d1d049f",
   "dirty": false,
-  "with": "the working copy's firmware/app/fz_port.c (eg_web_nav, eg_web_mix, the hold mode in eg_web_view, TOOLS' playing step, the ARP's walk) and web/emu/worklet.js (the output's peaks) over that commit's tree; the commit that adds this build carries them",
+  "with": "the working copy's firmware/app/fz_port.c (eg_web_knob, eg_web_fx, eg_web_menu, eg_web_pat, eg_web_live; the manager's hand wakes the unit) and web/emu/worklet.js (what plays now in each frame) over that commit's tree; the commit that adds this build carries them",
   "package": "ble",
   "built": "firmware/build.py --web --ble",
   "files": {
     "app.wasm": {
-      "bytes": 718637,
-      "sha256": "e2b90127eeb949e9949e1eaa65b53a2a0562d00cf441b7227d4c31a7d887df94"
+      "bytes": 724310,
+      "sha256": "2e5770de0bfdcce33369cf80595fdb752f983959ed04b246d9504e6c54c543e2"
     },
     "worklet.js": {
-      "bytes": 9735,
-      "sha256": "b636b2d8742ec658466d9ecc8323d083bf34fd124cfc410584d0251bf541956f"
+      "bytes": 9868,
+      "sha256": "846339822d0424790065817a185cf850296f515a01bd7ff38ade3eb486ec7b5e"
     }
   }
 }

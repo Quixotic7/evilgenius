@@ -7,7 +7,7 @@
 //   KEYS: [{screen, rows: [[keys, what]]}]; mountKeys({ $, tab(name), current(), tabs }) -> { help(open) }
 export const KEYS = [
   { screen: "EVERYWHERE", rows: [["F1 .. F10", "HOME LIBRARY SOUND SEQUENCE MIX POOL PROJECTS CABINET, MIDI FX, TOOLS"], ["ALT + 1 .. 9, 0", "the same, on any keyboard"],
-    ["ALT + F", "THE FM-1: the unit's own page"],
+    ["ALT + E / T / S", "EFFECTS, PATTERNS, SETTINGS"], ["ALT + F", "THE FM-1: the unit's own page"],
     ["ALT + W", "the screens on the FM-1 on USB / back in the browser"], ["ALT + P", "REMOTE MODE: the FM-1 on USB plays the one in the browser"], ["ALT + [ ]", "REMOTE MODE: the docked screen smaller / bigger"], ["SPACE", "PLAY / STOP the FM-1"], ["SHIFT + SPACE", "REC: arm, or stop recording"], ["?", "this screen"], ["ESC", "close, let go"],
     ["TAB / ENTER", "the next control / press it"]] },
   { screen: "HOME", rows: [["1 .. 6", "a track"], ["ENTER", "its sound in SOUND"], ["S", "its steps in SEQUENCE"], ["R", "read the FM-1 again"]] },
@@ -38,6 +38,12 @@ export const KEYS = [
     ["B", "bypass"], ["G", "the picked track's group"], ["DRAG / SCROLL", "a value, a lane's step"], ["TAB, UP / DOWN", "a value from the keys (PAGE, HOME, END)"]] },
   { screen: "TOOLS (F10)", rows: [["1 .. 0", "a tool (LEFT / RIGHT)"], ["S", "the scope (SHIFT: back)"], ["Q W E R", "KNOB 1 .. 4 up (SHIFT: down)"],
     ["ENTER / BACKSPACE", "keep / undo"], ["X", "the tool's key again (roll, flip, do it)"]] },
+  { screen: "EFFECTS (ALT + E)", rows: [["1 .. 9", "a floor of the tower (again: its second page)"], ["LEFT / RIGHT", "a value"], ["UP / DOWN", "turn it (SHIFT: far)"],
+    ["CLICK A FLOOR", "its page, on the unit too"], ["DRAG / SCROLL", "a value"]] },
+  { screen: "PATTERNS (ALT + T)", rows: [["CLICK", "queue it (SHIFT: at once)"], ["DRAG ONTO ANOTHER", "copy it there"], ["ARROWS / ENTER", "a pattern / queue it"],
+    ["A B C D", "a bank"], ["L", "the launch mode"], ["X / DELETE", "F2 on the picked one: cut it (right after a copy: paste the copy)"]] },
+  { screen: "SETTINGS (ALT + S)", rows: [["R S T", "RECORD, SETTINGS, TRACK (again: the next page)"], ["1 .. 4", "a row (KNOB 1 .. 4)"],
+    ["ARROWS", "turn it (SHIFT: far)"], ["CLICK A CHOICE", "set it, on the unit"], ["DRAG / SCROLL", "turn a row"]] },
   { screen: "THE FM-1 (ALT + F)", rows: [["(what it is)", "the unit's own page, each control's job on it"], ["Q .. I, A .. K", "the white keys"], ["1 .. 0, -", "the black keys"], ["Z X C V B N", "FX SEL ENV LFO EDIT GLO"],
     ["M , . /", "HOME SAVE ARP SEQ"], ["P or SPACE / O", "PLAY / REC"], ["[ ]", "OCT - / +"], ["UP / DOWN", "SELECT (LEFT / RIGHT: PRESETS)"],
     ["PAGE UP / DOWN", "ALGORITHM"], ["TAB", "a knob (UP / DOWN turn it)"], ["SHIFT + a key", "held down until pressed again"], ["ESC", "back to the screen before"]] },
@@ -54,10 +60,22 @@ export const HINTS = {
   cabinet: "B BACK UP · R RESTORE · I IMPORT · S SEND · ? KEYS",
   mfx: "1..5 GROUP · LEFT/RIGHT SLOT · T EFFECT · B BYPASS · DRAG A VALUE · ? KEYS",
   tools: "1..0 TOOL · S SCOPE · Q W E R KNOBS · ENTER KEEP · BACKSPACE UNDO · ? KEYS",
+  fx: "1..9 FLOOR · LEFT/RIGHT VALUE · UP/DOWN TURN · ? KEYS",
+  pat: "CLICK QUEUE · DRAG COPY · X F2 (CUT) · A..D BANK · L LAUNCH · ? KEYS",
+  set: "R S T MENU · 1..4 ROW · ARROWS TURN · ? KEYS",
   fm1: "THE UNIT'S KEYS: Q..K WHITE · 1..- BLACK · Z..N M , . / BUTTONS · ESC BACK",
 };
-export const SCREENS = ["home", "library", "edit", "seq", "mix", "pool", "projects", "cabinet", "mfx", "tools", "fm1"];
+export const SCREENS = ["home", "library", "edit", "seq", "mix", "pool", "projects", "cabinet", "mfx", "tools", "fx", "pat", "set", "fm1"];
 
+// a key a screen's own handler leaves alone: HELP is open, the screens' keys' arrows, ENTER or SPACE on a focused button
+export function notMine(e) {
+  const help = typeof document !== "undefined" && document.getElementById("help");
+  if (help && !help.hidden) return true;
+  const t = e.target;
+  if (!t || !t.closest) return false;
+  if (t.closest(".fkeys") && (e.key === "ArrowLeft" || e.key === "ArrowRight")) return true;
+  return (e.key === "Enter" || e.key === " ") && !!t.closest("button");
+}
 export function mountKeys({ $, tab, current }) {
   const grid = $("help-grid");
   grid.textContent = "";
@@ -90,6 +108,8 @@ export function mountKeys({ $, tab, current }) {
       return;
     }
     if (e.altKey && e.code === "KeyF" && !e.metaKey && !e.ctrlKey) { e.preventDefault(); tab("fm1"); return; }
+    const alts = { KeyE: "fx", KeyT: "pat", KeyS: "set" };
+    if (e.altKey && alts[e.code] && !e.metaKey && !e.ctrlKey) { e.preventDefault(); tab(alts[e.code]); return; }
     if (typing(e) || e.metaKey || e.ctrlKey) return;
     if (e.key === "?") { e.preventDefault(); help(true); }
   });

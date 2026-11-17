@@ -86,6 +86,20 @@ EVILGENIUS began as FIZZ 0.12.0-beta.17 with another engine and another face; FI
   the pan knob, the three sends, the five rooms, mute and solo, a light while a track sounds and the output's
   meters. LEVEL, DRY and the rooms' sends can be set here now. SOUND's pictures move: the wave runs, a note
   travels the envelopes, the LFOs run at their speed.
+- **EFFECTS, PATTERNS and SETTINGS have screens of their own** (ALT + E, T, S; on the FM-1 in the browser).
+  EFFECTS is the unit's FX tower: the nine floors with the lift riding to the page shown, the effect's picture
+  moving (the echo's repeats, the room answering, the chorus drifting, the crush's steps, the glitch repeating) and
+  its four values. PATTERNS shows all 64 patterns: click one to queue it (SHIFT: at once), drag it onto another to
+  copy it, X is the FM-1's F2 on it (a cut); the playing one beats with the tempo and the queued one blinks while the line runs out.
+  SETTINGS has the record settings, the settings and the track settings, each row with its own moving picture.
+  Each opens its page on the FM-1, and the FM-1's knobs move it.
+- **The manager shows what plays.** SEQUENCE lights the step playing (a line in TRACKS and the PIANO ROLL); HOME
+  lights each track's step and runs the chip's voices; POOL lights the sounds the tracks play; PROJECTS says which
+  pattern plays; LIBRARY shows the picked sound moving; SOUND marks the values the FM-1's knobs turn now.
+- **The screens' keys stay on one row** down to 1024 pixels wide, and SEQUENCE no longer runs under its keyboard
+  when the FM-1 is docked above it.
+- **SEQUENCE edits TRIG and SLIDE** (the trig's kind: NOTE, LOCK or TIE; the slide's time), so every hold mode
+  of the unit has its EDIT mode in the manager. TOOLS draws LENGTH and STRETCH before and after.
 
 ## 0.1.1 (2026-11-15)
 

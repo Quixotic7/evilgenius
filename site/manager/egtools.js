@@ -192,6 +192,30 @@ export function mountTools(ctx) {
         pg.fillStyle = C.gr; pg.fillRect(Math.round(X + i * W + 4 + off), 70, 2, 14);
       }
     }
+    if (d.tool === 7) {                                     // LENGTH: each note before (grey) and after, its length times the factor
+      const f = 2 ** (d.lpow || 0), run = (t / 1400) % 1;
+      for (let i = 0; i < 16; i++) {
+        if (!d.steps[i][0]) continue;
+        const w0 = W - 2, w1 = Math.max(2, Math.min(X + 16 * W - (X + i * W), Math.round(w0 * f)));
+        pg.fillStyle = C.was; pg.fillRect(X + i * W, 66, w0, 3);
+        pg.globalAlpha = 0.45 + 0.55 * Math.max(0, 1 - Math.abs(run * 16 - i) / 3);
+        pg.fillStyle = C.gr; pg.fillRect(X + i * W, 74, w1, 4);
+        pg.globalAlpha = 1;
+      }
+    }
+    if (d.tool === 8 && d.len) {                            // STRETCH: the page's notes spread by the factor (FIT: to the pages)
+      const rung = RUNGS[s8(v[1]) + 6] || "x1", k = v[0] ? Math.max(0.25, Math.min(4, (v[0] * 16) / Math.max(1, d.len) || 1)) : rung[0] === "/" ? 1 / Number(rung.slice(1)) : Number(rung.slice(1));
+      const span = Math.min(208, Math.round(16 * W * k)), go = Math.min(1, ((t / 1600) % 1.4));
+      pg.fillStyle = C.dim; pg.fillRect(X, 66, 16 * W - 2, 1);
+      pg.fillStyle = C.cy; pg.fillRect(X, 88, span, 1); pg.fillRect(X + span - 1, 84, 1, 5);
+      for (let i = 0; i < 16; i++) {
+        if (!d.steps[i][1]) continue;
+        const x0 = X + i * W, x1 = X + Math.round(i * W * k);
+        pg.fillStyle = C.was; pg.fillRect(x0, 64, 4, 4);
+        if (x1 < X + 210) { pg.fillStyle = C.gr; pg.fillRect(Math.round(x0 + (x1 - x0) * go), 78, 4, 6); }
+      }
+      pg.fillStyle = C.cy; pg.font = "8px monospace"; pg.textAlign = "right"; pg.fillText(`${v[0] ? "FIT" : rung} > ${d.len}`, 316, 62); pg.textAlign = "left";
+    }
     if (d.pending) { pg.fillStyle = Math.floor(t / 400) % 2 ? C.ch : C.red; pg.fillRect(306, 6, 8, 8); }   // (a change pending: the unit's orange dot)
   }
   const loop = (t) => { if (S.shown) { picture(t); requestAnimationFrame(loop); } };

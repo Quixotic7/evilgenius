@@ -8,7 +8,9 @@
 // colours). No DOM: the tests run it in Node.
 //   picture(key, values, ms) -> SVG markup | ""   (key: the editor's sections: osc env filter amp vox lfo mod voice)
 // They move as the unit's do (ms: the time, 0 still): the oscillators' wave runs, a note travels each envelope, the
-// partials of a sweeping note stand under the filter's curve, each LFO runs at its own speed with its output's dot.
+// partials of a sweeping note stand under the filter's curve, each LFO runs at its own speed with its output's dot, a
+// sine runs through the drive and the crush to the level's meter, the word is said from START to END, each
+// modulation slot's dot swings with its source.
 import { ID, lfo, mod, destName, MOD_SOURCES } from "./egsound.js";
 import { VALUES } from "./egvalues.js";
 
@@ -124,21 +126,27 @@ function filterPic(v, ms = 0) {
   return svg(body, H, `The filter: ${["off", "low pass", "band pass", "high pass", "notch", "LP + BP", "BP + HP", "all"][mode]}, cutoff ${v[ID.FREQ]}, resonance ${v[ID.RESO]}`);
 }
 
-// DRIVE and CRUSH: a sine through them (BITS: the steps, SRR: each value held)
-function ampPic(v) {
+// DRIVE and CRUSH: a sine through them (BITS: the steps, SRR: each value held); moving, the sine runs through and the
+// LEVEL's meter at the right plays it
+function ampPic(v, ms = 0) {
   const bits = v[ID.BITS], srr = v[ID.SRR], drv = v[ID.DRIVE] / 127;
   const steps = bits ? Math.max(2, 2 ** Math.max(1, 16 - Math.round(bits * 14 / 127)) / 512) : 0, hold = 1 + Math.floor(srr / 3);
   const pts = [];
   let held = 0;
   for (let i = 0; i <= 200; i++) {
     if (i % hold === 0) {
-      let y = Math.sin(i / 200 * Math.PI * 4);
+      let y = Math.sin(i / 200 * Math.PI * 4 + ms / 260);
       y = Math.tanh(y * (1 + drv * 6)) / Math.tanh(1 + drv * 6);
       held = steps ? Math.round(y * steps) / steps : y;
     }
     pts.push([4 + i * (W - 8) / 200, H / 2 - held * (H / 2 - 14)]);
   }
-  return svg(poly(pts, C.lr, 2) + text(8, 16, `LEVEL ${v[ID.LEVEL]}`, C.wh, 11), H, `Drive ${v[ID.DRIVE]}, bits ${bits}, sample rate reduction ${srr}`);
+  let meter = "";
+  if (ms) {                                                 // (the level it comes out at, beating)
+    const lv = v[ID.LEVEL] / 127 * (0.75 + 0.25 * Math.abs(Math.sin(ms / 190))), mh = Math.round(lv * (H - 24));
+    meter = `<rect x="${W - 12}" y="${H - 6 - mh}" width="6" height="${mh}" fill="${lv > 0.85 ? C.ye : C.lg}"/>`;
+  }
+  return svg(poly(pts, C.lr, 2) + meter + text(8, 16, `LEVEL ${v[ID.LEVEL]}`, C.wh, 11), H, `Drive ${v[ID.DRIVE]}, bits ${bits}, sample rate reduction ${srr}`);
 }
 
 // the LFOs: each wave (its WAVE, the ARP waves a staircase), its depth, an arrow to its destination's name
@@ -169,29 +177,38 @@ function lfoPic(v, ms = 0) {
   return svg(body, H, "The three LFOs and what they move");
 }
 
-// the word: its name over a waveform (the sample's look, from the word's own number), START and END marked; SAY under
-function voxPic(v) {
+// the word: its name over a waveform (the sample's look, from the word's own number), START and END marked; SAY under.
+// Moving, it is said: a playhead from START to END, what it has passed lit
+function voxPic(v, ms = 0) {
   const word = v[ID.WORD], names = VALUES[ID.WORD][5], say = VALUES[ID.SAY][5][v[ID.SAY]] || "OFF";
   let body = text(W / 2, 18, word ? names[word] : "NO WORD", word ? C.wh : C.gr, 14, "middle");
   if (word) {
-    for (let i = 0; i < 70; i++) {
-      const gap = hash(word * 31 + Math.floor(i / 9)) < 0.18, h = gap ? 2 : 8 + hash(word * 7 + i) * 52;
-      body += `<rect x="${12 + i * 4}" y="${62 - h / 2}" width="3" height="${h}" fill="${C.lg}"/>`;
-    }
     const xs = 12 + v[ID.VSTART] / 127 * 280, xe = 12 + v[ID.VEND] / 127 * 280;
+    const ph = ms ? frac(ms / 1400) : -1, xp = xs + (xe - xs) * Math.min(1, ph * 1.25);
+    for (let i = 0; i < 70; i++) {
+      const gap = hash(word * 31 + Math.floor(i / 9)) < 0.18, h = gap ? 2 : 8 + hash(word * 7 + i) * 52, x = 12 + i * 4;
+      const said = ph >= 0 && ph < 0.8 && x >= Math.min(xs, xe) && x <= xp;
+      body += `<rect x="${x}" y="${62 - h / 2}" width="3" height="${h}" fill="${said ? C.wh : C.lg}"/>`;
+    }
+    if (ph >= 0 && ph < 0.8) body += `<rect x="${xp.toFixed(1)}" y="24" width="2" height="76" fill="${C.ye}"/>`;
     body += `<rect x="${xs}" y="26" width="3" height="72" fill="${C.wh}"/><rect x="${xe}" y="26" width="3" height="72" fill="${C.lr}"/>`;
   }
   body += text(8, H - 6, `SAY: ${say}`, v[ID.SAY] ? C.cy : C.gr, 11);
   return svg(body, H, `The word ${word ? names[word] : "none"}; SAY ${say}`);
 }
 
-// the modulation slots: each its source, destination, depth as a bar from the middle
-function modPic(v) {
+// the modulation slots: each its source, destination, depth as a bar from the middle; moving, what each puts in now
+// (a dot along its bar, as its source swings)
+function modPic(v, ms = 0) {
   let body = `<line x1="${W * 0.62}" y1="2" x2="${W * 0.62}" y2="${H - 2}" stroke="${C.dg}" stroke-width="2"/>`;
   for (let k = 0; k < 8; k++) {
     const src = v[mod(k, 0)], dst = v[mod(k, 1)], d = v[mod(k, 2)] / 127, y = 6 + k * 14, on = src && dst;
     body += text(4, y + 9, on ? MOD_SOURCES[src] : "-", on ? C.lg : C.dg, 10) + text(56, y + 9, on ? destName(dst) : "", C.gr, 10);
     if (on) body += `<rect x="${d >= 0 ? W * 0.62 : W * 0.62 + d * W * 0.36}" y="${y}" width="${Math.abs(d) * W * 0.36}" height="9" fill="${C.lg}"/>`;
+    if (on && ms) {
+      const sw = 0.5 + 0.5 * Math.sin(ms / (300 + src * 90) + k), x = W * 0.62 + d * sw * W * 0.36;
+      body += `<rect x="${(x - 2).toFixed(1)}" y="${y - 1}" width="4" height="11" fill="${C.wh}"/>`;
+    }
   }
   return svg(body, H, "The eight modulation slots");
 }

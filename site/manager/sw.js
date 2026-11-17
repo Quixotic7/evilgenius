@@ -6,10 +6,10 @@
 // network comes first (what is served now is what runs, and is kept); the kept copy answers only when the network does
 // not. FILES is everything the page loads: tools/eg/manager_test.mjs holds it against the folder, so a new module
 // that is not listed fails there.
-const CACHE = "evilgenius-manager-1";
+const CACHE = "evilgenius-manager-2";
 const FILES = [
-  "./", "index.html", "egboot.js", "egcabinet.js", "egdesk.js", "egedit.js", "egfiles.js", "eghelp.js", "eghome.js", "egkeys.js",
-  "eglibrary.js", "eglink.js", "eglive.js", "egmfx.js", "egmix.js", "egpanel.js", "egpics.js", "egpool.js", "egproject.js",
+  "./", "index.html", "egboot.js", "egcabinet.js", "egdesk.js", "egedit.js", "egfiles.js", "egfx.js", "eghelp.js", "eghome.js", "egkeys.js",
+  "eglibrary.js", "eglink.js", "eglive.js", "egmenu.js", "egmfx.js", "egmix.js", "egpanel.js", "egpat.js", "egpics.js", "egpool.js", "egproject.js",
   "egprojects.js", "egremote.js", "egseq.js", "egseqedit.js", "egseqnames.js", "egseqtab.js", "egsim.js", "egsimdata.js",
   "egsound.js", "egstore.js", "egsysex.js", "egtools.js", "egtransport.js", "egvalues.js", "egvirtual.js", "egwire.js",
   "manager.js", "vfm1/app.wasm", "vfm1/worklet.js", "vfm1/build.json", "../css/eg.css", "../js/px.js",

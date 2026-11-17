@@ -241,6 +241,9 @@ export function mountDock(ctx) {
     return px;
   };
   size(px);
+  // the room it takes, for the screens below it (index.html's sizes: 100vh less --dockh), kept as it is dragged
+  const room = () => document.documentElement.style.setProperty("--dockh", `${shown ? Math.round(box.getBoundingClientRect().height) : 0}px`);
+  if (typeof ResizeObserver !== "undefined") new ResizeObserver(room).observe(box);
   let drag = null;
   grip.addEventListener("pointerdown", (e) => { e.preventDefault(); grip.setPointerCapture(e.pointerId); drag = { y: e.clientY, px }; });
   grip.addEventListener("pointermove", (e) => { if (drag) size(drag.px + (e.clientY - drag.y)); });
@@ -257,6 +260,7 @@ export function mountDock(ctx) {
       shown = on; box.hidden = !on;
       box.parentElement.classList.toggle("docked", on);
       dev.show(on);
+      room();
     },
     labels: (l) => dev.labels(l),
     title: (t) => dev.title(t),
@@ -269,9 +273,9 @@ export function mountPanel(ctx) {
   const head = el("div", "pnhead"), h2 = el("h2", "", "THE FM-1"), go = el("span", "pngo"), close = el("button", "key plain", "ESC");
   h2.id = "panel-h"; close.type = "button"; close.setAttribute("aria-label", "Back to the screen before (ESC)");
   // the unit's pages: a key each takes the unit there (and the manager to its screen for it)
-  for (const [where, label] of [["mfx", "MIDI FX"], ["tools", "TOOLS"], ["fx", "EFFECTS"]]) {
+  for (const [where, label] of [["mfx", "MIDI FX"], ["tools", "TOOLS"], ["fx", "EFFECTS"], ["pat", "PATTERNS"], ["set", "SETTINGS"]]) {
     const b = el("button", "key plain", label); b.type = "button"; b.tabIndex = -1;
-    b.addEventListener("click", () => (where === "fx" ? ctx.go(where) : ctx.pick(where)));
+    b.addEventListener("click", () => ctx.pick(where));
     go.append(b);
   }
   head.append(h2, go, el("span", "dim", "THE COMPUTER'S KEYS ARE THE UNIT'S HERE (THE YELLOW LETTERS) · SHIFT HOLDS ONE DOWN"), close);

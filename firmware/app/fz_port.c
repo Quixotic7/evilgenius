@@ -1099,6 +1099,15 @@ static void js_i(int v)
 }
 static void js_k(const char *k) { js_r("\""), js_r(k), js_r("\":"); }
 static int eg_clampi(int v, int lo, int hi) { return v < lo ? lo : v > hi ? hi : v; }
+/* a hand on the unit from the manager wakes it as a touch of its own does (ctl.c touch): out of the idle screen, the
+ * sleep's clock started again, so what the manager opens is on the unit's screen, not under the idle one */
+static void eg_web_wake(qd_app_t *A)
+{
+    A->ui.touch_ms = A->ms;
+    if (A->ui.mode == QD_MODE_IDLE)
+        A->ui.mode = QD_MODE_STEP;
+}
+
 
 /* op 0: the state alone; 1: a value (group a 1..5, slot b, id c, value d); 2: the slot's effect (c: QD_MFX_*, at its
  * defaults); 3: bypassed (c); 4: an ARP lane's step (c: lane * 16 + step, d); 5: track a's group (b: 0 OFF, 1..5);
@@ -1156,6 +1165,7 @@ __attribute__((used, visibility("default"))) const char *eg_web_mfx(int op, int 
         u->mfx_slot = eg_clampi(b, 0, QD_MFX_NSLOT - 1);
         u->mfx_page = eg_clampi(c, 0, 3);
     } else if (op == 8) {
+        eg_web_wake(A);
         if (!qd_mfx_open(A))
             qd_mfx_screen(A);
     }
@@ -1232,6 +1242,7 @@ __attribute__((used, visibility("default"))) const char *eg_web_tools(int op, in
     if (!fz_up)
         return "{}";
     if (op) {
+        eg_web_wake(A);
         qd_undo_input(A, op == 4);
         if (!qd_tools_open(A))
             qd_tools_screen(A);
@@ -1385,5 +1396,297 @@ __attribute__((used, visibility("default"))) uint32_t eg_web_lost(void) { return
 __attribute__((used, visibility("default"))) int eg_web_sysex(uint32_t n)
 {
     return app_sysex(eg_web_sx, n > sizeof eg_web_sx ? (uint32_t)sizeof eg_web_sx : n);
+}
+
+/* 2026-11-17, the rest of the unit's pages as the manager's own screens (site/manager/egfx.js, egmenu.js, egpat.js):
+ * EFFECTS, the settings menus, PATTERNS, and what plays now (every screen's motion). The browser build alone, as
+ * eg_web_mfx: each write goes the unit's own way (a knob through qd_app_knob, a key through qd_app_key), so the
+ * manager's screen and the unit's page stay one state seen twice. */
+#include "../../core/ui/ui.h"
+#include "../../core/voice/fx/qd_fx.h"
+#include "../../core/seq/scale.h"
+#include "../../core/seq/chord.h"
+
+/* a knob of the unit's (QD_K_*) turned n detents, each a slow one: no acceleration, so a detent is one step of the
+ * value and the manager can count its way to a value. The answer: where the panel is (eg_web_view) */
+__attribute__((used, visibility("default"))) uint32_t eg_web_knob(int knob, int n)
+{
+    qd_app_t *A = &fz_app;
+    int i;
+    if (!fz_up || knob < 0 || knob >= QD_NKNOB)
+        return eg_web_view();
+    n = eg_clampi(n, -256, 256);
+    eg_web_wake(A);
+    for (i = 0; i < (n < 0 ? -n : n); i++) {
+        A->ui.knob_ms[knob] = 0;                        /* (the last detent long ago: qd_ctl_knob's knob_dt at its most) */
+        qd_app_knob(A, knob, n < 0 ? -1 : 1);
+    }
+    return eg_web_view();
+}
+
+/* a cell of EFFECTS' pages, as JSON: a value of qd_fx.h's (its id, name, text, value, range), or the selected track's
+ * own (a send into the page's effect, a room's send, DRY: the desk's values, eg_web_mix) */
+static void js_fxcell(const qd_app_t *A, int fx, int c)
+{
+    char tx[16];
+    int lo, hi;
+    if (c == QD_FXC_NONE) {
+        js_r("null");
+        return;
+    }
+    if (c == QD_FXC_DRY) {
+        js_r("{\"own\":\"dry\",\"name\":\"DRY\",\"v\":"), js_i(A->model.t[A->sel].mix.dry), js_r(",\"lo\":0,\"hi\":127}");
+        return;
+    }
+    if (c <= QD_FXC_ROOMX(0) && c >= QD_FXC_ROOMX(4)) {
+        const int k = QD_FXC_ROOMX(0) - c;
+        js_r("{\"own\":\"room\",\"k\":"), js_i(k), js_r(",\"name\":\"SEND\",\"v\":"), js_i(A->model.t[A->sel].mix.room[k]);
+        js_r(",\"lo\":0,\"hi\":127}");
+        return;
+    }
+    if (c == QD_FXC_SEND || c <= QD_FXC_SENDX(0)) {
+        const int f = c == QD_FXC_SEND ? fx : QD_FXC_SENDX(0) - c;
+        js_r("{\"own\":\"send\",\"k\":"), js_i(f), js_r(",\"name\":"), js_s(c == QD_FXC_SEND ? "SEND" : QD_FX_NAME[f]);
+        js_r(",\"v\":"), js_i(qd_fx_send(A, A->sel, f)), js_r(",\"lo\":0,\"hi\":127}");
+        return;
+    }
+    c = qd_fx_cell_id(c);
+    qd_fx_range(c, &lo, &hi, 0);
+    js_r("{\"id\":"), js_i(c), js_r(",\"name\":"), js_s(qd_fx_name(c)), js_r(",\"text\":"), js_s(qd_fx_text(c, qd_fx_get(c), tx));
+    js_r(",\"v\":"), js_i(qd_fx_get(c)), js_r(",\"lo\":"), js_i(lo), js_r(",\"hi\":"), js_i(hi), js_r("}");
+}
+
+/* EFFECTS. op 0: the state; 1: the unit's EFFECTS opened on page a (0..QD_FX_NPAGE - 1), as its black key takes it
+ * there (the lift rides, the floor is called); 2: value a (QD_FXP_*) set to b, as a knob writes it (an undo level of
+ * its own). The answer: open, the page, the selected track, every page (its name, its effect, its floor, its four
+ * cells) and what the effects do now (the echo's time, the chorus's rate, the room's tail, the glitch repeating) */
+__attribute__((used, visibility("default"))) const char *eg_web_fx(int op, int a, int b)
+{
+    qd_app_t *A = &fz_app;
+    qd_ui_t *u = &A->ui;
+    int p, k;
+    float gpos = 0.f;
+    if (!fz_up)
+        return "{}";
+    if (op == 1 && a >= 0 && a < QD_FX_NPAGE) {
+        qd_undo_input(A, 0);
+        eg_web_wake(A);
+        if (!qd_fx_open(A))
+            qd_fx_button(A);
+        if (qd_fx_open(A) && u->fx_page != a) {
+            const int f0 = qd_fx_floor(u->fx_page), f1 = qd_fx_floor(a);
+            static const char *const SAY[QD_FX_NKEY] = {"SENDS", "CHORUS", "ECHO", "ROOM", "CRUSH", "ROBOT", "WARP",
+                                                         "GLITCH", "TEE VEE"};   /* (ctl_mix.c fx_goto's) */
+            if (f0 != f1) {
+                u->fxr_from = (int8_t)f0;
+                u->fxr_ms = A->ms;
+                qd_app_announce(A, SAY[f1], QD_ANN_ROBOT, QD_SFX_NONE);
+            }
+            u->fx_page = a;
+            u->menu_knob = -1;
+        }
+    } else if (op == 2 && a >= 0 && a < QD_NFXP) {
+        int lo, hi;
+        qd_undo_input(A, 1);
+        qd_fx_range(a, &lo, &hi, 0);
+        qd_fx_set(a, eg_clampi(b, lo, hi));
+        A->edit_gen++;
+    }
+    eg_jn = 0;
+    js_r("{"), js_k("open"), js_i(qd_fx_open(A)), js_r(","), js_k("page"), js_i(u->fx_page), js_r(","), js_k("sel"), js_i(A->sel);
+    js_r(","), js_k("playing"), js_i(A->seq.playing != 0), js_r(","), js_k("echo_ms"), js_i(qd_fx_delay_ms());
+    js_r(","), js_k("chorus_hz100"), js_i(qd_fx_chorus_hz100()), js_r(","), js_k("room_ms"), js_i(qd_fx_reverb_ms());
+    k = qd_fx_glitch_on(&gpos);
+    js_r(","), js_k("glitch"), js_i(k), js_r(","), js_k("gpos"), js_i((int)(gpos * 1000.f));
+    js_r(","), js_k("pages"), js_r("[");
+    for (p = 0; p < QD_FX_NPAGE; p++) {
+        const qd_fxpage_t *pg = &QD_FX_PAGES[p];
+        js_r(p ? ",{" : "{"), js_k("name"), js_s(pg->name), js_r(","), js_k("fx"), js_i(pg->fx), js_r(","), js_k("floor"), js_i(qd_fx_floor(p));
+        js_r(","), js_k("cells"), js_r("[");
+        for (k = 0; k < 4; k++)
+            js_r(k ? "," : ""), js_fxcell(A, pg->fx, pg->c[k]);
+        js_r("]}");
+    }
+    js_r("]}");
+    return eg_js;
+}
+
+/* THE SETTINGS MENUS (the record settings, the settings, the track settings). op 0: the state; 1: menu a opened (0
+ * RECORD, 1 SETTINGS, 2 TRACK) on its page b, as the unit opens it (over the page under it). The answer: the menu
+ * open (-1 none), its page, and every value the unit's screen draws (view.c fill_menu: ui_menu_t); the knobs turn
+ * them (eg_web_knob) */
+__attribute__((used, visibility("default"))) const char *eg_web_menu(int op, int a, int b)
+{
+    static const uint8_t LATCH[3] = {QD_LATCH_REC, QD_LATCH_SET, QD_LATCH_TRK};
+    qd_app_t *A = &fz_app;
+    qd_ui_t *u = &A->ui;
+    ui_menu_t m;
+    int open = -1, k;
+    if (!fz_up)
+        return "{}";
+    if (op == 1 && a >= 0 && a < 3) {
+        qd_undo_input(A, 0);
+        eg_web_wake(A);
+        if (u->latch != LATCH[a])
+            qd_page_open(A, LATCH[a], QD_PO_OVER);
+        if (a == 0)
+            u->rec_page = eg_clampi(b, 0, 1);           /* (ui_layer.c menu_rec: two pages) */
+        else if (a == 1)
+            u->set_page = (uint8_t)eg_clampi(b, 0, 2);
+        else
+            u->trk_page = eg_clampi(b, 0, 2);
+        u->menu_knob = -1;
+    }
+    for (k = 0; k < 3; k++)
+        if (u->latch == LATCH[k])
+            open = k;
+    qd_view_menu(A, &m);
+    eg_jn = 0;
+    js_r("{"), js_k("open"), js_i(open), js_r(","), js_k("sel"), js_i(A->sel), js_r(","), js_k("ble"), js_i(QD_PKG_BLE);
+    js_r(","), js_k("rec_step"), js_i(m.rec_step), js_r(","), js_k("quant"), js_i(m.quant), js_r(","), js_k("dub"), js_i(m.dub);
+    js_r(","), js_k("ekeys"), js_i(m.ekeys), js_r(","), js_k("rec_page"), js_i(m.rec_page), js_r(","), js_k("rec_auto"), js_i(m.rec_auto);
+    js_r(","), js_k("follow"), js_i(m.follow), js_r(","), js_k("boost"), js_i(m.boost), js_r(","), js_k("clk_out"), js_i(m.clk_out);
+    js_r(","), js_k("cc_out"), js_i(m.cc_out), js_r(","), js_k("set_page"), js_i(m.set_page), js_r(","), js_k("voice"), js_i(m.voice);
+    js_r(","), js_k("voice_lvl"), js_i(m.voice_lvl), js_r(","), js_k("home_view"), js_i(m.home_view), js_r(","), js_k("home_lock"), js_i(m.home_lock);
+#if QD_PKG_BLE
+    js_r(","), js_k("ble_on"), js_i(m.ble_on), js_r(","), js_k("ble_st"), js_i(m.ble_st);
+#endif
+    {   /* (the track settings: always the selected track's, so the screen shows them before the menu is opened) */
+        const qd_tset_t *ts = &qd_ctl_cpat(A)->trk[A->sel];
+        int sc, rt, i, mask = 0, now = 0;
+        qd_track_key(&A->proj, qd_ctl_cpat(A), A->sel, &sc, &rt);
+        for (i = 0; i < 12; i++)
+            mask |= qd_scale_has(sc, rt, 60 + i) ? 1 << ((60 + i) % 12) : 0;
+        for (i = 0; i < A->pool.nvoice; i++)
+            now += qd_pool_sounding(&A->pool, i) && A->pool.v[i].track == A->sel;
+        js_r(","), js_k("trk_page"), js_i(u->trk_page), js_r(","), js_k("tname"), js_s(A->model.t[A->sel].name);
+        js_r(","), js_k("tkind"), js_i(A->model.t[A->sel].kind < 7 ? A->model.t[A->sel].kind : -1), js_r(","), js_k("named"), js_i(A->model.t[A->sel].named);
+        js_r(","), js_k("scale"), js_s(qd_scale_name(sc)), js_r(","), js_k("root"), js_s(qd_pc_name(rt)), js_r(","), js_k("root_pc"), js_i(rt);
+        js_r(","), js_k("scale_mask"), js_i(mask), js_r(","), js_k("follow_key"), js_i(ts->key_global), js_r(","), js_k("chan"), js_i(ts->chan + 1);
+        js_r(","), js_k("limit"), js_i(ts->limit), js_r(","), js_k("swing"), js_i(ts->swing), js_r(","), js_k("voices_now"), js_i(now);
+        js_r(","), js_k("mfx"), js_i(ts->mfx <= QD_MFX_NGROUP ? ts->mfx : 0), js_r(","), js_k("mout"), js_i((ts->mout & QD_MOUT_CH) <= 16 ? ts->mout & QD_MOUT_CH : 0);
+        js_r(","), js_k("engine"), js_i(qd_trk_engine(A, A->sel));
+    }
+    js_r(","), js_k("last"), js_i(u->menu_knob), js_r(","), js_k("bpm"), js_i(A->bpm), js_r("}");
+    return eg_js;
+}
+
+/* PATTERNS. op 0: the state; 1: the unit's PATTERNS page opened (its SEQ button clicked until it is there, as from
+ * anywhere); 2: bank a shown (SEQ + B1..B4); 3: pattern a (0..63) picked, as its W key on the page (queued by the
+ * launch mode; playing or not); 4: .. held long, at once. The answer: the playing and queued patterns, the bank, which
+ * patterns hold steps (four banks of sixteen bits), the launch mode, how much is left to the change, the copy layer */
+__attribute__((used, visibility("default"))) const char *eg_web_pat(int op, int a, int b)
+{
+    qd_app_t *A = &fz_app;
+    qd_ui_t *u = &A->ui;
+    int k;
+    float left = 0.f;
+    (void)b;
+    if (!fz_up)
+        return "{}";
+    if (op >= 1) {
+        eg_web_wake(A);
+        for (k = 0; k < QD_NSEQ && qd_ctl_seq_page(A) != QD_SEQ_PATTERNS; k++)
+            qd_app_button(A, QD_B_MIX, 1), qd_app_button(A, QD_B_MIX, 0);
+    }
+    if (op == 2 && a >= 0 && a < QD_NBANK) {
+        u->seq_bank = a;
+    } else if ((op == 3 || op == 4) && a >= 0 && a < QD_NPAT && qd_ctl_seq_page(A) == QD_SEQ_PATTERNS) {
+        u->seq_bank = a / 16;
+        qd_app_key(A, QD_WHITE_KEY[a % 16], 1, 100);
+        if (op == 4 && u->pat_wait < 0)
+            qd_seq_select_at(&A->seq, a, QD_LAUNCH_NOW);
+        qd_app_key(A, QD_WHITE_KEY[a % 16], 0, 0);
+    }
+    if (qd_seq_queued(&A->seq) >= 0 && A->seq.playing) {
+        const int64_t m = qd_pat_master_ticks(qd_proj_cpat(&A->proj, A->seq.cur)), l = qd_seq_to_change(&A->seq);
+        left = m > 0 ? qd_ratio_f(l, m) : 0.f;
+    }
+    eg_jn = 0;
+    js_r("{"), js_k("open"), js_i(qd_ctl_seq_page(A) == QD_SEQ_PATTERNS), js_r(","), js_k("cur"), js_i(A->seq.cur);
+    js_r(","), js_k("queued"), js_i(qd_seq_queued(&A->seq)), js_r(","), js_k("wait"), js_i(u->pat_wait);
+    js_r(","), js_k("bank"), js_i(u->seq_bank), js_r(","), js_k("playing"), js_i(A->seq.playing != 0);
+    js_r(","), js_k("left"), js_i((int)(eg_clampi((int)(left * 1000.f), 0, 1000))), js_r(","), js_k("launch"), js_i(A->proj.launch);
+    js_r(","), js_k("launches"), js_r("[");
+    for (k = 0; k < QD_NLAUNCH; k++)
+        js_r(k ? "," : ""), js_s(qd_launch_name(k));
+    js_r("],"), js_k("used"), js_r("[");
+    for (k = 0; k < QD_NPAT / 16; k++) {
+        int w, bits = 0;
+        for (w = 0; w < 16; w++)
+            bits |= qd_proj_used(&A->proj, k * 16 + w) ? 1 << w : 0;
+        js_r(k ? "," : ""), js_i(bits);
+    }
+    js_r("],"), js_k("layer"), js_i(qd_pc_layer(A)), js_r(","), js_k("src"), js_i(u->pc_src), js_r(","), js_k("last"), js_i(u->pc_last);
+    js_r(","), js_k("act"), js_i(u->pc_act), js_r(","), js_k("hand"), js_i(u->pc_hand), js_r(","), js_k("loaded"), js_i(A->undo.pclip_ok);
+    js_r(","), js_k("bpm"), js_i(A->bpm), js_r(","), js_k("sel"), js_i(A->sel), js_r("}");
+    return eg_js;
+}
+
+/* WHAT PLAYS NOW, in every frame the worklet sends (48 bytes, no text): 0 playing, 1 the pattern, 2 the queued + 1
+ * (0 none), 3 the selected track, 4..9 each track's step under its play head (255: stopped), 10..15 each track's
+ * voices sounding, 16 the tracks gated now (bit t), 17 muted, 18 soloed, 19 heard, 20..21 the tempo, 22 the beat (its
+ * count, low byte), 23 how far into the beat (0..255), 24..29 each track's length in steps (its loop, 1..128), 30 the open project's slot
+ * (1..), 32..37 each track's sound's place in the pool (eg_place_of; 0: none), 38..42 the sound editor's page: the
+ * value each of its knobs turns (KNOB 1..4, PRESETS: QD_QP_*, 255 none; qd_snd_ids), 43 the editor open, 44 the knob turned last
+ * (QD_K_*), 45 how long ago, in 16 ms (255: long ago) */
+static uint8_t eg_live[48];
+/* the pool's place track t's sound is: the one it came from, else (a sound written whole, as the demos' are) the first
+ * place holding the preset it came from; 0: none */
+static int eg_place_of(const qd_app_t *A, const qd_pattern_t *P, int t)
+{
+    const qd_tsound_t *ts = &P->snd[t];
+    int k;
+    if (ts->sound)
+        return ts->sound;
+    if (!ts->preset)
+        return 0;
+    for (k = 0; k < QD_NSOUND && k < A->proj.nsound; k++)
+#if QD_SND_RAM
+        if (A->proj.sdir[k].preset == ts->preset)
+#else
+        if (A->proj.sound[k].preset == ts->preset)
+#endif
+            return k + 1;
+    return 0;
+}
+__attribute__((used, visibility("default"))) uint8_t *eg_web_live(void)
+{
+    qd_app_t *A = &fz_app;
+    const qd_pattern_t *P;
+    int t, q;
+    memset(eg_live, 0, sizeof eg_live);
+    if (!fz_up)
+        return eg_live;
+    P = qd_ctl_cpat(A);
+    q = qd_seq_queued(&A->seq);
+    eg_live[0] = (uint8_t)(A->seq.playing != 0), eg_live[1] = (uint8_t)A->seq.cur, eg_live[2] = (uint8_t)(q + 1);
+    eg_live[3] = (uint8_t)A->sel;
+    for (t = 0; t < QD_NTRACK && t < 6; t++) {
+        const int s = A->seq.playing ? qd_seq_track_step(&A->seq, t) : -1;
+        eg_live[4 + t] = (uint8_t)(s < 0 ? 255 : s);
+        eg_live[10 + t] = (uint8_t)qd_pool_count(&A->pool, t);
+        eg_live[16] |= (uint8_t)(qd_pool_gated(&A->pool, t) ? 1u << t : 0u);
+        eg_live[19] |= (uint8_t)(qd_seq_audible(&A->seq, P, t) ? 1u << t : 0u);
+        eg_live[24 + t] = (uint8_t)(qd_track_len(&P->trk[t]) & 255);
+        eg_live[32 + t] = (uint8_t)eg_place_of(A, P, t);
+    }
+    eg_live[17] = A->seq.mute, eg_live[18] = A->seq.solo;
+    eg_live[20] = (uint8_t)(A->bpm & 255), eg_live[21] = (uint8_t)(A->bpm >> 8);
+    eg_live[22] = (uint8_t)A->beat, eg_live[23] = (uint8_t)(A->beat_rem * 255 / QD_BEAT_TICKS);
+    eg_live[30] = (uint8_t)(A->per.proj + 1);
+    {
+        /* (the ids the knobs turn now, as ctl_snd.c finds them: the filter's by its machine, MOD's by the chosen slot, a
+         * MIDI track's own; a page with no fifth value: PRESETS turns KNOB 1's, so it is not named twice) */
+        const int8_t *ids = qd_snd_ids(A, A->ui.snd_page % QD_SND_NPAGE);
+        const int lk = A->ui.last_knob;
+        const uint32_t ago = lk >= 0 && lk < 8 && A->ui.knob_ms[lk] ? (A->ms - A->ui.knob_ms[lk]) / 16u : 255u;
+        for (t = 0; t < 5; t++)
+            eg_live[38 + t] = (uint8_t)(ids[t] >= 0 && ids[t] < 255 ? ids[t] : 255);
+        eg_live[43] = (uint8_t)(A->ui.latch == QD_LATCH_SND);
+        eg_live[44] = (uint8_t)(lk >= 0 ? lk : 255);
+        eg_live[45] = (uint8_t)(ago > 255u ? 255u : ago);
+    }
+    return eg_live;
 }
 #endif

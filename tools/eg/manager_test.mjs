@@ -937,13 +937,13 @@ console.log("projects");
   let online = true, asked = [];
   const net = async (r) => { asked.push(key(r)); if (!online) throw new TypeError("offline"); return { ok: true, url: key(r), clone() { return this; } }; };
   const scope = { addEventListener: (t, f) => { L[t] = f; }, skipWaiting: async () => {}, clients: { claim: async () => {} }, location: new URL("sw.js", base),
-    caches: { open: async () => cache, keys: async () => ["evilgenius-manager-0", "evilgenius-manager-1", "other"], delete: async (k) => { scope.deleted.push(k); } }, deleted: [],
+    caches: { open: async () => cache, keys: async () => ["evilgenius-manager-0", "evilgenius-manager-1", "evilgenius-manager-2", "other"], delete: async (k) => { scope.deleted.push(k); } }, deleted: [],
     fetch: net, Request: class { constructor(u) { this.url = new URL(u, base).href; this.method = "GET"; } }, Response: { error: () => ({ ok: false, error: true }) }, URL, Promise };
   new Function("self", ...Object.keys(scope), text)(scope, ...Object.values(scope));
   let done; await new Promise((r) => { L.install({ waitUntil: (p) => { done = p.then(r); } }); });
   check(store.size === FILES.length && store.has(`${base}vfm1/app.wasm`) && store.has("https://eg.test/js/px.js"), `install keeps all ${FILES.length} files`);
   await new Promise((r) => L.activate({ waitUntil: (p) => p.then(r) }));
-  check(JSON.stringify(scope.deleted) === JSON.stringify(["evilgenius-manager-0"]), "activate drops the older manager caches only");
+  check(JSON.stringify(scope.deleted) === JSON.stringify(["evilgenius-manager-0", "evilgenius-manager-1"]), "activate drops the older manager caches only");
   const ask = (url, method = "GET") => new Promise((res) => { let took = false; L.fetch({ request: { url: new URL(url, base).href, method }, respondWith: (p) => { took = true; p.then(res); } }); if (!took) res(null); });
   check((await ask("egnew.js")).url === `${base}egnew.js` && store.has(`${base}egnew.js`), "online: the network answers, and what it gave is kept");
   check((await ask("https://elsewhere.test/x.js")) === null && (await ask("index.html", "POST")) === null, "another origin, another method: left to the browser");
@@ -1083,8 +1083,12 @@ console.log("projects");
   check(sv.tab === "edit" && sv.track === 5 && sv.value === 31 && sv.title === "SOUND EDITOR", "EDIT on the unit: SOUND on the selected track, with the page's first value (the page to open)");
   check(so(1, 2, 8, -1, 0) === "library PRESETS 0" && so(1, 2, 11, -1, 0) === "library SAVE PRESET 0" && so(1, 2, 10, -1, 0) === "projects PROJECTS 0" && so(1, 2, 9, -1, 0) === "projects NAME 0", "the browser and SAVE PRESET: LIBRARY; the projects and the name: PROJECTS");
   check(so(1, 2, 12, -1, 0) === "mfx MIDI FX 0" && so(1, 2, 13, 0, 1) === "tools TOOLS 1" && so(1, 1, 0, 0, 1) === "tools TOOLS 1", "MIDI FX and TOOLS on the unit: their own screens");
-  check(so(1, 2, 7, -1, 2) === "fm1 EFFECTS 2" && so(1, 2, 5, -1, 0) === "fm1 TRACK SETTINGS 0" && so(1, 1, 0, 1, 0) === "fm1 PATTERNS 0" && so(2, 2, 0, -1, 0) === "fm1 KEYBOARD 0",
-    "a page with no screen of its own here (EFFECTS, the settings, PATTERNS, the keyboard): THE FM-1, named after it");
+  check(so(1, 2, 7, -1, 2) === "fx EFFECTS 2" && so(1, 1, 0, 1, 0) === "pat PATTERNS 0", "EFFECTS and PATTERNS on the unit: their own screens");
+  check(so(1, 2, 2, -1, 0) === "set RECORD SETTINGS 0" && so(1, 2, 3, -1, 0) === "set SETTINGS 0" && so(1, 2, 5, -1, 3) === "set TRACK SETTINGS 3", "the three settings menus: SETTINGS");
+  check(so(2, 2, 0, -1, 0) === "fm1 KEYBOARD 0", "the keyboard: THE FM-1 (the drawn keyboard), named after it");
+  check(so(1, 2, 1, -1, 2) === "seq F3 STEPS 2 steps" && so(3, 2, 0, -1, 4) === "seq TRACKS 4 tracks", "F3's run of steps and the tracks screen: SEQUENCE's STEPS and TRACKS");
+  check(R.HMODE_OF_EDIT.filter((x) => x >= 0).sort((x, y) => x - y).join() === "0,1,2,3,4,5,6,7,8,9,10" && R.HMODE_OF_EDIT.slice(9, 12).every((x) => x < 0), "every hold mode of the unit (NOTE .. SOUND, TRIG and SLIDE too) is a SEQUENCE EDIT mode");
+  check(R.GOTO.pat.btn === 9 && R.GOTO.pat.there(vw(1, 1, 0, 1, 0)) && !R.GOTO.pat.there(vw(1, 1, 0, 0, 0)), "PATTERNS picked here: the unit's SEQ until its PATTERNS page");
   const DK = await import("../../site/manager/egdesk.js");
   const hk = (x, y) => { const h = DK.hit(x, y); return h ? `${h.t}${h.w !== undefined ? " " + DK.PARTS[h.w][1] : h.mute ? " M" : h.solo ? " S" : ""}` : null; };
   check(hk(4 + 10, 80) === "0 LEVEL" && hk(4 + 56 + 10, 26) === "1 PAN" && hk(4 + 2 * 56 + 31, 80) === "2 ECHO" && hk(4 + 2 * 56 + 37, 80) === "2 ROOM" && hk(4 + 2 * 56 + 44, 80) === "2 CHORUS",
@@ -1097,6 +1101,11 @@ console.log("projects");
   const dv = new Array(256).fill(0); dv[0] = 3; dv[3] = 64;
   check(PX.picture("osc", dv, 0) !== PX.picture("osc", dv, 700) && PX.picture("osc", dv, 0) === PX.picture("osc", dv), "SOUND's pictures move with the time (the oscillators' wave runs), and stand still without it");
   check(/rect/.test(PX.picture("env", dv, 500)) && PX.picture("env", dv, 500) !== PX.picture("env", dv, 900), "an envelope's picture: a note going along it");
+  for (const k of ["amp", "vox", "mod"]) {
+    const v = dv.slice(); v[0] = 3;
+    check(PX.picture(k, v, 0) === PX.picture(k, v) && PX.picture(k, v, 0) !== "", `${k.toUpperCase()}'s picture still without the time`);
+  }
+  check(PX.picture("amp", dv, 300) !== PX.picture("amp", dv, 900), "AMP's picture moves: the sine through the drive, the level's meter");
   const TL = await import("../../site/manager/egtools.js");
   const tt = (d) => TL.toolText(d).map((p) => (p ? p.join(" ") : "-")).join(" | ");
   check(tt({ tool: 3, v: [5, 16, 2, 1] }) === "HITS 5 | LENGTH 16 | ROTATE 2 | LANDS ADD" && tt({ tool: 0, rot: -3, v: [] }) === "OFFSET -3 | - | - | -", "TOOLS: EUCLID's and ROTATE's knobs as the unit's");
@@ -1130,6 +1139,39 @@ console.log("projects");
   await s2.start();
   say(panelR(0, 0, [0, 0, 0, 0, 0, 0, 0], 0, 0));
   check(lost === 1 && !s2.on, "a PANEL_R with no session: the panel is gone");
+}
+
+// ---- EFFECTS, PATTERNS, SETTINGS (egfx.js, egpat.js, egmenu.js): what a click means, against the firmware's answers
+// shapes (eg_web_fx, eg_web_pat, eg_web_menu, fz_port.c)
+console.log("unit pages");
+{
+  const F = await import("../../site/manager/egfx.js");
+  const pages = [{ name: "SENDS", floor: 0, cells: [{ own: "send", k: 2 }, { own: "send", k: 0 }, { own: "send", k: 1 }, { own: "dry" }] }, { name: "FX MIX", floor: 0, cells: [] },
+    { name: "CHORUS", floor: 1, cells: [{ id: 15 }, { id: 16 }, { id: 14 }, { own: "send", k: 2, v: 9 }] }, { name: "ECHO", floor: 2, cells: [] }, { name: "ECHO 2", floor: 2, cells: [] },
+    { name: "CRUSH", floor: 4, cells: [{ id: 23 }, null, null, { own: "room", k: 0, v: 0 }] }];
+  check(F.floorPage(pages, 0, 2) === 3 && F.floorPage(pages, 3, 2) === 4 && F.floorPage(pages, 4, 2) === 3 && F.floorPage(pages, 3, 0) === 0 && F.floorPage(pages, 0, 0) === 1,
+    "a floor's key: its first page, and again its next (as the unit's FX button)");
+  check(F.floorPage(pages, 2, 7) === 2, "a floor with no page here: the page stays");
+  check(F.sendOf({ pages }, 1).v === 9 && F.sendOf({ pages }, 4).k === 0 && F.sendOf({ pages }, 3) === null, "a floor's send: the picked track's into its effect or room");
+  check(F.OWN_B({ own: "send", k: 0 }) === 2 && F.OWN_B({ own: "send", k: 1 }) === 3 && F.OWN_B({ own: "send", k: 2 }) === 4 && F.OWN_B({ own: "dry" }) === 5 && F.OWN_B({ own: "room", k: 4 }) === 10,
+    "the track's own cells written as the desk writes them (eg_web_mix: ECHO 2, ROOM 3, CHORUS 4, DRY 5, the rooms 6..10)");
+  check(F.FLOORS.length === 9 && F.FLOORS[0] === "SENDS" && F.FLOORS[8] === "TV", "the tower's nine floors, B1 at the top");
+  const P = await import("../../site/manager/egpat.js");
+  check(P.patName(0) === "A01" && P.patName(15) === "A16" && P.patName(16) === "B01" && P.patName(63) === "D16", "the patterns' names, as the unit's (qd_pat_name)");
+  check(P.usedAt([5, 0, 0, 1 << 15], 0) && !P.usedAt([5, 0, 0, 0], 1) && P.usedAt([5, 0, 0, 0], 2) && P.usedAt([0, 0, 0, 1 << 15], 63), "which patterns hold steps: four banks of sixteen bits");
+  check(P.cardAt(18, 52) === 0 && P.cardAt(18 + 22 * 15 + 3, 52 + 22 * 3 + 3) === 63 && P.cardAt(10, 60) === -1 && P.cardAt(18, 52 + 22 * 4) === -1, "the card under a point of the picture");
+  check(P.launchAt(240, 36) === 0 && P.launchAt(236 + 36 * 3 + 2, 36) === 3 && P.launchAt(240, 10) === -1, "the launch mode's words");
+  const M = await import("../../site/manager/egmenu.js");
+  check(M.MENUS.length === 3 && M.PAGES.every((m) => m.every((p) => p.length === 4)), "each menu's pages, four rows each (KNOB 1..4)");
+  const d = { open: 1, rec_page: 0, set_page: 2, trk_page: 1, ble: 1, rec_step: 1, dub: 2, quant: 25, voice: 1, home_view: 2, ble_on: 1, ble_st: 2, follow_key: 0, root_pc: 3, mfx: 0, engine: 1 };
+  check(JSON.stringify(M.unitAt(d)) === '{"menu":1,"page":2}' && M.unitAt({ ...d, open: -1 }) === null && JSON.stringify(M.unitAt({ ...d, open: 2 })) === '{"menu":2,"page":1}', "the menu and page open on the unit");
+  check(M.npages(1, d) === 3 && M.npages(1, { ...d, ble: 0 }) === 2 && M.npages(0, d) === 2 && M.npages(2, d) === 3, "SETTINGS' third page (BLUETOOTH) on the Bluetooth package only");
+  const row = (m, p, k) => M.PAGES[m][p][k];
+  check(row(0, 0, 0)[1](d) === "STEP" && row(0, 0, 2)[1](d) === "REPLACE" && row(0, 0, 2)[3](d) === 1 && row(0, 0, 2)[3]({ dub: 0 }) === -1 && row(0, 0, 1)[1](d) === "25%", "RECORD's rows as the unit writes them (MODE, TAKE, QUANTIZE)");
+  check(row(1, 1, 2)[1](d) === "ALWAYS" && row(1, 1, 0)[1](d) === "GEEK OUT" && row(1, 2, 1)[1](d) === "CONNECTED", "SETTINGS' rows (THE VOICE, HOME VIEW, BLUETOOTH's state)");
+  check(row(2, 0, 0)[2][0] === "GLOBAL" && row(2, 0, 0)[3]({ follow_key: 1 }) === 0 && row(2, 0, 0)[3]({ follow_key: 0 }) === 1, "TRACK's MODE in the knob's order: left GLOBAL, right LOCAL (ctl_mix.c)");
+  check(row(2, 2, 1)[5] === true && !row(2, 2, 0)[5], "NAME is not turned from here (its knob opens the unit's name keyboard)");
+  check(row(2, 0, 0)[1](d) === "LOCAL" && row(2, 0, 2)[3](d) === 3 && row(2, 1, 3)[1](d) === "OFF" && row(2, 2, 2)[1](d) === "SID+MIDI", "TRACK's rows (MODE, ROOT, MIDI FX, ENGINE)");
 }
 
 console.log(fails ? `${fails} of ${checks} checks FAILED` : `all ${checks} checks pass`);

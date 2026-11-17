@@ -8,7 +8,8 @@
 // TAG packs the places in tag order, CLEAR UNUSED empties the places no step or track uses (USERS asked of each), USED BY
 // says who uses one. Each is the unit's own command, an undo level on the unit (SHIFT + F1). The pool is the open
 // project's: another project's is shown after PROJECTS loads it. Written for EvilGenius (MPL-2.0); FIZZ's POOL tab lent
-// ideas only.
+// ideas only. On the FM-1 in this browser the places the tracks play light up while they sound (each frame's
+// eg_web_live: each track's place, the tracks gated), in the track's colour, with the track's number.
 //   mountPool({ $, say, refuse, link(), busy(), job(fn) }) -> { show(on), load(), gone(), render() }
 //   sortPlan(places) -> [[a, b], ..] the swaps that pack the used places in tag order (no DOM: the tests)
 import { TAGS } from "./egsysex.js";
@@ -259,10 +260,28 @@ export function mountPool(ctx) {
     else return;
     e.preventDefault();
   });
+  // what plays now: the places the tracks play, lit while each sounds (drawn over the grid, nothing drawn again)
+  const TRK = ["#c46c71", "#706deb", "#ffffff", "#a9ff9f", "#75cec8", "#8e3c97"];
+  let liveOff = null, liveAt = 0, lit = new Map();
+  function tick(L) {
+    const g = $("pl-grid"), want = new Map();
+    if (L && S.places && (!S.project || L[30] === S.project)) for (let t = 0; t < 6; t++) if (L[32 + t] && ((L[16] >> t) & 1)) want.set(L[32 + t], t);
+    for (const [k] of lit) if (!want.has(k)) { const b = g.children[k - 1]; if (b) { b.classList.remove("snd"); delete b.dataset.t; } }
+    for (const [k, t] of want) { const b = g.children[k - 1]; if (b) { b.classList.add("snd"); b.dataset.t = String(t + 1); b.style.setProperty("--tc", TRK[t]); } }
+    lit = want;
+  }
+  function live(on) {
+    if (liveOff) { liveOff(); liveOff = null; }
+    const u = on && ctx.unit ? ctx.unit() : null;
+    if (u) liveOff = u.onFrame((m) => {
+      if (!ctx.unit()) { live(false); tick(null); return; }        // (the screens went to a unit on USB: let go)
+      const t = performance.now(); if (m.live && t - liveAt > 60) { liveAt = t; tick(m.live); }
+    });
+  }
   return {
     load, render,
-    follow,
-    show(on) { S.shown = on; if (on && ctx.link() && !S.places) ctx.job(load); render(); },
+    async follow() { if (S.shown && !liveOff) live(true); await follow(); },
+    show(on) { S.shown = on; live(on); lit = new Map(); if (on && ctx.link() && !S.places) ctx.job(load); render(); },
     gone() { S.places = null; S.sounds = null; S.moving = 0; render(); },
     stale() { S.places = null; },
   };

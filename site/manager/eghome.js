@@ -6,7 +6,8 @@
 // the SID's three voices (each oscillator's wave, its pitch and width); THE TRACKS: the open pattern's six tracks, each
 // its sound's name and wave, its first page of steps, muted or not. A track: 1..6 or a click; ENTER its sound in SOUND,
 // S its steps in SEQUENCE, R reads the FM-1 again. The virtual FM-1's screen stands in the jar's place: a click opens
-// its panel (F9, egpanel.js).
+// its panel (F9, egpanel.js). On the FM-1 in this browser it moves with what plays (each frame's eg_web_live): the
+// chip's voices run while the picked track sounds, each track's playing step is lit, its light and its wave move.
 //   mountHome({ $, link(), busy(), job(fn), say, refuse, toSound(track), toSeq(track), panel() }) -> { show(on), load(), says(text), gone(), render() }
 import { parseDump } from "./egsysex.js";
 import { soundFromDump, ID } from "./egsound.js";
@@ -21,9 +22,9 @@ const QUIPS = ["CONNECT AN FM-1. I WILL TAKE IT FROM THERE.", "NO FM-1. I AM A B
   "PLUG IT IN. USB. A DATA CABLE, NOT ONE OF YOUR CHEAP ONES."];
 const WAVES = VALUES[ID.W1][5];
 
-function scope(kind, pw, seed, col) {
+function scope(kind, pw, seed, col, ph = 0) {
   const pts = [];
-  for (let i = 0; i <= 120; i++) pts.push(`${(i * 2).toFixed(0)},${(52 - wave(kind, (i / 40) % 1, pw, seed) * 44).toFixed(1)}`);
+  for (let i = 0; i <= 120; i++) pts.push(`${(i * 2).toFixed(0)},${(52 - wave(kind, (i / 40 + ph) % 1, pw, seed) * 44).toFixed(1)}`);
   return `<svg viewBox="0 0 240 60" width="100%" height="60" aria-hidden="true" style="display:block;shape-rendering:crispEdges"><polyline points="${pts.join(" ")}" fill="none" stroke="${col}" stroke-width="3"/></svg>`;
 }
 
@@ -85,12 +86,14 @@ export function mountHome(ctx) {
     // the chip: the picked track's sound as three voices
     const v = $("h-voices"), snd = S.sounds[S.sel];
     v.textContent = "";
+    S.els = { scopes: [], rows: [] };
     $("h-chipname").textContent = `THE CHIP · TRACK ${S.sel + 1}${snd ? ` · ${snd.name}` : ""}`;
     $("h-chipnote").textContent = snd ? `FILTER ${["OFF", "LP", "BP", "HP", "NOTCH", "LP+BP", "BP+HP", "ALL"][snd.values[ID.FTYPE]]} ${snd.values[ID.FREQ]} · ${snd.values[ID.CHIP] ? "8580" : "6581"}` : "";
     for (let k = 0; k < 3; k++) {
       const box = el("div", "voice"), kind = snd ? snd.values[ID.W1 + 5 * k] : 0, col = ["#706deb", "#a9ff9f", "#c46c71"][k];
       box.append(px(`VOICE ${k + 1} · ${snd ? WAVES[kind] : "-"}`, "small", 2, kind ? "white" : "grey"));
       const sc = el("div"); sc.innerHTML = scope(kind, snd ? snd.values[ID.PW1 + 5 * k] / 128 : 0.5, k + 1, kind ? col : "#4a4a4a");
+      S.els.scopes.push({ sc, kind, pw: snd ? snd.values[ID.PW1 + 5 * k] / 128 : 0.5, k, col: kind ? col : "#4a4a4a", ratio: snd ? 2 ** (snd.values[ID.C1 + 5 * k] / 12) : 1 });
       box.append(sc, el("p", "dim", snd ? `COARSE ${snd.values[ID.C1 + 5 * k]} · PW ${snd.values[ID.PW1 + 5 * k]} · ${["", "SYNC", "RING", "S+R"][snd.values[ID.M1 + 5 * k]] || "FREE"}` : ""));
       v.append(box);
     }
@@ -105,8 +108,10 @@ export function mountHome(ctx) {
       const w = el("span", "hwave"); const s0 = S.sounds[k];
       w.innerHTML = scope(s0 ? s0.values[ID.W1] : 0, 0.5, k, "#706deb");
       const steps = el("span", "hsteps");
-      for (let s = 0; s < 16; s++) { const c = el("i"); if (t.steps && t.steps[s].on) c.className = "on"; steps.append(c); }
+      const cells = [];
+      for (let s = 0; s < 16; s++) { const c = el("i"); if (t.steps && t.steps[s].on) c.className = "on"; steps.append(c); cells.push(c); }
       row.append(w, steps);
+      S.els.rows.push({ row, w, cells, kind: s0 ? s0.values[ID.W1] : 0, lit: null });
       row.addEventListener("click", () => { S.sel = k; render(); });
       row.addEventListener("dblclick", () => ctx.toSound(k));
       tl.append(row);
@@ -134,10 +139,39 @@ export function mountHome(ctx) {
       $("h-unit").getContext("2d").putImageData(paint(img, m.fb), 0, 0);
     });
   }
+  // what plays now (the FM-1 in this page's frames): drawn over what render() made, fifteen times a second
+  let liveOff = null, liveAt = 0, L = null;
+  const still = typeof window !== "undefined" && window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  function tick() {
+    const E = S.els, now = performance.now();
+    if (!E || !S.shown) return;
+    const on = L && L[0] && L[1] === S.pattern;
+    E.scopes.forEach((x) => {
+      const sounding = L && L[10 + S.sel] > 0 && !still;
+      if (!sounding && !x.moved) return;
+      x.moved = sounding;
+      x.sc.innerHTML = scope(x.kind, x.pw, x.k + 1, x.col, sounding ? (now / 900) * x.ratio : 0);
+    });
+    E.rows.forEach((r, t) => {
+      const s = on && L[4 + t] < 16 ? L[4 + t] : -1, c = s >= 0 ? r.cells[s] : null, gate = !!(L && (L[16] >> t) & 1);
+      if (r.lit !== c) { if (r.lit) r.lit.classList.remove("ph"); if (c) c.classList.add("ph"); r.lit = c; }
+      r.row.classList.toggle("sounding", gate);
+      const run = L && L[10 + t] > 0 && !still;
+      if (run || r.moved) { r.moved = run; r.w.innerHTML = scope(r.kind, 0.5, t, gate ? "#edf171" : "#706deb", run ? now / 700 : 0); }
+    });
+  }
+  function live(on) {
+    if (liveOff) { liveOff(); liveOff = null; }
+    const u = on && ctx.unit ? ctx.unit() : null;
+    if (u) liveOff = u.onFrame((m) => {
+      if (!ctx.unit()) { live(false); L = null; tick(); return; }   // (the screens went to a unit on USB: let go)
+      const t = performance.now(); if (m.live && t - liveAt > 66) { liveAt = t; L = m.live; tick(); }
+    });
+  }
   return {
     load, render, says, unit,
-    async follow() { if (S.shown && S.tracks) await load(true); },
-    show(on) { S.shown = on; if (on && ctx.link() && !S.tracks) ctx.job(() => load()); render(); },
+    async follow() { if (S.shown && !liveOff) live(true); if (S.shown && S.tracks) await load(true); },
+    show(on) { S.shown = on; live(on); if (on && ctx.link() && !S.tracks) ctx.job(() => load()); render(); },
     gone() { S.tracks = null; S.sounds = []; S.pattern = -1; says(QUIPS[1 + Math.floor(Math.random() * 2)]); render(); },
     stale() { S.tracks = null; S.sounds = []; S.pattern = -1; },
     get sel() { return S.sel; },

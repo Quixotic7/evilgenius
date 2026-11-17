@@ -597,6 +597,20 @@ export function mountEdit(ctx) {
 
   return {
     open, poll, render, state: S, readTrack,
+    // the unit's editor page, each frame (eg_web_live): the values its KNOB 1..4 and PRESETS turn now marked here, the
+    // one turned last lit a moment
+    knobs(L) {
+      const want = new Map();
+      if (L && L[43]) for (let k = 0; k < 5; k++) if (L[38 + k] !== 255) want.set(L[38 + k], k);
+      const hotK = L && L[45] < 60 ? [3, 4, 5, 6, 2].indexOf(L[44]) : -1;
+      for (const [id, t] of S.tiles) {
+        const k = want.get(id);
+        if (k === undefined) { if (t.dataset.uk) { delete t.dataset.uk; t.classList.remove("uk", "ukhot"); } continue; }
+        const lab = k < 4 ? `KNOB ${k + 1}` : "PRESETS";
+        if (t.dataset.uk !== lab) { t.dataset.uk = lab; t.classList.add("uk"); }
+        t.classList.toggle("ukhot", k === hotK);
+      }
+    },
     showValue(id) { const t = S.tiles.get(id); if (t && +t.closest(".edsec").dataset.k !== S.page) { S.quietPage = true; page(+t.closest(".edsec").dataset.k); S.quietPage = false; } },   // (the unit's editor page)
     readTrackOf(t) { $("ed-track").value = String(t); if (ctx.link()) ctx.job(() => readTrack()); },
     shown(v) { const was = S.shown; S.shown = v; if (!v) { allOff(); closePick(); arm(null); } else if (!was && !still && typeof requestAnimationFrame === "function") requestAnimationFrame(move); },

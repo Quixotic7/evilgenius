@@ -122,6 +122,7 @@ class Fm1 extends AudioWorkletProcessor {
       dimButtons: ex.web_dim_buttons ? ex.web_dim_buttons() >>> 0 : 0, dimKeys: ex.web_dim_keys ? ex.web_dim_keys() >>> 0 : 0,
       view: ex.eg_web_view ? ex.eg_web_view() >>> 0 : -1, peak: this.pk ? [this.pk[0], this.pk[1]] : [0, 0] };
     if (this.pk) this.pk[0] = this.pk[1] = 0;          // (where the panel is: fz_port.c eg_web_view)
+    if (ex.eg_web_live) msg.live = new Uint8Array(this.mem.buffer, ex.eg_web_live(), 48).slice();   // (what plays now: eg_web_live)
     if (this.frames >= 44100) {                       // the share of real time spent running the device
       msg.load = Math.round(100 * this.busy / (this.frames / 44.1));
       this.busy = this.frames = 0;

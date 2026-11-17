@@ -8,10 +8,13 @@
 // with the place beside). Keys: UP / DOWN (PAGE, HOME, END) a sound, / find, A M F which, 1..7 a tag, K the track,
 // R read again; ENTER edit, L load, E export, N rename, T tags, U used by, [ ] move, DELETE. Every change is the unit's own
 // command, one undo level on the unit each. Written for EvilGenius (MPL-2.0); FIZZ's LIBRARY lent ideas only.
+// The card shows the picked sound moving, as SOUND draws it (egpics.js): its oscillators running and a note going along
+// its envelopes, read from the unit (its DUMP) once a pick has stayed a moment, and kept until the list is read again.
 //   mountLibrary({ $, say, refuse, link(), busy(), job(fn), download, edit(sound, origin) }) -> { load(), clear(), render() }
 //   filterRows(rows, {q, src, tags}) (no DOM: the tests)
 import { parseDump, TAGS } from "./egsysex.js";
 import { soundFromDump, blobNow } from "./egsound.js";
+import { picture } from "./egpics.js";
 import { soundFile, soundName, cleanName } from "./egfiles.js";
 
 const el = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; };
@@ -40,7 +43,7 @@ export function usedText(u) {
 
 export function mountLibrary(ctx) {
   const { $, say, refuse } = ctx;
-  const S = { rows: null, q: "", src: "all", tags: 0, nlib: 128, sel: null, mode: "" };
+  const S = { rows: null, q: "", src: "all", tags: 0, nlib: 128, sel: null, mode: "", vals: new Map(), pic: null, picT: 0 };
   const root = $("tab-library");
   root.innerHTML = `
     <div class="libbar">
@@ -71,6 +74,7 @@ export function mountLibrary(ctx) {
   $("lb-read").addEventListener("click", () => ctx.job(() => load()));
 
   async function load({ quiet = false } = {}) {
+    S.vals.clear();
     const l = ctx.link();
     if (!l) return;
     if (!quiet) say("Reading the FM-1's sounds", "busy");
@@ -117,6 +121,18 @@ export function mountLibrary(ctx) {
     c.append(el("p", "lab", `${n} OF ${S.rows.length} SHOWN · MY PRESETS ${mine} OF ${S.nlib}`));
     const h = el("h2", "lbname"); h.append(px(r.name, "big", 3, "yellow")); c.append(h);
     c.append(el("p", "", `${r.source === "mine" ? "MY PRESETS" : "FACTORY"} ${r.slot} · ${tagList(r.tags).join(" ") || "NO TAGS"}${r.inPool ? " · IN THE POOL" : ""}`));
+    // its picture: the sound's own values (read once the pick stays 300 ms, quietly: a failed read only leaves it blank)
+    const pic = el("div", "lbpic"); pic.setAttribute("aria-hidden", "true");
+    c.append(pic);
+    const k = key(r);
+    S.pic = { node: pic, key: k };
+    if (!S.vals.has(k)) {
+      clearTimeout(S.picT);
+      S.picT = setTimeout(() => {
+        if (!S.pic || S.pic.key !== k || !ctx.link() || ctx.busy() || S.vals.has(k)) return;
+        ctx.job(async () => { try { S.vals.set(k, (await dumpOf(r)).values); } catch (_) { S.vals.set(k, null); } });
+      }, 300);
+    }
     if (S.mode === "rename") {
       const inp = el("input"); inp.type = "text"; inp.maxLength = 12; inp.value = r.name; inp.setAttribute("aria-label", `A new name for ${r.name}`);
       inp.addEventListener("keydown", (e) => {
@@ -253,5 +269,17 @@ export function mountLibrary(ctx) {
     else return;
     e.preventDefault();
   });
-  return { load, render, clear() { S.rows = null; render(); }, show(on) { S.shown = on; if (on) render(); }, state: S };
+  // the card's picture moving, fifteen times a second while LIBRARY shows (still when the system asks for less motion)
+  const still = typeof window !== "undefined" && window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let movedAt = 0;
+  const animate = (ms) => {
+    if (!S.shown) return;
+    requestAnimationFrame(animate);
+    if (ms - movedAt < 66 || !S.pic) return;
+    movedAt = ms;
+    const v = S.vals.get(S.pic.key);
+    if (!v) { if (S.pic.node.childElementCount) S.pic.node.textContent = ""; return; }
+    S.pic.node.innerHTML = picture("osc", v, still ? 0 : ms) + picture("env", v, still ? 0 : ms);
+  };
+  return { load, render, clear() { S.rows = null; S.vals.clear(); render(); }, show(on) { const was = S.shown; S.shown = on; if (on) render(); if (on && !was) requestAnimationFrame(animate); }, state: S };
 }

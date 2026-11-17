@@ -26,6 +26,10 @@ export function mountMix(ctx) {
     <div id="mx-cols" class="mxcols" role="group" aria-label="The six tracks' mix"></div>
     <p class="dim" id="mx-oldnote">LEVEL and the five rooms' sends (CRUSH, ROBOT, WARP, GLITCH, TV) stay on the unit's own MIX pages for now. Every change here is a knob on the unit: SHIFT + F1 there does not undo it.</p>`;
   const head = root.querySelector(".hhead");
+  // the effects the sends go into: their own screen (EFFECTS, ALT + E), which takes the unit to its FX page too
+  const toFx = el("button", "key plain", "EFFECTS (ALT + E)"); toFx.type = "button";
+  toFx.addEventListener("click", () => (ctx.pick ? ctx.pick("fx") : ctx.tab("fx")));
+  head.append(toFx);
   const desk = mountDesk({ $, unit: () => (ctx.unit ? ctx.unit() : null), names: () => (S.tracks || []).map((t) => (t ? t.name : "")) }, $("mx-desk"));
   const onDesk = () => !!(ctx.unit && ctx.unit());
   async function read(l) {

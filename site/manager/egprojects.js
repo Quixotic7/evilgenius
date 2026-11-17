@@ -451,9 +451,33 @@ export function mountProjects(ctx) {
     e.preventDefault();
   });
   readShelf();
+  // what plays now (the FM-1 in this page's frames): the slot worked on beats while it plays and says which pattern;
+  // its patterns' grid lights the playing one and the one queued (drawn over what render() made)
+  let liveOff = null, liveAt = 0;
+  function tick(L) {
+    if (!S.list || !L) return;
+    const cur = $("pj-slots").querySelector(`.pjslot[data-p="${S.current}"]`);
+    if (cur) {
+      const play = !!L[0] && L[30] === S.current, info = cur.lastElementChild;
+      cur.classList.toggle("playing", play);
+      cur.classList.toggle("beat", play && L[23] < 90);
+      if (info) info.textContent = play ? `PLAYING ${patName(L[1])}${L[2] ? ` → ${patName(L[2] - 1)}` : ""}` : "WORKED ON";
+    }
+    const g = $("pj-grid"), mine = S.sel === S.current && L[30] === S.current;
+    [...g.children].forEach((c, k) => { c.classList.toggle("ph", mine && !!L[0] && k === L[1]); c.classList.toggle("q", mine && L[2] - 1 === k); });
+  }
+  function live(on) {
+    if (liveOff) { liveOff(); liveOff = null; }
+    const u = on && ctx.unit ? ctx.unit() : null;
+    if (u) liveOff = u.onFrame((m) => {
+      if (!ctx.unit()) { live(false); render(); return; }          // (the screens went to a unit on USB: let go)
+      const t = performance.now(); if (m.live && t - liveAt > 60) { liveAt = t; tick(m.live); }
+    });
+  }
   return {
-    load, render, follow,
-    show(on) { S.shown = on; if (on && ctx.link() && (!S.list || (ctx.other() && !S.olist))) ctx.job(load); if (on) readShelf(); else render(); },
+    load, render,
+    async follow() { if (S.shown && !liveOff) live(true); await follow(); },
+    show(on) { S.shown = on; live(on); if (on && ctx.link() && (!S.list || (ctx.other() && !S.olist))) ctx.job(load); if (on) readShelf(); else render(); },
     gone() { S.list = null; S.olist = null; S.pats = null; $("pj-to").hidden = true; render(); },
   };
 }

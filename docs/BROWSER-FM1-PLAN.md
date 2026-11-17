@@ -223,13 +223,80 @@ The seamless round: play on the go on EVILGENIUS; at the computer plug in, GET t
   - **SOUND's pictures move** (`egpics.js picture(key, values, ms)`): the oscillators' wave runs, a note travels
     each envelope, a sweeping note's partials stand under the filter's curve, each LFO runs at its speed with its
     output's dot. Still when the system asks for reduced motion.
-  - Still owed for "everything matches a panel": EFFECTS' page in MIX (phase 2), PATTERNS, the track, record and
-    global settings (THE FM-1 shows them meanwhile), SOUND's value picked by the unit's knobs lit, TOOLS' richer
-    pictures (STRETCH's and LENGTH's before and after), and moving pictures for HOME, SOUND, MIX, LIBRARY and POOL as
-    the unit draws them (the room, the oscillators, the tower).
+  - **The owner, 2026-11-16 night: "keep going on everything that is not done".** Built that night, on the FM-1 in
+    the browser (the browser build's exports, `fz_port.c` PLAT_WEB only: no flash of the unit's):
+    - **EFFECTS (ALT + E, `egfx.js`, `eg_web_fx`)**: THE TOWER (the nine floors B1 SENDS .. B9 TV, the lift riding to
+      the page's floor, a floor lit while the picked track sends into it), the page's picture moving (the echo's
+      repeats by its time and feedback, side to side in PING-PONG; the room's walls answering for its tail; the
+      chorus's two voices at its rate; the crush's steps; the robot's ring; the warp's comb sweeping; the glitch's
+      slice repeating when the unit's own does; the TV's lines and hum), the four values as KNOB 1..4. Every page,
+      name, text and range from `QD_FX_PAGES` and `qd_fx_*`; a floor picked here opens it on the unit (the lift, the
+      floor called), a value is written as the knob writes it, the track's sends through `eg_web_mix`.
+    - **PATTERNS (ALT + T, `egpat.js`, `eg_web_pat`)**: the four banks at once, the playing pattern beating with the
+      tempo, the queued one blinking with the line to the change, the launch mode (ALGORITHM's); a click is the W key
+      on the unit's PATTERNS page (opened first), SHIFT at once, a drag onto another a copy (F1 held and two W keys),
+      X is F2 and one (a cut; right after a copy it pastes the copy: the unit's own rule), so its undo takes them
+      back. Tried: A04 copied onto A05, then cut again.
+    - **SETTINGS (ALT + S, `egmenu.js`, `eg_web_menu`)**: RECORD, SETTINGS and TRACK, every page as the unit draws it
+      (a row a knob: the badge, the name, the value big) with each row's picture moving (LIVE's notes off the grid
+      and QUANTIZE pulling them on, the take's mark, PAGE FOLLOW's playhead, the clock's ticks, the scale on a
+      keyboard, the voices sounding, the swing). A change is the unit's own knob (`eg_web_knob`: a slow detent each,
+      so a detent is one step and a choice is counted to), with the menu opened on the unit first.
+    - **What plays now, in every frame** (`eg_web_live`, 48 bytes the worklet sends with the screen): the playing and
+      queued patterns, each track's step, voices, gate, mute and solo, the tempo and the beat, the open project, each
+      track's pool place, the sound editor's page and the knob turned last. From it: SEQUENCE's playhead (the step
+      lit in STEPS, a line in TRACKS and the PIANO ROLL), HOME (each track's playing step, its light and running
+      wave; the chip's voices running), POOL (the places the tracks play lit while they sound), PROJECTS (the slot
+      worked on beating, which pattern plays; its patterns' grid lit), SOUND (the values the unit's KNOB 1..4 and
+      PRESETS turn now marked, the one turned last lit). LIBRARY's card shows the picked sound moving (its DUMP, read
+      once the pick stays). SOUND's AMP, VOX and MOD pictures move too.
+    - The unit is woken by the manager's hand (`eg_web_wake`): a page opened from the manager while the unit sleeps
+      opened under the idle screen before (MIDI FX and TOOLS too).
+    - The unit's pages that open these screens (`egremote.js screenOf`): EFFECTS, PATTERNS, the three menus; F3's run
+      of steps opens SEQUENCE's STEPS, the tracks screen its TRACKS. Only the keyboard is THE FM-1 now (the drawn
+      keyboard is that page). Keys to all five screens from THE FM-1; EFFECTS from MIX.
+    - Smaller: the fourteen screens' keys on one row down to 1024 px (the F-key labels hidden below 1700 px, the names
+      smaller); SEQUENCE's rows scroll instead of running under the keyboard when the FM-1 is docked (the screens'
+      heights are the window less the docked FM-1's, `--dockh`); CABINET's four numbers two by two in a narrow box.
+      The service worker registers and controls the page in the preview pane, but its own requests to the network
+      fail there, so it answers from what it kept (the files as they were when it was installed): that is what looked
+      like "did not register" on 8746 and stale modules after an edit. In the pane, open the page with `?nosw` (no
+      worker) and unregister an old one; a real browser's worker reaches the network and is not affected.
+    - SEQUENCE has the unit's last two hold modes as EDIT modes, after the lock slots: TRIG (the trig's kind, NOTE /
+      LOCK / TIE) and SLIDE (the slide's TIME, a lock of the step's); every hold mode of the unit now has one
+      (`HMODE_OF_EDIT`). TOOLS
+      draws LENGTH (each note before and after, the factor) and STRETCH (the notes moving to where the factor puts
+      them, the length after).
+    - An independent review of the night's diff found, and these were fixed: TRACK's MODE choices were in the reverse
+      of the knob's order (left is GLOBAL); SOUND marked the page table's values, not the ones the knobs turn
+      (`qd_snd_ids`: the filter's by machine, MOD's by slot, a MIDI track's own); a choice or the launch mode could be
+      turned twice from a stale read (ROOT C to G landed on D): a read on its way is now waited for; `eg_web_knob`
+      answers a number (`vu.knob`), not text; the screens' keys leave HELP, the tab bar's arrows and a focused
+      button's ENTER alone; one drawing loop per screen; TRIG and SLIDE come after the three lock slots (which keep
+      SHIFT + 0, -, =); NAME is not turned from here (its knob opens the unit's name keyboard); TAKE offers the knob's
+      two (OVERDUB, REPLACE); the live overlays let go when ALT + W puts the screens on a unit over USB.
+    - Tested: `node tools/eg/manager_test.mjs` (479), the host simulator's `remote.txt`; each screen tried in the
+      preview on the browser FM-1 (a value written and put back, a pattern queued, a menu choice and back). Not on
+      the owner's unit: none of this is in its firmware, and nothing was installed.
+  - Still owed for "everything matches a panel": MIX's own page of the unit's (its third,
+    the rooms' MIX) drawn as such; all of this on a unit over USB (phases 1-3, below).
 - **Not yet**: over Bluetooth (the route is carried, untested);
   the round in one key (CONNECT: take the project worked on into the browser FM-1 and the session; DISCONNECT: send
   it back to its slot): which browser slot it may replace is the owner's call.
+- **For the owner to decide: these screens on a unit over USB.** MIDI FX, TOOLS, THE DESK, EFFECTS, PATTERNS, the
+  settings and the live state work on the FM-1 in the browser only (its exports). Two ways onto the unit:
+  - **Phases 1-3 as planned**: a binary SysEx command each (STATUS's play steps and solo, FX GET / SET, MFX GET /
+    SET, TOOL), the manager's screens reading those instead of the exports. Small replies; code per command.
+  - **One command for all of them** (new, 2026-11-16 night): `CALL fn args` runs the same functions the browser
+    calls and streams their JSON answer back in SysEx frames (a 128-byte chunk at a time, so no big buffer: the
+    unit has 368 B of RAM free), and the manager's `unit().call` goes over USB unchanged. Every screen then works on
+    the unit at once and stays the same code as the browser's. The cost is flash: the browser build grew by 5,664 B
+    for tonight's four reads (`app.wasm` 718,637 -> 724,301 B), so all of them together are likely 10-15 KB on the
+    unit (an estimate from the WebAssembly, not measured on the target). The app slot has 276 B and the second blob
+    5,720 B free, so either way code must move or go first.
+  - Measured tonight: this round leaves the unit's own package as it was (the Bluetooth package from a clean tree
+    with this round's `fz_port.c`: 581,288 B, 276 B of the app slot free, RAM 368 B free), since all of it is
+    PLAT_WEB.
 
 ## Decided (2026-11-15)
 - The virtual FM-1 is the Bluetooth package (your unit's layout).

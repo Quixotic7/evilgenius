@@ -25,6 +25,7 @@ import { SeqEditor } from "./egseqedit.js";
 import { FIELD, TRIG_ON, TFIELD } from "./egsysex.js";
 import { lockName, lockRange, condName, PM, NSTEP, PAGE, TRIG } from "./egseq.js";
 import { LENS, CONDS, FUNCS, RATES, LOCKS } from "./egseqnames.js";
+const SLIDE_TIME = LOCKS.findIndex((x) => x[0] === "TIME");   // (the sound's slide TIME, after PORT: QD_QP_PTIM)
 import { patternsOf, LAYOUT, SECTOR } from "./egstore.js";
 
 const NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
@@ -141,6 +142,10 @@ export function mountSeq(ctx) {
         get: (p, s, t) => { const l = ed().locksAt(s, t).find((x) => x.id === id); return l ? l.value : null; },
         text: (v) => (v == null ? "-" : String(v)), help: `LOCK ${i + 1}: ${lockName(id)} (ALT + DRAG UP: UNLOCK)` });
     });
+    list.push(   // (the unit's TRIG and SLIDE hold modes, after the lock slots: the trig's kind; the slide's time, a lock)
+      { name: "TRIG", f: FIELD.TRIG, min: 1, max: 3, px: 16, get: (p) => p.type, text: (v) => TRIG[v] || "-", help: "THE TRIG'S KIND: NOTE, LOCK (ITS LOCKS ONLY, NO NOTE), TIE" },
+      { name: "SLIDE", lock: SLIDE_TIME, slot: -1, min: 0, max: 127, px: 1.2, get: (p, s, t) => { const l = ed().locksAt(s, t).find((x) => x.id === SLIDE_TIME); return l ? l.value : null; },
+        text: (v) => (v == null ? "-" : String(v)), help: "THE SLIDE INTO THIS STEP: ITS TIME, A LOCK (ALT + DRAG UP: NONE)" });
     return list;
   }
   const KEYS = ["⇧1", "⇧2", "⇧3", "⇧4", "⇧5", "⇧6", "⇧7", "⇧8", "⇧9", "⇧0", "⇧-", "⇧="];
@@ -253,13 +258,14 @@ export function mountSeq(ctx) {
     box.textContent = "";
     box.append(el("span", "lab", "EDIT"));
     M.forEach((m, i) => {
-      if (m.lock !== undefined && m.slot === 0) box.append(el("span", "lab sqlocks", "LOCKS"));
+      const slotted = m.lock !== undefined && m.slot >= 0;
+      if (slotted && m.slot === 0) box.append(el("span", "lab sqlocks", "LOCKS"));
       const b = btn(`key plain${i === S.mode ? " on" : ""}${m.lock !== undefined ? " lk" : ""}`, "", () => { S.mode = i; store.set("eg-seqmode", i); render(); tell("mode", i); });
-      b.append(el("kbd", "", KEYS[i]), document.createTextNode(m.lock !== undefined ? "" : m.name));
+      b.append(el("kbd", "", KEYS[i] || "TAB"), document.createTextNode(slotted ? "" : m.name));
       b.setAttribute("aria-pressed", String(i === S.mode));
       b.title = m.help;
       box.append(b);
-      if (m.lock !== undefined) {                  // (the slot's value: any of the 129)
+      if (slotted) {                               // (the slot's value: any of the 129)
         const sel = el("select", "sqlksel");
         sel.setAttribute("aria-label", `Lock ${m.slot + 1}: which value`);
         opt(sel, LOCK_OPTS, m.lock);
@@ -286,6 +292,7 @@ export function mountSeq(ctx) {
   function renderSteps(E, ts) {
     const box = $("sq-stepsv"), m = modes()[S.mode], steps = E.steps();
     box.textContent = "";
+    S.ph = { view: "steps", lit: null };
     const band = {};                                // (each picked step's length: a band on through the steps it lasts into)
     for (const s of S.sel) {
       if (!steps[s].on) continue;
@@ -445,6 +452,7 @@ export function mountSeq(ctx) {
     const keys = el("div", "sqrkeys"); keys.style.height = `${z.h}px`;
     keys.title = "Drag up / down: the rows' height (or ALT + scroll)";
     const grid = el("div", "sqrgrid"); grid.style.width = `${z.w}px`; grid.style.height = `${z.h}px`;
+    S.ph = { view: "roll", grid, X, line: null };
     for (let r = 0; r < nrows; r++) {
       const n = R.top - r, black = NAMES[((n % 12) + 12) % 12].includes("#");
       const k = el("div", `sqrk${black ? " b" : ""}${picked.has(n) ? " on" : ""}`, R.rh >= 10 && (n % 12 === 0 || picked.has(n)) ? noteName(n) : "");
@@ -612,6 +620,7 @@ export function mountSeq(ctx) {
     for (let s = Math.ceil(T.x0); s < T.x0 + vis; s++) if (s % 16 === 0 || (s % 4 === 0 && T.cw >= 16)) { const t = el("span", s % 16 === 0 ? "pg" : "", s % 16 === 0 ? `PAGE ${s / 16 + 1}` : String((s % 16) + 1)); t.style.left = `${X(s)}px`; ruler.append(t); }
     box.append(ruler);
     const rows = el("div", "sqtrows");
+    S.ph = { view: "tracks", lanes: [], X, lines: [] };
     P.tracks.forEach((tr, t) => {
       const ts = tr.set, f = rateSixteenths(ts.rate), pages = [0, 1, 2, 3, 4, 5, 6, 7].filter((p) => (ts.loop >> p) & 1);
       const row = el("div", `sqtrow${t === E.track ? " on" : ""}${ts.mute ? " muted" : ""}`);
@@ -623,6 +632,7 @@ export function mountSeq(ctx) {
       mute.setAttribute("aria-pressed", String(!!ts.mute));
       lab.append(nm, el("span", "sqtinfo", `${RATES[ts.rate]} · ${pages.length === 1 ? `PAGE ${pages[0] + 1}` : `PAGES ${pages[0] + 1}-${pages[pages.length - 1] + 1}`}`), mute);
       const lane = el("div", "sqtlane"); lane.style.width = `${w}px`; lane.style.height = `${rowH}px`; lane.dataset.track = t;
+      S.ph.lanes[t] = { lane, f };
       for (let s = Math.floor(T.x0 / f); s * f <= T.x0 + vis && s < NSTEP; s++) {
         if (T.cw * f < 10 && s % 4) continue;
         const l = el("i", `sqrl${s % 16 === 0 ? " pg" : s % 4 === 0 ? " bt" : ""}`); l.style.left = `${X(s * f)}px`; lane.append(l);
@@ -849,12 +859,51 @@ export function mountSeq(ctx) {
     if (e.key === "-" || e.key === "=") { E.setField(on, FIELD.VEL, clamp(p.vel + (e.key === "=" ? 8 : -8), 1, 127)); return done(); }
   });
   window.addEventListener("resize", () => { if (S.shown && ready()) render(); });
+  // THE PLAYHEAD (the FM-1 in this browser: each frame says where each track is, eg_web_live): in STEPS the step
+  // playing lit (brighter while the track sounds), in the PIANO ROLL and TRACKS a line going along; only while the
+  // pattern shown is the one playing. Drawn over what is there, so nothing is drawn again for it.
+  function playhead(L) {
+    const ph = S.ph;
+    if (!ph || !ready()) return;
+    const E = ed(), on = L && L[0] && L[1] === E.pat.pattern;
+    const at = (t) => (on && L[4 + t] !== 255 ? L[4 + t] : -1), gate = (t) => on && ((L[16] >> t) & 1);
+    if (ph.view === "steps") {
+      const s = at(E.track), b = s >= 0 ? $("sq-stepsv").querySelector(`.sqs[data-step="${s}"]`) : null;
+      if (ph.lit && ph.lit !== b) ph.lit.classList.remove("ph", "hit");
+      if (b) { b.classList.add("ph"); b.classList.toggle("hit", !!gate(E.track)); }
+      ph.lit = b;
+    } else if (ph.view === "roll") {
+      const s = at(E.track);
+      if (!ph.line) { ph.line = el("i", "sqph"); ph.grid.append(ph.line); }
+      ph.line.hidden = s < 0;
+      if (s >= 0) { ph.line.style.left = `${ph.X(s)}px`; ph.line.classList.toggle("hit", !!gate(E.track)); }
+    } else if (ph.view === "tracks") {
+      ph.lanes.forEach((ln, t) => {
+        if (!ln) return;
+        let line = ph.lines[t];
+        if (!line) { line = ph.lines[t] = el("i", "sqph"); ln.lane.append(line); }
+        const s = at(t);
+        line.hidden = s < 0;
+        if (s >= 0) { line.style.left = `${ph.X(s * ln.f)}px`; line.classList.toggle("hit", !!gate(t)); }
+      });
+    }
+  }
+  let phOff = null, phAt = 0;
+  function follow(on) {
+    if (phOff) { phOff(); phOff = null; }
+    const u = on && ctx.unit ? ctx.unit() : null;
+    if (u) phOff = u.onFrame((m) => {
+      if (!ctx.unit()) { follow(false); playhead(null); return; }  // (the screens went to a unit on USB: let go)
+      const t = performance.now(); if (m.live && t - phAt > 30) { phAt = t; playhead(m.live); }
+    });
+  }
   window.addEventListener("blur", () => { for (const n of [...S.keysDown.keys()]) keyNote(n, false); });
 
   return {
     load, render,
-    show(v) { S.shown = v; if (v && ctx.link() && !ready()) ctx.job(load); else if (v) render(); },
+    show(v) { S.shown = v; follow(v); if (v && ctx.link() && !ready()) ctx.job(load); else if (v) render(); },
     async poll() {
+      if (S.shown && !phOff) follow(true);                 // (shown before the FM-1 in this page had started: now)
       if (!S.shown || !ctx.link() || ctx.busy() || S.drag) return;
       if (!ready()) { if (!S.failed) await ctx.job(load); return; }      // (shown while the page was busy: read now)
       const mine = performance.now() - ed().lastAt < 3000;   // (our own edits move the unit's revision too: read quietly)
@@ -863,7 +912,7 @@ export function mountSeq(ctx) {
     gone() { S.ed = null; S.failed = false; S.sel.clear(); render(); },
     track(t) { S.want = t; if (ready() && ed().track !== t) { ed().track = t; S.sel.clear(); render(); } },
     view(v) { if (S.view !== v) { S.quiet = true; setView(v); S.quiet = false; } },
-    mode(i) { if (S.mode !== i && i >= 0 && i < 9) { S.mode = i; store.set("eg-seqmode", i); if (ready()) render(); } },   // (the unit's hold mode)            // (TRACKS / STEPS / PIANO ROLL from outside: the unit's page keys)
+    mode(i) { if (S.mode !== i && i >= 0 && i < modes().length) { S.mode = i; store.set("eg-seqmode", i); if (ready()) render(); } },   // (the unit's hold mode)            // (TRACKS / STEPS / PIANO ROLL from outside: the unit's page keys)
     state: S,
   };
 }

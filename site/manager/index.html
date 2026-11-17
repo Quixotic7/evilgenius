@@ -105,6 +105,13 @@
 .hsteps i { display: block; height: 16px; border: 2px solid var(--blue); }
 .hsteps i.on { background: var(--lightblue); }
 .htrack.on .hsteps i.on { background: var(--yellow); }
+.hsteps i.ph { border-color: var(--white); } .hsteps i.on.ph { background: var(--white); }   /* (what plays now: eghome.js tick) */
+.htrack.sounding .hn { background: var(--yellow); color: var(--black); }
+.lbpic { display: grid; gap: 4px; margin: 6px 0; } .lbpic svg { background: #000; border: var(--px) solid var(--blue); height: clamp(48px, 8vh, 90px); }   /* (LIBRARY's card: the sound moving) */
+.pjslot.playing .pjn { background: var(--green); color: var(--black); } .pjslot.playing.beat .pjn { background: var(--yellow); }   /* (PROJECTS: what plays now, egprojects.js tick) */
+.pjgrid .key.ph { background: var(--white); color: var(--black); } .pjgrid .key.q { outline: 2px solid #e08a3c; }
+#tab-edit .tile.uk { box-shadow: inset 0 0 0 2px var(--cyan); position: relative; } #tab-edit .tile.uk::after { content: attr(data-uk); position: absolute; right: 4px; top: 2px; font: 9px var(--mono); color: var(--cyan); }
+#tab-edit .tile.ukhot { box-shadow: inset 0 0 0 3px var(--yellow); } #tab-edit .tile.ukhot::after { color: var(--yellow); }   /* (the unit's knobs on this value now: egedit.js knobs) */
 /* SOUND's pictures */
 .edsec .pic { border: var(--px) solid var(--lightblue); margin: 0 0 calc(var(--px) * 2); background: var(--black); }
 /* MIX */
@@ -189,6 +196,7 @@ body.app { background: var(--lightblue); }
 .plgrid { display: grid; grid-template-columns: repeat(16, minmax(0, 1fr)); gap: 3px; }
 @media (max-width: 760px) { .plgrid { grid-template-columns: repeat(8, minmax(0, 1fr)); } }
 .plc { position: relative; min-height: 36px; padding: 3px 3px 3px 7px; border: 2px solid #1a1846; background: #06051a; color: var(--grey); font: 10px/1.15 var(--mono); text-align: left; cursor: pointer; overflow: hidden; display: flex; flex-direction: column; gap: 2px; }
+.plc.snd { outline: 3px solid var(--tc, var(--yellow)); outline-offset: -3px; } .plc.snd::after { content: "T" attr(data-t); position: absolute; right: 3px; top: 2px; font: 10px var(--mono); color: var(--tc, var(--yellow)); }   /* (a track playing it now: egpool.js tick) */
 .plc.used { border-color: var(--blue); background: #0c0b2a; color: var(--white); }
 .plc.used::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--c, var(--grey)); }
 .plc.on { border-color: var(--yellow); }
@@ -201,7 +209,7 @@ body.app { background: var(--lightblue); }
 .plside { margin: 0; display: flex; flex-direction: column; gap: 8px; }
 .plside input { width: 14ch; }
 .plside .seg .key { padding: 2px 6px; }
-.pllist { display: flex; flex-direction: column; gap: 2px; max-height: calc(100vh - 470px); min-height: 160px; overflow: auto; }
+.pllist { display: flex; flex-direction: column; gap: 2px; max-height: calc((100vh - var(--dockh, 0px)) - 470px); min-height: 160px; overflow: auto; }
 .plsnd { display: grid; grid-template-columns: 3.4em 1fr auto; gap: 8px; padding: 3px 6px 3px 9px; border: 0; border-left: 4px solid var(--c, var(--grey)); background: #0c0b2a; color: var(--white); font: 12px var(--mono); text-align: left; cursor: pointer; }
 .plsnd:hover, .plsnd:focus { background: var(--blue); }
 .plsnd.in { color: var(--lightblue); }
@@ -239,9 +247,9 @@ body.app { background: var(--lightblue); }
 @media (max-width: 520px) { .cabgrid { grid-template-columns: 1fr; } }
 .cabgrid > .box { margin: 0; min-width: 0; }
 .cbver { color: var(--white); font-size: 14px; }
-.cbstats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 10px 0; }
+.cbstats { display: grid; grid-template-columns: repeat(auto-fit, minmax(86px, 1fr)); gap: 8px; margin: 10px 0; }   /* (a narrow box: two by two, the numbers never over each other) */
 .cbstats div { display: flex; flex-direction: column; gap: 2px; border: 2px solid var(--blue); padding: 6px; }
-.cbn { font: 20px var(--mono); color: var(--yellow); }
+.cbn { font: 20px var(--mono); color: var(--yellow); white-space: nowrap; }
 .cbmeter { display: grid; grid-template-columns: repeat(32, minmax(0, 1fr)); gap: 2px; }
 .cbmeter i, .cblegend i { display: inline-block; height: 14px; background: #1a1846; }
 .cblegend i { width: 14px; vertical-align: -2px; margin: 0 4px 0 10px; }
@@ -316,10 +324,17 @@ kbd { font: 11px var(--mono); color: var(--black); background: var(--lightgrey);
   .topbar .right .pill { font-size: 11px; padding: 4px 8px; }
 }
 @media (max-width: 1320px) { .fkeys px-text, .topbar .right px-text { zoom: 0.7; } .topbar { gap: 6px; padding: 6px 8px; } .fkeys { gap: 5px; } }
-.jar px-sprite canvas { max-height: calc(100vh - 470px); width: auto !important; }
-.plc { min-height: clamp(26px, calc((100vh - 520px) / 8), 44px); }
+/* the screens' keys on one row (fourteen of them): the F-key labels go below 1700 px (HELP and the hint line name the
+ * keys), the names shrink with the window, and a window too narrow even so scrolls the row instead of wrapping it */
+@media (max-width: 1700px) { .fkeys button > px-text[font="small"] { display: none; } .fkeys button { gap: 0; } }
+@media (max-width: 1340px) { .fkeys px-text { zoom: 0.6; } .fkeys button { padding: 5px 6px; } .fkeys { gap: 4px; } }
+@media (max-width: 1160px) { .fkeys px-text { zoom: 0.5; } .fkeys button { padding: 4px 5px; } }
+.fkeys { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; max-width: 100%; } .fkeys::-webkit-scrollbar { display: none; }
+.fkeys button { flex: 0 0 auto; }
+.jar px-sprite canvas { max-height: calc((100vh - var(--dockh, 0px)) - 470px); width: auto !important; }
+.plc { min-height: clamp(26px, calc(((100vh - var(--dockh, 0px)) - 520px) / 8), 44px); }
 .cabgrid { grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); }
-.cbkept { max-height: calc(100vh - 560px); min-height: 60px; overflow: auto; }
+.cbkept { max-height: calc((100vh - var(--dockh, 0px)) - 560px); min-height: 60px; overflow: auto; }
 @media (max-height: 820px) {
   #tab-edit .tiles { grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); }
   #tab-edit .tile { min-height: 46px; padding: 4px 6px; }
@@ -394,7 +409,7 @@ kbd { font: 11px var(--mono); color: var(--black); background: var(--lightgrey);
 .sqsel .sqsx { color: var(--white); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 1 200px; }
 .sqsel .sqsh { white-space: nowrap; font-size: 12px; }
 /* STEPS: the pads */
-.sqsteps { display: flex; flex-direction: column; gap: 4px; user-select: none; flex: 1; min-height: 0; }
+.sqsteps { display: flex; flex-direction: column; gap: 4px; user-select: none; flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; }   /* (too short a window: the rows scroll, never under the keyboard) */
 .sqsrow { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 8px; align-items: stretch; }
 .sqsl { padding: 0; box-shadow: none; justify-content: center; font: 13px var(--mono); color: var(--grey); }
 .sqshead .sqsl { border: 0; align-self: end; font-size: 10px; }
@@ -402,7 +417,7 @@ button.sqsl.on { color: var(--yellow); border-color: var(--yellow); }
 .sqspads { position: relative; display: grid; grid-template-columns: repeat(16, minmax(0, 1fr)); gap: 4px; touch-action: none; }
 .sqsn { font: 10px var(--mono); color: var(--grey); text-align: center; }
 .sqsn.beat { color: var(--yellow); }
-.sqs { position: relative; height: clamp(26px, calc((100vh - 470px) / 8.6), 64px); padding: 0; border: 2px solid #262363; background: #06051a; cursor: pointer; overflow: hidden; text-align: left; }
+.sqs { position: relative; height: clamp(26px, calc(((100vh - var(--dockh, 0px)) - 470px) / 8.6), 64px); padding: 0; border: 2px solid #262363; background: #06051a; cursor: pointer; overflow: hidden; text-align: left; }
 .sqs.beat { border-left-color: var(--blue); }
 .sqs.on { background: #1a1846; border-color: var(--lightblue); }
 .sqs .sqsv { position: absolute; left: 0; right: 0; bottom: 0; background: var(--lightblue); opacity: 0.5; pointer-events: none; }
@@ -411,6 +426,8 @@ button.sqsl.on { color: var(--yellow); border-color: var(--yellow); }
 .sqs .sqsname { position: absolute; left: 13px; top: 2px; font: 12px var(--mono); color: var(--white); white-space: nowrap; pointer-events: none; }
 .sqs .sqsval { position: absolute; right: 4px; bottom: 9px; font: 11px var(--mono); color: var(--white); pointer-events: none; }
 .sqs.sel .sqsname { color: var(--yellow); }
+.sqs.ph { border-color: var(--white); } .sqs.ph.hit { border-color: var(--yellow); box-shadow: inset 0 0 0 2px var(--yellow); }   /* (the playhead: egseqtab.js playhead) */
+.sqph { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--white); pointer-events: none; z-index: 3; } .sqph.hit { background: var(--yellow); width: 3px; } .sqph[hidden] { display: none; }
 .sqs .sqstail { position: absolute; left: 0; bottom: 2px; height: 5px; background: var(--cyan); pointer-events: none; }
 .sqs.out { opacity: 0.35; }
 .sqs.sel { border-color: var(--yellow); }
@@ -421,6 +438,7 @@ button.sqsl.on { color: var(--yellow); border-color: var(--yellow); }
 .sqsrow:not(.in) .sqsm { background: var(--darkgrey); }
 /* STEPS: the keyboard */
 .sqkb { flex: none; display: flex; gap: 10px; align-items: stretch; height: clamp(56px, 11vh, 96px); }
+@media (max-height: 860px) { .frame.docked .sqkb { height: 42px; } .frame.docked .sqkbside { display: none; } .frame.docked #tab-seq { gap: 3px; } }
 .sqkbside { width: 150px; flex: none; display: flex; flex-direction: column; justify-content: center; gap: 4px; }
 .sqkbside p { margin: 0; font-size: 11px; line-height: 1.3; }
 .sqkbside .lab.picked { color: var(--yellow); } .sqkbside .lab.held { color: var(--lightgreen); }
@@ -544,6 +562,18 @@ button.sqsl.on { color: var(--yellow); border-color: var(--yellow); }
 /* THE DESK (egdesk.js): MIX's picture, and the picked track's values under it */
 .dkpic { display: block; height: clamp(162px, 32vh, 486px); width: auto; max-width: 100%; image-rendering: pixelated; background: #000; border: var(--px) solid var(--blue); cursor: ns-resize; touch-action: none; }
 .dkpic[hidden], .dkrow[hidden] { display: none; }
+/* EFFECTS, PATTERNS, SETTINGS (egfx.js, egpat.js, egmenu.js) */
+.fxpic, .ptpic { cursor: pointer; }
+.fxrow { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin: 8px 0 4px; max-width: 980px; }
+.mnrows { display: grid; gap: 6px; margin: 8px 0; max-width: 1100px; }
+.mnrow { display: grid; grid-template-columns: 34px minmax(110px, 160px) minmax(100px, 1fr) minmax(120px, 240px) auto; gap: 10px; align-items: center; border: var(--px) solid #1a1846; background: var(--black); padding: 6px 8px; cursor: ns-resize; touch-action: none; user-select: none; }
+.mnrow.cur { border-color: var(--yellow); } .mnrow.none { cursor: default; opacity: 0.5; } .mnrow.last .mnbadge { box-shadow: 0 0 0 2px var(--white); }
+.mnbadge { width: 26px; height: 26px; border-radius: 50%; border: 3px solid; display: inline-flex; align-items: center; justify-content: center; font: 13px var(--mono); }
+.mnname { font: 13px var(--mono); color: var(--cyan); } .mnval { font: 22px var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mnpic { width: 100%; height: auto; max-height: 56px; image-rendering: pixelated; background: #000; }
+.mnch { display: inline-flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; } .mnch .key { padding: 3px 8px; box-shadow: none; font: 12px var(--mono); color: var(--white); }
+@media (max-height: 900px) { .mnrows { gap: 4px; margin: 4px 0; } .mnrow { padding: 3px 8px; } .mnpic { max-height: 34px; } .mnval { font-size: 18px; } }
+@media (max-width: 900px) { .mnrow { grid-template-columns: 30px 1fr 1fr; } .mnpic, .mnch { grid-column: 2 / -1; } .fxrow { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .dkrow { display: grid; grid-template-columns: 90px repeat(11, minmax(0, 1fr)); gap: 5px; margin: 8px 0 4px; align-items: stretch; }
 .dkrow .lab { margin: 0; align-self: center; }
 .mftile.cur { border-color: var(--yellow); }
@@ -604,6 +634,9 @@ button.sqsl.on { color: var(--yellow); border-color: var(--yellow); }
       <button id="t-cabinet" role="tab" aria-selected="false" aria-controls="tab-cabinet" type="button"><px-text font="small" scale="2" color="yellow">F8</px-text><px-text font="big" scale="2" color="white">CABINET</px-text></button>
       <button id="t-mfx" role="tab" aria-selected="false" aria-controls="tab-mfx" type="button"><px-text font="small" scale="2" color="yellow">F9</px-text><px-text font="big" scale="2" color="white">MIDI FX</px-text></button>
       <button id="t-tools" role="tab" aria-selected="false" aria-controls="tab-tools" type="button"><px-text font="small" scale="2" color="yellow">F10</px-text><px-text font="big" scale="2" color="white">TOOLS</px-text></button>
+      <button id="t-fx" role="tab" aria-selected="false" aria-controls="tab-fx" type="button" title="EFFECTS (ALT + E): the FX tower"><px-text font="big" scale="2" color="cyan">EFFECTS</px-text></button>
+      <button id="t-pat" role="tab" aria-selected="false" aria-controls="tab-pat" type="button" title="PATTERNS (ALT + T): the four banks"><px-text font="big" scale="2" color="cyan">PATTERNS</px-text></button>
+      <button id="t-set" role="tab" aria-selected="false" aria-controls="tab-set" type="button" title="SETTINGS (ALT + S): the record, global and track settings"><px-text font="big" scale="2" color="cyan">SETTINGS</px-text></button>
       <button id="t-fm1" role="tab" aria-selected="false" aria-controls="tab-fm1" type="button" title="The unit's own page (ALT + F): EFFECTS, the settings, the keyboard"><px-text font="big" scale="2" color="cyan">FM-1</px-text></button>
     </nav>
     <div class="right">
@@ -632,6 +665,9 @@ button.sqsl.on { color: var(--yellow); border-color: var(--yellow); }
     <section id="tab-cabinet" role="tabpanel" aria-labelledby="t-cabinet" hidden></section>
     <section id="tab-mfx" role="tabpanel" aria-labelledby="t-mfx" hidden></section>
     <section id="tab-tools" role="tabpanel" aria-labelledby="t-tools" hidden></section>
+    <section id="tab-fx" role="tabpanel" aria-labelledby="t-fx" hidden></section>
+    <section id="tab-pat" role="tabpanel" aria-labelledby="t-pat" hidden></section>
+    <section id="tab-set" role="tabpanel" aria-labelledby="t-set" hidden></section>
     <section id="tab-fm1" role="tabpanel" aria-labelledby="t-fm1" hidden><div id="panel"></div></section>
   </main>
 
