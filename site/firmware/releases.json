@@ -1,7 +1,44 @@
 {
   "name": "EVILGENIUS",
-  "latest": "0.1.1",
+  "latest": "0.1.2",
   "releases": [
+    {
+      "version": "0.1.2",
+      "date": "2026-11-15",
+      "channel": "stable",
+      "identity": "FM-1_45000102",
+      "source": "8ba464f545f9b932011488437ab055ca315cafec",
+      "fm1base": "934e40d846d84e76e9c428d37b74bccb6192c823",
+      "notes": "- **The manager edits sounds** ([the manager](https://quixotic7.github.io/evilgenius/manager/), Chrome or Edge over\n  USB). LIBRARY lists MY PRESETS and the factory's, found by name and tag: EDIT, LOAD ON FM-1 (the unit's own browser\n  opens on it), EXPORT, and for MY PRESETS RENAME, TAGS, UP / DOWN and DELETE. EDIT shows every value of a sound\n  (read from a track, a preset, a file or INIT): drag, scroll or type a value; drag LFO 1..3 or a modulation source\n  onto a value to route it; LIVE changes the track as you go; SEND TO TRACK / PUT TRACK BACK try a sound on a track\n  without keeping it; SAVE AS NEW, REPLACE, REVERT, EXPORT; the computer's keys play the track. Works with this\n  firmware and the releases before it (0.1.0 and later).\n- **The web manager works with EVILGENIUS in RemoteFM1.** Backup, restore and MY PRESETS' export and import now\n  work against the player (the app and remotefm1.com) as they do against an FM-1 over USB: the manager finds it,\n  reads its store, and puts a backup back.\n- **One backup file for both.** The player now keeps its store exactly as the FM-1 does (4 projects, 128 MY\n  PRESETS), so a backup of your FM-1 restores in RemoteFM1 and a backup of RemoteFM1 restores on your FM-1.\n- **The player starts with an empty store, once.** Projects and presets saved in RemoteFM1 with 0.1.1 and before are\n  in the old layout and are cleared at the first start of 0.1.2. Nothing changes on the FM-1 itself.",
+      "packages": [
+        {
+          "name": "evilgenius",
+          "kind": "ble",
+          "label": "8 voices across both cores, USB and Bluetooth MIDI, USB audio; 4 projects, 128 MY presets",
+          "projects": 4,
+          "presets": 128,
+          "fwsc": {
+            "path": "0.1.2/evilgenius.fwsc",
+            "bytes": 1042154,
+            "sha256": "675c286439b9be3a92770a215922d8c9f67ef90bed2d349374af63236232db03"
+          },
+          "data": {
+            "path": "0.1.2/evilgenius-xdata.bin",
+            "bytes": 51288,
+            "sha256": "a228be4b9cebfb3b1bf4ab0abe49e6c493021da9d328eda0b022ef4e4654ff01",
+            "crc32": 1680457261,
+            "at": 946176
+          },
+          "data2": {
+            "path": "0.1.2/evilgenius-xdata2.bin",
+            "bytes": 92560,
+            "sha256": "21574898b708ecd1e50e086295a2dd30e8ccd3947664a8ecaf642b005b01282e",
+            "crc32": 1781928672,
+            "at": 618496
+          }
+        }
+      ]
+    },
     {
       "version": "0.1.1",
       "date": "2026-11-15",

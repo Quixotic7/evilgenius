@@ -12,13 +12,6 @@ EVILGENIUS began as FIZZ 0.12.0-beta.17 with another engine and another face; FI
 
 <!-- The next release's notes, for testers, in plain language. firmware/release.py moves them. -->
 
-- **The manager edits sounds** ([the manager](https://quixotic7.github.io/evilgenius/manager/), Chrome or Edge over
-  USB). LIBRARY lists MY PRESETS and the factory's, found by name and tag: EDIT, LOAD ON FM-1 (the unit's own browser
-  opens on it), EXPORT, and for MY PRESETS RENAME, TAGS, UP / DOWN and DELETE. EDIT shows every value of a sound
-  (read from a track, a preset, a file or INIT): drag, scroll or type a value; drag LFO 1..3 or a modulation source
-  onto a value to route it; LIVE changes the track as you go; SEND TO TRACK / PUT TRACK BACK try a sound on a track
-  without keeping it; SAVE AS NEW, REPLACE, REVERT, EXPORT; the computer's keys play the track. Works with this
-  firmware and the releases before it (0.1.0 and later).
 - **Projects keep their names again.** Since the five rooms came in, the unit could not read a project's header back
   (at power-on, at a project load): the project lost its name, and the settings kept there (the tracks' level, pan,
   sends, room sends and names) were not read from it either. The headers were written right all along, so what a
@@ -100,6 +93,23 @@ EVILGENIUS began as FIZZ 0.12.0-beta.17 with another engine and another face; FI
   when the FM-1 is docked above it.
 - **SEQUENCE edits TRIG and SLIDE** (the trig's kind: NOTE, LOCK or TIE; the slide's time), so every hold mode
   of the unit has its EDIT mode in the manager. TOOLS draws LENGTH and STRETCH before and after.
+
+## 0.1.2 (2026-11-15)
+
+- **The manager edits sounds** ([the manager](https://quixotic7.github.io/evilgenius/manager/), Chrome or Edge over
+  USB). LIBRARY lists MY PRESETS and the factory's, found by name and tag: EDIT, LOAD ON FM-1 (the unit's own browser
+  opens on it), EXPORT, and for MY PRESETS RENAME, TAGS, UP / DOWN and DELETE. EDIT shows every value of a sound
+  (read from a track, a preset, a file or INIT): drag, scroll or type a value; drag LFO 1..3 or a modulation source
+  onto a value to route it; LIVE changes the track as you go; SEND TO TRACK / PUT TRACK BACK try a sound on a track
+  without keeping it; SAVE AS NEW, REPLACE, REVERT, EXPORT; the computer's keys play the track. Works with this
+  firmware and the releases before it (0.1.0 and later).
+- **The web manager works with EVILGENIUS in RemoteFM1.** Backup, restore and MY PRESETS' export and import now
+  work against the player (the app and remotefm1.com) as they do against an FM-1 over USB: the manager finds it,
+  reads its store, and puts a backup back.
+- **One backup file for both.** The player now keeps its store exactly as the FM-1 does (4 projects, 128 MY
+  PRESETS), so a backup of your FM-1 restores in RemoteFM1 and a backup of RemoteFM1 restores on your FM-1.
+- **The player starts with an empty store, once.** Projects and presets saved in RemoteFM1 with 0.1.1 and before are
+  in the old layout and are cleared at the first start of 0.1.2. Nothing changes on the FM-1 itself.
 
 ## 0.1.1 (2026-11-15)
 

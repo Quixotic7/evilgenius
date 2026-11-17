@@ -806,10 +806,10 @@ static void phase1_tests(void)
               !(R[8] & QD_SXT_PLAYING) && R[9] == 0 && R[11] == 1 && rn == 7 + 30,
           "STATUS: 42, protocol 1, 6 tracks, the store attached, stopped, project 1 worked on, one project (%d bytes)", rn);
     CHECK((R[33] << 7 | R[34]) == A.undo.rev, "STATUS: the pattern's revision last (2026-11-15)");
-#if !QD_PKG_BLE
+#if !QD_STORE_BLE
     CHECK(R[29] == 0 && R[30] == QD_NPROJ && (R[31] << 7 | R[32]) == QD_NLIB, "STATUS: the USB package's byte (0) and counts");
 #endif
-#if QD_PKG_BLE
+#if QD_STORE_BLE
     CHECK(R[29] == QD_SXK_BLE && R[30] == QD_NPROJ && (R[31] << 7 | R[32]) == QD_NLIB,
           "STATUS: the Bluetooth package's byte, its 4 projects, its 128 MY PRESETS' places (%02X %02X %02X %02X)", R[29],
           R[30], R[31], R[32]);

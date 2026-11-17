@@ -1060,8 +1060,10 @@ static FZ_COLD void sx_status(qd_app_t *a)
         o = sx_put14(b, o, u[k]);
     b[o++] = a->sx.wk.cmd;
     b[o++] = (uint8_t)a->sel;                           /* (P2-B: the selected track) */
-    b[o++] = QD_PKG_BLE ? QD_SXK_BLE : 0;               /* (2026-10-27: the package, its counts; 2026-11-15: the USB
-                                                         * package's too, so the pattern's revision can follow) */
+    b[o++] = QD_STORE_BLE ? QD_SXK_BLE : 0;            /* (2026-10-27: the package, its counts; 2026-11-15: the USB
+                                                         * package's too, so the pattern's revision can follow; the
+                                                         * .rfm1 keeps the Bluetooth package's store, qd_config.h
+                                                         * QD_STORE_BLE: the same counts) */
     b[o++] = QD_NPROJ;
     o = sx_put14(b, o, QD_NLIB);
     o = sx_put14(b, o, a->undo.rev);                    /* (2026-11-15: PATTERN INFO's revision) */

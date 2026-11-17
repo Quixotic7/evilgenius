@@ -19,7 +19,14 @@
  * flash (core/app/persist.h: the library and the projects, written by themselves); flash_sync and shutdown write what
  * is still waiting. SysEx (P1.5r, docs/SYSEX.md): midi_in's CIN 4..7 packets are collected by FM1VST's common
  * sysex.h; a whole frame of FIZZ's (7D 45 47) goes to the app at once (qd_app_sysex), its replies into sysex.h's ring
- * of CIN 4..7 packets, which midi_out_take serves; FIZZ MIDI (c): with the app's MIDI OUT between two replies. */
+ * of CIN 4..7 packets, which midi_out_take serves; FIZZ MIDI (c): with the app's MIDI OUT between two replies.
+ * THE STORE'S BACKUP AND RESTORE (2026-11-15, EvilGenius 0.1.2): built with QD_STORE_BLE (core_evilgenius.cmake), the
+ * store is the Bluetooth package's, at the unit's offsets in the NOR image (persist.h QD_FLASH_REGION: the image's
+ * 0xAF000..0xDFFFF is the unit's, byte for byte); a region with nothing of the store's in it (the host layout's before
+ * 0.1.2, another firmware's) is erased first, as the unit's start erases it. fm1core_qd_usb_cmd takes the frames in
+ * the update's framing a unit's main loop gives app_usb_cmd (FM1VST's core_evilgenius.c: ota.c's ota_service after
+ * the handshake) and answers the web manager's FZBI, FZBR, FZSR and FZXD (qd_bulk.h); while a restore runs the app
+ * is held (no ticks, no sound, no input, the screen as it was), then started again on the region restored. */
 #include <stdio.h>
 #include <string.h>
 
@@ -32,6 +39,7 @@
 #include "app.h"
 #include "qd_gfx.h"
 #include "ui.h"
+#include "qd_bulk.h"
 
 fm1panel_t fm1core_qd_panel;
 static const int8_t fm1core_qd_keymap[6][FM1P_NCOL] = FM1P_KEYMAP_INIT;
@@ -43,6 +51,9 @@ static int32_t fm1core_qd_master_seen;
 static fm1sx_in_t fm1core_qd_sx_in;
 static fm1sx_out_t fm1core_qd_sx_out;
 static int fm1core_qd_sx_mid;                           /* (FIZZ MIDI (c): a reply's packets begun, its last not taken) */
+static qd_bulk_t fm1core_qd_bulk;                       /* (0.1.2) the backup and restore commands .. */
+static int fm1core_qd_held;                             /* .. a restore running: the app held */
+static uint32_t fm1core_qd_ms;                          /* .. the last tick's ms (the app's clock stops while held) */
 
 /* P1.5r: FIZZ's frames only (7D 45 47 ..): the rest (notes, other managers') never held */
 static int fm1core_qd_sx_accept(const uint8_t *f, uint32_t n)
@@ -120,10 +131,75 @@ static void fm1core_qd_lcd_out(void)
 }
 
 /* ---------------------------------------------------------------- the flash (P1.5a) --- */
-static int fm1core_qd_fread(void *c, uint32_t off, void *dst, uint32_t n) { (void)c; return fm1nor_read(off, dst, n); }
-static int fm1core_qd_ferase(void *c, uint32_t off) { (void)c; return fm1nor_erase(off); }
-static int fm1core_qd_fprog(void *c, uint32_t off, const void *src, uint32_t n) { (void)c; return fm1nor_prog(off, src, n); }
+/* (0.1.2) the store's offsets are from the unit's data region (QD_STORE_BLE: persist.h QD_FLASH_REGION), else from 0 */
+#if QD_STORE_BLE
+#define FM1CORE_QD_FL0 QD_FLASH_REGION
+#else
+#define FM1CORE_QD_FL0 0u
+#endif
+static int fm1core_qd_fread(void *c, uint32_t off, void *dst, uint32_t n)
+{
+    (void)c;
+    return fm1nor_read(FM1CORE_QD_FL0 + off, dst, n);
+}
+static int fm1core_qd_ferase(void *c, uint32_t off) { (void)c; return fm1nor_erase(FM1CORE_QD_FL0 + off); }
+static int fm1core_qd_fprog(void *c, uint32_t off, const void *src, uint32_t n)
+{
+    (void)c;
+    return fm1nor_prog(FM1CORE_QD_FL0 + off, src, n);
+}
 static const qd_flash_t fm1core_qd_fl = {fm1core_qd_fread, fm1core_qd_ferase, fm1core_qd_fprog, 0};
+
+/* ---------------------------------------------------------------- the backup and restore (0.1.2) --- */
+/* the store's region whole, as the unit's FZBI gives it: the LIBRARY's first byte to the projects' last */
+#define FM1CORE_QD_REGION_SIZE (QD_FLASH_PRJ + QD_FLASH_PRJ_SEC * QDS_SECTOR - QD_FLASH_LIB)
+static int fm1core_qd_bk_send(void *c, const uint8_t *w, uint32_t n)
+{
+    (void)c;
+    return fm1sx_send(&fm1core_qd_sx_out, w, n);
+}
+static int fm1core_qd_bk_playing(void *c)
+{
+    (void)c;
+    return fm1core_qd_app.seq.playing;
+}
+static void fm1core_qd_bk_flush(void *c)
+{
+    (void)c;
+    qd_persist_flush(&fm1core_qd_app);
+}
+static void fm1core_qd_bk_hold(void *c, int on)
+{
+    (void)c;
+    fm1core_qd_held = on;
+}
+/* the store attached: a region with nothing of the store's in it erased first (the unit's fz_store_start) */
+static void fm1core_qd_attach(void)
+{
+    if (qd_bulk_foreign(&fm1core_qd_bulk) > 0)
+        qd_bulk_wipe(&fm1core_qd_bulk);
+    qd_persist_attach(&fm1core_qd_app, &fm1core_qd_fl);   /* P1.5a: the library, the project worked on */
+}
+/* the app again on the region a restore wrote (the unit's fz_restart, fz_store_attach, app_ui_init) */
+static void fm1core_qd_bk_restart(void *c)
+{
+    (void)c;
+    qd_app_init(&fm1core_qd_app);
+    qd_app_sysex_version(&fm1core_qd_app, "EVILGENIUS " FM1CORE_VERSION);
+    qd_app_tick(&fm1core_qd_app, fm1core_qd_ms);
+    fm1core_qd_attach();
+    if (fm1core_qd_panel.master)
+        qd_app_master(&fm1core_qd_app, (int)fm1core_qd_panel.master);
+    fm1core_qd_master_seen = fm1core_qd_panel.master;
+}
+static const qd_bulk_io_t fm1core_qd_bk_io = {0, fm1core_qd_bk_send, fm1core_qd_bk_playing, fm1core_qd_bk_flush,
+                                              fm1core_qd_bk_hold, fm1core_qd_bk_restart};
+/* a frame in the update's framing, decoded (ota.c ota_dec: 00 59 cmd len ..), as a unit's main loop gives app_usb_cmd:
+ * 1 taken */
+int fm1core_qd_usb_cmd(const uint8_t *d, uint32_t n)
+{
+    return fm1core_qd_up && qd_bulk_frame(&fm1core_qd_bulk, d, n, fm1core_qd_ms);
+}
 
 /* ---------------------------------------------------------------- the entry points --- */
 void fm1core_qd_options(const char *flash_path, int no_flash, int save_on_exit, int headless)
@@ -146,7 +222,11 @@ void fm1core_qd_init(int demo)
     fm1sx_out_reset(&fm1core_qd_sx_out);
     fm1core_qd_sx_mid = 0;
     qd_app_tick(&fm1core_qd_app, 0);
-    qd_persist_attach(&fm1core_qd_app, &fm1core_qd_fl);   /* P1.5a: the library, the project worked on */
+    fm1core_qd_ms = 0;
+    fm1core_qd_held = 0;
+    qd_bulk_init(&fm1core_qd_bulk, &fm1core_qd_bk_io, &fm1core_qd_fl, QD_FLASH_LIB, FM1CORE_QD_REGION_SIZE,
+                 FM1CORE_QD_FL0 + QD_FLASH_LIB);
+    fm1core_qd_attach();
     fm1core_qd_master_seen = fm1core_qd_panel.master;   /* (0: the host has not said; the app's default stands) */
     if (fm1core_qd_master_seen)
         qd_app_master(&fm1core_qd_app, (int)fm1core_qd_master_seen);
@@ -175,6 +255,10 @@ void fm1core_qd_tick(uint32_t ms)
 {
     if (!fm1core_qd_up)
         return;
+    fm1core_qd_ms = ms;
+    qd_bulk_tick(&fm1core_qd_bulk, ms);
+    if (fm1core_qd_held)
+        return;                                         /* (0.1.2: a restore running) */
     fm1core_qd_in();
     qd_app_tick(&fm1core_qd_app, ms);
     fm1core_qd_drain();
@@ -203,7 +287,7 @@ static void fm1core_qd_geek_stats(void)
 
 void fm1core_qd_frame(void)
 {
-    if (!fm1core_qd_up)
+    if (!fm1core_qd_up || fm1core_qd_held)
         return;
     fm1core_qd_geek_stats();
     fm1core_qd_in();
@@ -213,7 +297,7 @@ void fm1core_qd_frame(void)
 
 void fm1core_qd_idle(void)
 {
-    if (!fm1core_qd_up)
+    if (!fm1core_qd_up || fm1core_qd_held)
         return;
     fm1core_qd_in();
     fm1core_qd_leds_out();
@@ -221,7 +305,7 @@ void fm1core_qd_idle(void)
 
 void fm1core_qd_audio(int16_t *stereo, uint32_t frames)
 {
-    if (!fm1core_qd_up || fm1nor_stall_take()) {
+    if (!fm1core_qd_up || fm1core_qd_held || fm1nor_stall_take()) {
         memset(stereo, 0, (size_t)frames * 2u * sizeof *stereo);
         return;
     }
@@ -237,11 +321,14 @@ int fm1core_qd_midi_in(uint32_t pkt)
         const uint8_t *f;
         uint32_t n;
         if (fm1sx_frame(&fm1core_qd_sx_in, &f, &n)) {
-            qd_app_sysex(&fm1core_qd_app, f, n);
+            if (!fm1core_qd_held)                       /* (0.1.2: none while a restore runs) */
+                qd_app_sysex(&fm1core_qd_app, f, n);
             fm1sx_done(&fm1core_qd_sx_in);
         }
         fm1core_qd_drain();
     }
+    if (fm1core_qd_held)
+        return 1;
     if (fm1core_qd_up && cin >= 8u && cin <= 14u)             /* a channel message (note off .. pitch bend) */
         qd_app_midi(&fm1core_qd_app, (int)((pkt >> 8) & 0xFFu), (int)((pkt >> 16) & 0x7Fu), (int)((pkt >> 24) & 0x7Fu));
     else if (fm1core_qd_up && cin == 15u && ((pkt >> 8) & 0xFFu) >= 0xF8u)   /* real time: the clock, START .. */
@@ -292,7 +379,7 @@ void fm1core_qd_ui_info(char *buf, uint32_t n)
 }
 void fm1core_qd_shutdown(void)
 {
-    if (fm1core_qd_up)
+    if (fm1core_qd_up && !fm1core_qd_held)                  /* (0.1.2: a restore cut short: its region as it is) */
         qd_persist_flush(&fm1core_qd_app);                    /* P1.5a: what still waits, written */
     fm1nor_close();
     qd_shutdown();                                            /* (a later frame draws again: qd_begin re-inits) */
@@ -301,5 +388,8 @@ int fm1core_qd_halted(void) { return 0; }                     /* nothing reboots
 int fm1core_qd_flash_stage(const uint8_t *bytes, uint32_t n) { return fm1nor_stage(bytes, n); }
 uint8_t *fm1core_qd_flash(void) { return fm1nor_flash(); }
 uint32_t fm1core_qd_flash_dirty(void) { return fm1nor_dirty(); }
-int fm1core_qd_flash_sync(void) { return fm1core_qd_up ? qd_persist_flush(&fm1core_qd_app) : 1; }   /* P1.5a */
+int fm1core_qd_flash_sync(void)   /* P1.5a (0.1.2: while a restore runs, the flash is the restore's) */
+{
+    return fm1core_qd_up && !fm1core_qd_held ? qd_persist_flush(&fm1core_qd_app) : 1;
+}
 const int8_t *fm1core_qd_keymap_get(void) { return &fm1core_qd_keymap[0][0]; }

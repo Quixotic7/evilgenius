@@ -47,8 +47,8 @@ extern "C" {
 
 #define QD_UNDO_LEVELS 8
 #define QD_UNDO_QUIET_MS 500u
-#if QD_PKG_BLE
-#define QD_NLIB_UNDO 128               /* (persist.h's QD_NLIB: the Bluetooth package's) */
+#if QD_STORE_BLE
+#define QD_NLIB_UNDO 128               /* (persist.h's QD_NLIB: the Bluetooth package's store) */
 #else
 #define QD_NLIB_UNDO 256               /* (persist.h's QD_NLIB) */
 #endif
