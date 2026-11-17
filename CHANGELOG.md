@@ -12,6 +12,8 @@ EVILGENIUS began as FIZZ 0.12.0-beta.17 with another engine and another face; FI
 
 <!-- The next release's notes, for testers, in plain language. firmware/release.py moves them. -->
 
+## 0.1.4 (2026-11-16)
+
 - **Saving while a pattern plays with THE VOICE on ALWAYS no longer locks the unit up.** The "SAVING" message was
   said again every millisecond it stayed up, so the speech took all the time and the save never finished. He says
   it once now.
