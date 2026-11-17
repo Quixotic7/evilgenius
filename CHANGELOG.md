@@ -12,6 +12,8 @@ EVILGENIUS began as FIZZ 0.12.0-beta.17 with another engine and another face; FI
 
 <!-- The next release's notes, for testers, in plain language. firmware/release.py moves them. -->
 
+## 0.1.3 (2026-11-16)
+
 - **Projects keep their names again.** Since the five rooms came in, the unit could not read a project's header back
   (at power-on, at a project load): the project lost its name, and the settings kept there (the tracks' level, pan,
   sends, room sends and names) were not read from it either. The headers were written right all along, so what a
